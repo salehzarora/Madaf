@@ -97,6 +97,66 @@ export type Database = {
           },
         ]
       }
+      customer_access_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          expires_at: string | null
+          id: string
+          label: string | null
+          last_used_at: string | null
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_access_links_tenant_id_customer_id_fkey"
+            columns: ["tenant_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "customer_access_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null
@@ -686,7 +746,35 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _order_create_core: {
+        Args: {
+          p_customer_id: string
+          p_items: Json
+          p_notes: string
+          p_source: Database["public"]["Enums"]["order_source"]
+          p_tenant_id: string
+        }
+        Returns: {
+          order_id: string
+          order_number: string
+        }[]
+      }
+      _resolve_token: {
+        Args: { p_raw_token: string }
+        Returns: {
+          customer_id: string
+          link_id: string
+          tenant_id: string
+        }[]
+      }
       assert_service_role: { Args: { p_fn: string }; Returns: undefined }
+      authorize_tenant: {
+        Args: {
+          p_roles: Database["public"]["Enums"]["tenant_role"][]
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       create_manufacturer: {
         Args: {
           p_logo_url?: string
@@ -711,10 +799,33 @@ export type Database = {
           order_number: string
         }[]
       }
+      create_order_request_from_token: {
+        Args: { p_items: Json; p_notes?: string; p_token: string }
+        Returns: {
+          order_number: string
+        }[]
+      }
       create_product: {
         Args: { p_inventory?: Json; p_product: Json; p_tenant_id: string }
         Returns: string
       }
+      create_tenant_with_owner: {
+        Args: {
+          p_default_locale?: Database["public"]["Enums"]["locale_code"]
+          p_name_ar: string
+          p_name_en: string
+          p_name_he: string
+        }
+        Returns: string
+      }
+      current_membership: {
+        Args: never
+        Returns: {
+          role: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+        }[]
+      }
+      get_token_catalog: { Args: { p_token: string }; Returns: Json }
       has_tenant_role: {
         Args: {
           p_roles: Database["public"]["Enums"]["tenant_role"][]
@@ -722,8 +833,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      insert_customer_access_link: {
+        Args: {
+          p_customer_id: string
+          p_expires_at?: string
+          p_label?: string
+          p_token_hash: string
+          p_token_preview?: string
+        }
+        Returns: string
+      }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      revoke_customer_access_link: {
+        Args: { p_link_id: string }
+        Returns: string
+      }
       set_product_active: {
         Args: {
           p_is_active: boolean

@@ -1,0 +1,278 @@
+"use client";
+
+import { CheckCircle2, Plus, ShoppingCart } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import { ProductImage } from "@/components/product-image";
+import { QuantityStepper } from "@/components/quantity-stepper";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
+import type { Locale } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/types";
+import { packageLabel, productName } from "@/lib/catalog-helpers";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import { submitShopOrderAction } from "@/lib/actions/shop";
+import type { TokenCatalog } from "@/lib/data/token";
+import type { Category } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+/** Used when a product's category isn't in the token catalog payload. */
+const FALLBACK_CATEGORY: Category = {
+  id: "misc",
+  name: { ar: "", he: "", en: "" },
+  icon: "📦",
+  hue: 0,
+};
+
+/**
+ * Self-contained tokenized storefront for a shop opening its private link.
+ * No login, no global cart — the cart is local state and the order is
+ * submitted through the token action (the DB derives tenant + customer and
+ * prices everything server-side; source = remote_customer).
+ */
+export function ShopView({
+  locale,
+  dict,
+  token,
+  catalog,
+}: {
+  locale: Locale;
+  dict: Dictionary;
+  token: string;
+  catalog: TokenCatalog;
+}) {
+  const t = dict.access.shop;
+  const [cart, setCart] = useState<Map<string, number>>(new Map());
+  const [notes, setNotes] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [orderNumber, setOrderNumber] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  const categoryById = useMemo(
+    () => new Map(catalog.categories.map((c) => [c.id, c])),
+    [catalog.categories],
+  );
+
+  function setQty(productId: string, qty: number) {
+    setCart((prev) => {
+      const next = new Map(prev);
+      if (qty <= 0) next.delete(productId);
+      else next.set(productId, qty);
+      return next;
+    });
+  }
+
+  const lineCount = cart.size;
+  const estimate = useMemo(() => {
+    let sum = 0;
+    for (const product of catalog.products) {
+      const qty = cart.get(product.id);
+      if (qty) sum += qty * product.wholesalePrice;
+    }
+    return sum;
+  }, [cart, catalog.products]);
+
+  function onSubmit() {
+    setError(false);
+    const items = [...cart.entries()].map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+    if (items.length === 0) return;
+    startTransition(async () => {
+      const result = await submitShopOrderAction({
+        token,
+        items,
+        notes: notes.trim() || undefined,
+      });
+      if (result.ok && result.orderNumber) {
+        setOrderNumber(result.orderNumber);
+        setCart(new Map());
+        setNotes("");
+      } else {
+        setError(true);
+      }
+    });
+  }
+
+  const tenantName = catalog.tenantName[locale] || catalog.tenantName.he;
+
+  if (orderNumber) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-4 py-16 text-center">
+        <CheckCircle2 className="size-14 text-success" aria-hidden />
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-ink">
+          {t.successTitle}
+        </h1>
+        <p className="mt-2 text-sm text-ink-soft">{t.successBody}</p>
+        <div className="mt-5 rounded-card border border-line bg-surface px-5 py-3">
+          <p className="text-xs uppercase tracking-wide text-ink-muted">
+            {t.orderNumberLabel}
+          </p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums text-ink" dir="ltr">
+            {orderNumber}
+          </p>
+        </div>
+        <p className="mt-6 max-w-sm text-xs text-ink-muted">{t.disclaimer}</p>
+      </main>
+    );
+  }
+
+  return (
+    <div className="min-h-dvh bg-surface-sunken pb-28">
+      {/* Header */}
+      <header className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-ink-muted">{t.welcome}</p>
+            <h1 className="truncate text-lg font-bold tracking-tight text-ink">
+              {tenantName}
+            </h1>
+          </div>
+          <div className="ms-auto">
+            <LocaleSwitcher current={locale} />
+          </div>
+        </div>
+        <div className="mx-auto max-w-5xl px-4 pb-3 sm:px-6">
+          <p className="text-sm text-ink-soft">
+            <span className="text-ink-muted">{t.orderingFor}: </span>
+            <span className="font-semibold text-ink">
+              {catalog.customer.name}
+            </span>
+            {catalog.customer.city[locale] ? (
+              <span className="text-ink-muted">
+                {" · "}
+                {catalog.customer.city[locale]}
+              </span>
+            ) : null}
+          </p>
+        </div>
+      </header>
+
+      {/* Product grid */}
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        {catalog.products.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-16 text-center text-sm text-ink-muted">
+            {t.empty}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {catalog.products.map((product) => {
+              const qty = cart.get(product.id) ?? 0;
+              const soldOut = product.availability === "outOfStock";
+              const category =
+                categoryById.get(product.categoryId) ?? FALLBACK_CATEGORY;
+              return (
+                <div
+                  key={product.id}
+                  className={cn(
+                    "flex flex-col overflow-hidden rounded-card border bg-surface shadow-card transition-all",
+                    qty > 0
+                      ? "border-brand-400 ring-1 ring-brand-300"
+                      : "border-line",
+                  )}
+                >
+                  <ProductImage
+                    product={product}
+                    category={category}
+                    className="aspect-[5/4] w-full sm:aspect-[4/3]"
+                  />
+                  <div className="flex flex-1 flex-col gap-0.5 px-3 pt-2.5">
+                    <h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-ink">
+                      {productName(product, locale)}
+                    </h3>
+                    <p className="text-xs text-ink-muted">
+                      {packageLabel(product, dict)}
+                    </p>
+                    <p className="mt-1.5 text-xl font-extrabold tracking-tight text-ink">
+                      {formatCurrency(product.wholesalePrice, locale)}
+                    </p>
+                  </div>
+                  <div className="px-3 pb-3 pt-2">
+                    {qty > 0 ? (
+                      <QuantityStepper
+                        value={qty}
+                        onChange={(next) => setQty(product.id, next)}
+                        className="w-full justify-between border-brand-400 bg-brand-50"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setQty(product.id, 1)}
+                        disabled={soldOut}
+                        className={cn(
+                          "flex h-11 w-full items-center justify-center gap-1.5 rounded-field text-sm font-bold transition-all",
+                          soldOut
+                            ? "cursor-not-allowed bg-surface-sunken text-ink-muted"
+                            : "bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[0.98]",
+                        )}
+                      >
+                        {soldOut ? (
+                          dict.availability.outOfStock
+                        ) : (
+                          <>
+                            <Plus className="size-4" strokeWidth={3} aria-hidden />
+                            {dict.catalog.addToCart}
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Notes + disclaimer */}
+        {lineCount > 0 ? (
+          <div className="mt-6 flex flex-col gap-3">
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={dict.cart.notesPlaceholder}
+              maxLength={2000}
+            />
+            <p className="text-xs text-ink-muted">{t.vatNote}</p>
+            <p className="text-xs text-ink-muted">{t.disclaimer}</p>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+          >
+            {t.error}
+          </p>
+        ) : null}
+      </main>
+
+      {/* Sticky order bar */}
+      {lineCount > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur">
+          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <ShoppingCart className="size-3.5" aria-hidden />
+                {formatNumber(lineCount, locale)}
+              </p>
+              <p className="text-lg font-extrabold tabular-nums text-ink">
+                {formatCurrency(estimate, locale)}
+              </p>
+            </div>
+            <Button
+              size="lg"
+              onClick={onSubmit}
+              disabled={pending}
+              className="ms-auto"
+            >
+              <ShoppingCart className="size-5" aria-hidden />
+              {pending ? t.submitting : t.submit}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

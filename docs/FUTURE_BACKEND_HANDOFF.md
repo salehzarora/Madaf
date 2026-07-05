@@ -4,11 +4,28 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M3B shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
-> reads; M3A order writes; M3A.1 order-write lockdown). CATALOG WRITES
-> are now real in supabase mode: product create/update/activate,
+> **STATUS — M4A shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
+> reads; M3A order writes; M3A.1 order-write lockdown; M3B catalog
+> writes; M3B.1 catalog-write lockdown). **M4A adds real Supabase Auth**:
+> supplier users sign in (`/login`); the admin requires a session +
+> tenant membership (onboarding at `/onboarding` for membership-less
+> users); the whole data path moved off the service role onto
+> cookie-bound **authenticated** clients under RLS. Every tenant-owned
+> write RPC is now gated by `authorize_tenant(tenant, roles[])` — derives
+> the tenant from membership, never trusts a client `tenant_id`. Roles:
+> owner/admin (catalog + orders + status + links), sales_rep (orders
+> only, tenant-wide for now). Customers order with NO login via private
+> tokenized links (`/shop/<token>`): only a `token_hash` is stored, the
+> raw token is shown once, links are revocable/expirable, and token
+> orders are `source='remote_customer'` with server-side totals. Anon has
+> zero direct table access (tenantless reads short-circuit to empty).
+> Full model: `docs/AUTH_AND_ACCESS_MODEL.md`. The M3B detail below still
+> holds — only the access path changed (service role → authenticated):
+>
+> CATALOG WRITES
+> are real in supabase mode: product create/update/activate,
 > inventory upsert, manufacturer create/update (+ logo), and product
-> image upload to Storage — via service-role-only RPCs in
+> image upload to Storage — via tenant-validated RPCs in
 > `supabase/migrations/20260705150000_product_crud_rpcs.sql`, reached
 > through Server Actions in `src/lib/actions/products.ts`. Every RPC
 > validates tenant/parent ownership, numeric ranges, text lengths and

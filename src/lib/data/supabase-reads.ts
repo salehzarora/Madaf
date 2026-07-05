@@ -1,7 +1,8 @@
 import "server-only";
 
 /**
- * Supabase read implementations (M2) — SERVER ONLY.
+ * Supabase read implementations (M2, re-homed onto auth in M4A) — SERVER
+ * ONLY.
  *
  * Maps database rows (generated types) onto the UI domain types in
  * src/lib/types.ts so every page renders identically in mock and
@@ -9,10 +10,14 @@ import "server-only";
  * via a dynamic import, so nothing here (or in @supabase/supabase-js)
  * ever enters a client bundle.
  *
- * Access model: see ./supabase-context.ts — a local-dev-only, server-only
- * service-role client pinned to the demo tenant (every query filters
- * tenant_id explicitly because the service role bypasses RLS). M4
- * replaces it with cookie-bound authenticated clients + RLS.
+ * Access model (M4A): reads run through the cookie-bound *authenticated*
+ * client under RLS — a signed-in member sees only their tenant's rows.
+ * The effective tenant comes from the caller's membership (getDataContext),
+ * never from client input, and every query still filters tenant_id
+ * explicitly as belt-and-braces. Anonymous / membership-less callers carry
+ * the NO_TENANT sentinel: since anon holds no table grants (a public read
+ * would 500, not silently empty), those reads short-circuit to empty
+ * BEFORE touching the DB — the catalog is never globally public.
  */
 import type { Database } from "@/lib/supabase/database.types";
 import type {
@@ -28,12 +33,26 @@ import type {
   Supplier,
 } from "@/lib/types";
 
-import { getServiceContext, type Db } from "./supabase-context";
+import type { Db } from "./supabase-context";
+import { getDataContext, NO_TENANT } from "@/lib/auth/session";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
 
-const getReadContext = getServiceContext;
+// M4A: reads run through the authenticated cookie-bound client under RLS
+// (a member sees only their tenant; anon sees zero rows). The explicit
+// tenant filter below is belt-and-braces on top of RLS.
+const getReadContext = getDataContext;
+
+/**
+ * True when the caller has no tenant membership (anon or not-yet-onboarded).
+ * Such callers hold no table grants, so a query would raise "permission
+ * denied" (a 500) rather than return empty — every read guards on this and
+ * returns an empty result without hitting the DB.
+ */
+function isTenantless(tenantId: string): boolean {
+  return tenantId === NO_TENANT;
+}
 
 function fail(what: string, message: string): never {
   throw new Error(`[madaf/data] supabase read failed (${what}): ${message}`);
@@ -274,7 +293,8 @@ type ProductRowWithSort = ProductRow & {
 export async function sbListProducts(
   includeInactive = false,
 ): Promise<Product[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   let query = client
     .from("products")
     .select(PRODUCT_SELECT)
@@ -295,7 +315,8 @@ export async function sbListProducts(
 }
 
 export async function sbGetProduct(id: string): Promise<Product | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("products")
     .select(PRODUCT_SELECT)
@@ -311,7 +332,8 @@ export async function sbGetProduct(id: string): Promise<Product | undefined> {
 }
 
 export async function sbListCategories(): Promise<Category[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("categories")
     .select("*")
@@ -324,7 +346,8 @@ export async function sbListCategories(): Promise<Category[]> {
 export async function sbGetCategory(
   id: string,
 ): Promise<Category | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("categories")
     .select("*")
@@ -336,7 +359,8 @@ export async function sbGetCategory(
 }
 
 export async function sbListManufacturers(): Promise<Manufacturer[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("manufacturers")
     .select("*")
@@ -349,7 +373,8 @@ export async function sbListManufacturers(): Promise<Manufacturer[]> {
 export async function sbGetManufacturer(
   id: string,
 ): Promise<Manufacturer | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("manufacturers")
     .select("*")
@@ -361,7 +386,8 @@ export async function sbGetManufacturer(
 }
 
 export async function sbListCustomers(): Promise<Customer[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   // Deterministic seed ids ascend in the mock's original order.
   const { data, error } = await client
     .from("customers")
@@ -375,7 +401,8 @@ export async function sbListCustomers(): Promise<Customer[]> {
 export async function sbGetCustomer(
   id: string,
 ): Promise<Customer | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("customers")
     .select("*")
@@ -387,7 +414,8 @@ export async function sbGetCustomer(
 }
 
 export async function sbListInventory(): Promise<InventoryItem[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("inventory_items")
     .select("*")
@@ -400,7 +428,8 @@ export async function sbListInventory(): Promise<InventoryItem[]> {
 export async function sbGetInventoryForProduct(
   productId: string,
 ): Promise<InventoryItem | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("inventory_items")
     .select("*")
@@ -415,7 +444,8 @@ const ORDER_SELECT =
   "*, order_items (id, product_id, quantity, unit_price_snapshot, created_at)";
 
 export async function sbListOrders(): Promise<Order[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("orders")
     .select(ORDER_SELECT)
@@ -426,7 +456,8 @@ export async function sbListOrders(): Promise<Order[]> {
 }
 
 export async function sbGetOrder(id: string): Promise<Order | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("orders")
     .select(ORDER_SELECT)
@@ -438,7 +469,8 @@ export async function sbGetOrder(id: string): Promise<Order | undefined> {
 }
 
 export async function sbListDocuments(): Promise<OrderDocument[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("documents")
     .select("*")
@@ -460,7 +492,8 @@ export async function sbListDocuments(): Promise<OrderDocument[]> {
 export async function sbGetDocument(
   id: string,
 ): Promise<OrderDocument | undefined> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
   const { data, error } = await client
     .from("documents")
     .select("*")
@@ -474,7 +507,8 @@ export async function sbGetDocument(
 export async function sbListDocumentsForOrder(
   orderId: string,
 ): Promise<OrderDocument[]> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
   const { data, error } = await client
     .from("documents")
     .select("*")
@@ -486,7 +520,7 @@ export async function sbListDocumentsForOrder(
 }
 
 export async function sbGetSupplier(): Promise<Supplier> {
-  const { client, tenantId } = getReadContext();
+  const { client, tenantId } = await getReadContext();
   const { data, error } = await client
     .from("tenants")
     .select("*")

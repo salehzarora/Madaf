@@ -1,4 +1,4 @@
-import { ShoppingBag, Store } from "lucide-react";
+import { Link2, ShoppingBag, Store } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -99,14 +99,23 @@ export default async function AdminCustomersPage({
                   <td className="px-4 py-3.5 text-ink-muted">
                     {stat.lastOrder ? formatDate(stat.lastOrder, locale) : "—"}
                   </td>
-                  <td className="px-4 py-3.5 text-end">
-                    <Link
-                      href={`/${locale}/catalog?customer=${customer.id}`}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
-                    >
-                      <ShoppingBag className="size-3.5" aria-hidden />
-                      {t.startOrder}
-                    </Link>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <Link
+                        href={`/${locale}/admin/customers/${customer.id}`}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+                      >
+                        <Link2 className="size-3.5" aria-hidden />
+                        {dict.access.links.manage}
+                      </Link>
+                      <Link
+                        href={`/${locale}/catalog?customer=${customer.id}`}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+                      >
+                        <ShoppingBag className="size-3.5" aria-hidden />
+                        {t.startOrder}
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );

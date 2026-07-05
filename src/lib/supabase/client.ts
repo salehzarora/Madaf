@@ -1,25 +1,21 @@
 "use client";
 
 /**
- * Browser-side Supabase client (lazy singleton) — RESERVED for M4+.
+ * Browser-side Supabase client (M4A) — cookie-bound via @supabase/ssr, so
+ * it shares the same session the server reads. Uses the PUBLIC anon key
+ * only; the service-role key never reaches the browser.
  *
- * Nothing imports this: the M2 architecture keeps ALL data access on the
- * server (client components receive props / ShopDataProvider context and
- * never talk to Supabase). This factory exists for the M4 auth milestone
- * (sign-in flows need a browser client); until then it stays unused, and
- * RLS denies the anon key all tenant data by design.
+ * Most auth happens through Server Actions (src/lib/actions/auth.ts); this
+ * exists for client components that need the session directly (e.g. a
+ * future realtime feature). RLS denies the anon key all tenant data by
+ * design until a user signs in.
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 import type { Database } from "./database.types";
 import { getSupabaseEnv } from "./env";
 
-let browserClient: SupabaseClient<Database> | undefined;
-
-export function getSupabaseBrowserClient(): SupabaseClient<Database> {
-  if (!browserClient) {
-    const { url, anonKey } = getSupabaseEnv();
-    browserClient = createClient<Database>(url, anonKey);
-  }
-  return browserClient;
+export function getSupabaseBrowserClient() {
+  const { url, anonKey } = getSupabaseEnv();
+  return createBrowserClient<Database>(url, anonKey);
 }

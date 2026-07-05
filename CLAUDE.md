@@ -3,16 +3,19 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M3B catalog writes — all reads AND
-writes (checkout, order status, product/manufacturer/inventory CRUD,
-product image upload) go through `src/lib/data/` (mock default, zero
-config; opt-in local-dev Supabase mode via service-role-only RPCs +
-Server Actions in `src/lib/actions/`). ALL writes go through validated
-RPCs — the underlying tables are read-only for authenticated clients
-(M3A.1 orders, M3B.1 master data); categories/customers stay read-only
-until a future RPC. UI code must NOT import `src/lib/mock` — only the
-data layer does. Auth is M4; documents/invoices M5/M6.** Full context in
-`docs/`; backend setup in `supabase/README.md`.
+ar/he/en with RTL). **Current phase: M4A auth & access — real Supabase
+Auth in supabase mode: supplier users sign in (`/login`), `/admin`
+requires a session + tenant membership (onboarding at `/onboarding`), and
+the data path runs on cookie-bound authenticated clients under RLS.
+Tenant-owned write RPCs are gated by `authorize_tenant` (never trusts a
+client `tenant_id`); roles are owner/admin (catalog+orders+status+links)
+and sales_rep (orders only). Customers order with NO login via private
+tokenized links (`/shop/<token>` — hash-only storage, revocable). Anon
+has zero direct table access. Mock stays the zero-config default (no
+auth, open demo admin). All reads/writes go through `src/lib/data/`; UI
+code must NOT import `src/lib/mock`. Documents/invoices are M5/M6.** Full
+context in `docs/`; auth in `docs/AUTH_AND_ACCESS_MODEL.md`; backend setup
+in `supabase/README.md`.
 
 ## Commands
 
@@ -36,6 +39,10 @@ npm run start   # serve the production build
    surfaces are DRAFTS; never remove watermarks/notices or present a
    document as a legally issued tax invoice.
 5. `docs/FUTURE_BACKEND_HANDOFF.md` — before adding any backend.
+6. `docs/AUTH_AND_ACCESS_MODEL.md` — auth, roles, RLS, tenant derivation
+   and the tokenized shop-link model (M4A). Read before touching anything
+   under `src/lib/auth/`, `src/lib/actions/{auth,tenant,customer-links,
+   shop}.ts`, the auth RPCs, or the admin/login/onboarding/shop routes.
 
 ## Hard rules for this repo
 
@@ -47,6 +54,12 @@ npm run start   # serve the production build
   them deliberately and update `docs/FUTURE_BACKEND_HANDOFF.md`.
 - No secrets in the repo, no hosted/production Supabase (local stack
   only — `supabase/README.md`), no payments in this phase.
+- Auth (supabase mode): never trust a client-submitted `tenant_id`,
+  price, or total — the DB derives the tenant via `authorize_tenant` and
+  computes money server-side. Don't loosen RLS, re-enable direct table
+  writes, add broad anon/public read policies, or ship the service-role
+  key to the browser. Store only `token_hash` for shop links (never the
+  raw token). See `docs/AUTH_AND_ACCESS_MODEL.md`.
 - Data access goes through `src/lib/data/` (mode boundary; mock is the
   default and must keep working with zero env vars). Schema changes =
   new migration + `supabase db reset` + regenerate

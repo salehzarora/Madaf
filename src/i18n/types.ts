@@ -41,6 +41,7 @@ export interface Dictionary {
     clear: string;
     filters: string;
     select: string;
+    menu: string;
   };
   availability: {
     inStock: string;
@@ -379,5 +380,90 @@ export interface Dictionary {
     title: string;
     subtitle: string;
     backHome: string;
+  };
+  /** Auth, onboarding, private shop links, and the tokenized shop (M4A). */
+  access: {
+    login: {
+      title: string;
+      subtitle: string;
+      email: string;
+      password: string;
+      signIn: string;
+      signingIn: string;
+      error: string;
+    };
+    session: {
+      signedInAs: string;
+      logout: string;
+      roles: {
+        owner: string;
+        admin: string;
+        sales_rep: string;
+      };
+    };
+    onboarding: {
+      title: string;
+      subtitle: string;
+      nameHe: string;
+      nameAr: string;
+      nameEn: string;
+      defaultLocale: string;
+      create: string;
+      creating: string;
+      error: string;
+    };
+    noTenant: {
+      title: string;
+      body: string;
+    };
+    links: {
+      title: string;
+      subtitle: string;
+      create: string;
+      label: string;
+      labelPlaceholder: string;
+      expiry: string;
+      expiryNever: string;
+      expiryDays: string;
+      generate: string;
+      generating: string;
+      createdTitle: string;
+      createdHint: string;
+      copy: string;
+      copied: string;
+      revoke: string;
+      colLabel: string;
+      colStatus: string;
+      colToken: string;
+      colExpires: string;
+      colLastUsed: string;
+      statusActive: string;
+      statusRevoked: string;
+      statusExpired: string;
+      never: string;
+      none: string;
+      empty: string;
+      error: string;
+      revokeError: string;
+      manage: string;
+      mockNote: string;
+      backToCustomers: string;
+    };
+    shop: {
+      welcome: string;
+      orderingFor: string;
+      from: string;
+      empty: string;
+      submit: string;
+      submitting: string;
+      successTitle: string;
+      successBody: string;
+      orderNumberLabel: string;
+      error: string;
+      invalidTitle: string;
+      invalidBody: string;
+      vatNote: string;
+      disclaimer: string;
+    };
   };
 }

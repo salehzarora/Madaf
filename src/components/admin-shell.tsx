@@ -14,23 +14,37 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { LogoMark, LogoWordmark } from "@/components/logo";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { cn } from "@/lib/utils";
 
+/** Signed-in supplier identity shown in the admin top bar (Supabase mode). */
+export interface AdminSession {
+  email: string | null;
+  /** Membership role — keyed into `dict.access.session.roles` for display. */
+  role: keyof Dictionary["access"]["session"]["roles"];
+  tenantName: string;
+}
+
 /**
  * Admin shell — SaaS dashboard layout with a start-side sidebar (RTL-aware:
  * sidebar sits on the right in he/ar) and a collapsible drawer on mobile.
+ *
+ * In Supabase mode `session` carries the authenticated supplier's identity
+ * and enables the logout control; in mock mode it is omitted.
  */
 export function AdminShell({
   locale,
   dict,
+  session,
   children,
 }: {
   locale: Locale;
   dict: Dictionary;
+  session?: AdminSession;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -96,7 +110,7 @@ export function AdminShell({
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            aria-label={open ? dict.common.close : "Menu"}
+            aria-label={open ? dict.common.close : dict.common.menu}
             className="flex size-11 items-center justify-center rounded-field text-ink-soft transition-colors hover:bg-surface-sunken lg:hidden"
           >
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -109,11 +123,30 @@ export function AdminShell({
               className="hidden sm:flex"
             />
           </Link>
-          <span className="rounded-full bg-accent-100 px-2.5 py-1 text-xs font-semibold text-accent-800">
-            {dict.common.demoBadge}
-          </span>
-          <div className="ms-auto">
+          {session ? (
+            <span className="hidden max-w-40 truncate rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 sm:inline-block">
+              {session.tenantName}
+            </span>
+          ) : (
+            <span className="rounded-full bg-accent-100 px-2.5 py-1 text-xs font-semibold text-accent-800">
+              {dict.common.demoBadge}
+            </span>
+          )}
+          <div className="ms-auto flex items-center gap-2">
             <LocaleSwitcher current={locale} />
+            {session ? (
+              <>
+                <div className="hidden text-end leading-tight md:block">
+                  <p className="max-w-44 truncate text-xs font-medium text-ink" dir="ltr">
+                    {session.email}
+                  </p>
+                  <p className="text-[11px] uppercase tracking-wide text-ink-muted">
+                    {dict.access.session.roles[session.role]}
+                  </p>
+                </div>
+                <LogoutButton locale={locale} label={dict.access.session.logout} />
+              </>
+            ) : null}
           </div>
         </div>
       </header>
