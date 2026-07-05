@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { InventoryTable } from "@/components/admin/inventory-table";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { listInventory } from "@/lib/data";
 
 export default async function AdminInventoryPage({
   params,
@@ -12,6 +13,7 @@ export default async function AdminInventoryPage({
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.inventory;
+  const inventory = await listInventory();
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -21,7 +23,7 @@ export default async function AdminInventoryPage({
         </h1>
         <p className="mt-1 text-sm text-ink-muted">{t.subtitle}</p>
       </div>
-      <InventoryTable locale={locale} dict={dict} />
+      <InventoryTable inventory={inventory} locale={locale} dict={dict} />
     </div>
   );
 }

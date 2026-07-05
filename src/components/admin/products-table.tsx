@@ -10,17 +10,11 @@ import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
+import { packageLabel, productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
-import {
-  categories,
-  categoryById,
-  manufacturerById,
-  packageLabel,
-  productName,
-  products,
-} from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 
-/** Admin products list — search + category filter over the mock catalog. */
+/** Admin products list — search + category filter over the catalog. */
 export function ProductsTable({
   locale,
   dict,
@@ -29,6 +23,8 @@ export function ProductsTable({
   dict: Dictionary;
 }) {
   const t = dict.admin.products;
+  const { products, categories, categoryById, manufacturerById } =
+    useShopData();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
 
@@ -49,7 +45,7 @@ export function ProductsTable({
         .toLowerCase()
         .includes(q);
     });
-  }, [query, categoryId, locale]);
+  }, [products, manufacturerById, query, categoryId, locale]);
 
   return (
     <div className="flex flex-col gap-4">

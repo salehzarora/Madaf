@@ -14,7 +14,7 @@ import { MiniCatalogPreview } from "@/components/mini-catalog-preview";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { categoryStyle } from "@/lib/category-style";
-import { categories, products } from "@/lib/mock";
+import { listCategories, listProducts } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,6 +29,10 @@ export default async function LandingPage({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
+  const [categories, products] = await Promise.all([
+    listCategories(),
+    listProducts(),
+  ]);
 
   const roleCards = [
     {

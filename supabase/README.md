@@ -133,15 +133,30 @@ supabase gen types typescript --local --schema public > src/lib/supabase/databas
 (On Windows, run this from Git Bash or cmd — PowerShell's `>` writes
 UTF-16 and corrupts the file.)
 
-## App integration (today)
+## App integration (M2 — read paths live)
 
 ```bash
 cp .env.example .env.local   # defaults to mock mode
 npm run dev                  # app runs exactly as in M0 — no DB required
 ```
 
-The mode boundary lives in `src/lib/data/` (`getDataMode()`), and the
-clients in `src/lib/supabase/`. In M1 every data function is mock-backed;
-setting `NEXT_PUBLIC_MADAF_DATA_MODE=supabase` fails loudly by design
-until the M2 read paths land. The M2 integration path is described in
-`docs/FUTURE_BACKEND_HANDOFF.md`.
+The mode boundary lives in `src/lib/data/` (`getDataMode()`). Every UI
+read goes through it; mock is the default and needs zero configuration.
+
+**Supabase read mode (local dev only):** set
+`NEXT_PUBLIC_MADAF_DATA_MODE=supabase` and `SUPABASE_SERVICE_ROLE_KEY`
+(the "Secret" key from `supabase status`) in `.env.local`, then
+`npm run dev` — the entire UI (catalog, product pages, admin, documents)
+renders from the seeded database.
+
+How it works, and why the service key: there is no auth yet, and RLS
+correctly gives the anon key zero rows. So M2 dev reads run through
+`src/lib/data/supabase-reads.ts` — a **server-only** module (guarded by
+the `server-only` package + a dynamic import) that uses the service-role
+key pinned to the demo tenant (`MADAF_SUPABASE_TENANT_ID` to override).
+It throws a helpful error when the key is missing and refuses to run in
+production builds. No key reaches the browser; RLS was not touched. M4
+replaces this path with cookie-bound authenticated clients + RLS.
+
+Writes are NOT wired: checkout, status changes and the product form stay
+mock-only until M3 (the DB write policies from M1.1 stand regardless).

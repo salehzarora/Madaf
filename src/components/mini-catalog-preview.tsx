@@ -2,30 +2,49 @@ import { Check, ShoppingCart } from "lucide-react";
 import { ProductImage } from "@/components/product-image";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
+import { productName } from "@/lib/catalog-helpers";
+import { listCategories, listProducts } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
-import { categoryById, productById, productName } from "@/lib/mock";
+import type { Product } from "@/lib/types";
 
 /**
- * Static hero visual — a mini slice of the real catalog (live mock
+ * Static hero visual — a mini slice of the real catalog (live demo
  * products, real placeholder art) with a floating order card on top.
  * Pure presentation: no cart wiring, it just shows what Madaf feels like.
+ *
+ * Server component: reads through the data layer. Preview products are
+ * picked by SKU (stable across mock AND the seeded database — mock ids
+ * like "p01" only exist in mock mode), falling back to catalog order.
  */
-const PREVIEW_IDS = ["p01", "p09", "p32", "p19"];
-const ORDER_LINES: { id: string; qty: number }[] = [
-  { id: "p01", qty: 6 },
-  { id: "p09", qty: 3 },
-  { id: "p32", qty: 2 },
+const PREVIEW_SKUS = ["MDF-1001", "MDF-1009", "MDF-1032", "MDF-1019"];
+const ORDER_LINES: { sku: string; qty: number }[] = [
+  { sku: "MDF-1001", qty: 6 },
+  { sku: "MDF-1009", qty: 3 },
+  { sku: "MDF-1032", qty: 2 },
 ];
 
-export function MiniCatalogPreview({
+export async function MiniCatalogPreview({
   locale,
   dict,
 }: {
   locale: Locale;
   dict: Dictionary;
 }) {
-  const lines = ORDER_LINES.map(({ id, qty }) => {
-    const product = productById.get(id)!;
+  const [products, categories] = await Promise.all([
+    listProducts(),
+    listCategories(),
+  ]);
+  // A hero visual is never worth a crash: with an empty catalog (e.g. an
+  // unseeded dev database) simply render nothing.
+  if (products.length === 0) return null;
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const bySku = new Map(products.map((p) => [p.sku, p]));
+  const pick = (sku: string, fallbackIndex: number): Product =>
+    bySku.get(sku) ?? products[fallbackIndex % products.length];
+
+  const previewProducts = PREVIEW_SKUS.map((sku, index) => pick(sku, index));
+  const lines = ORDER_LINES.map(({ sku, qty }, index) => {
+    const product = pick(sku, index);
     return { product, qty, total: product.wholesalePrice * qty };
   });
   const subtotal = lines.reduce((sum, line) => sum + line.total, 0);
@@ -34,12 +53,11 @@ export function MiniCatalogPreview({
     <div className="relative mx-auto w-full max-w-md" aria-hidden>
       {/* Product mini-grid */}
       <div className="grid grid-cols-2 gap-3">
-        {PREVIEW_IDS.map((id, index) => {
-          const product = productById.get(id)!;
+        {previewProducts.map((product, index) => {
           const category = categoryById.get(product.categoryId)!;
           return (
             <div
-              key={id}
+              key={product.id}
               className={
                 "overflow-hidden rounded-card border border-line bg-surface shadow-card " +
                 (index % 2 === 1 ? "translate-y-4" : "")

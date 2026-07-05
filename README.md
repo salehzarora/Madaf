@@ -5,11 +5,14 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M1 — backend foundation.** The UI is still the polished,
-> trilingual M0 mock (no auth, no payments, and **no legal tax invoices** —
-> drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). New in M1: a
-> **local Supabase backend** — schema, RLS and seed — that the UI is *not*
-> wired to yet ([supabase/README.md](supabase/README.md)).
+> **Phase M2 — read paths.** The UI is the polished trilingual M0 design
+> (no auth, no payments, and **no legal tax invoices** — drafts only; see
+> [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)), now reading everything through
+> the **data layer** (`src/lib/data/`). Mock data stays the default; an
+> opt-in local-dev Supabase read mode renders the whole app from the
+> seeded database ([supabase/README.md](supabase/README.md)). Writes
+> (checkout, product CRUD, status changes) are still mock and arrive in
+> M3.
 
 ## Quick start
 
@@ -24,16 +27,21 @@ Other commands: `npm run build` (production build), `npm run start`
 Requirements: Node 20+ (developed on Node 22), npm.
 The app runs in **mock mode** by default — no database or env vars needed.
 
-### Optional: local Supabase backend (M1)
+### Optional: Supabase read mode (M2, local dev only)
 
 ```bash
 supabase start     # needs Docker + Supabase CLI — see supabase/README.md
 supabase db reset  # re-apply migrations + demo seed
+cp .env.example .env.local
+# in .env.local: set NEXT_PUBLIC_MADAF_DATA_MODE=supabase and paste the
+# "Secret" key from `supabase status` into SUPABASE_SERVICE_ROLE_KEY
+npm run dev        # the whole UI now reads from the seeded database
 ```
 
-Schema, Row Level Security, storage and the demo seed live in
-[supabase/](supabase/README.md). The data-mode boundary (mock ↔ supabase)
-lives in `src/lib/data/`; the UI switches over in M2.
+Reads are server-side only (RSC); no Supabase key ever reaches the
+browser, RLS is untouched, and the mode refuses to run in production —
+real authenticated access is the M4 milestone. Writes stay mock either
+way until M3.
 
 ## Try the demo
 

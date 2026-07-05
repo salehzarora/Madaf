@@ -21,14 +21,7 @@ import type { Dictionary } from "@/i18n/types";
 import { categoryStyle } from "@/lib/category-style";
 import { useCart } from "@/lib/cart-context";
 import { formatCurrency } from "@/lib/format";
-import {
-  categories,
-  categoryById,
-  customerById,
-  manufacturerById,
-  manufacturers,
-  products,
-} from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -50,6 +43,14 @@ export function CatalogView({
 }) {
   const { totalPackages, subtotal, hydrated, customerId, setCustomer } =
     useCart();
+  const {
+    products,
+    categories,
+    manufacturers,
+    categoryById,
+    manufacturerById,
+    customerById,
+  } = useShopData();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [manufacturerIds, setManufacturerIds] = useState<Set<string>>(
@@ -91,7 +92,7 @@ export function CatalogView({
       }
       return true;
     });
-  }, [query, categoryId, manufacturerIds]);
+  }, [query, categoryId, manufacturerIds, products, manufacturerById]);
 
   const hasFilters =
     query !== "" || categoryId !== null || manufacturerIds.size > 0;

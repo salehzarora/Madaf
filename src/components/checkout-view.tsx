@@ -10,8 +10,9 @@ import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
+import { productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
-import { customerById, productById, productName } from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +29,7 @@ export function CheckoutView({
   const router = useRouter();
   const { items, subtotal, totalPackages, customerId, clear, hydrated } =
     useCart();
+  const { productById, customerById } = useShopData();
   const [delivery, setDelivery] = useState<"asap" | "scheduled">("asap");
   const [sending, setSending] = useState(false);
 

@@ -5,6 +5,13 @@ import type { ReactNode } from "react";
 import { dirFor, isLocale, locales, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { CartProvider } from "@/lib/cart-context";
+import {
+  listCategories,
+  listCustomers,
+  listManufacturers,
+  listProducts,
+} from "@/lib/data";
+import { ShopDataProvider } from "@/lib/shop-data-context";
 import "../globals.css";
 
 /**
@@ -47,6 +54,17 @@ export default async function RootLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
+  // Server-side reads through the data layer (mock by default). The shop
+  // data context hydrates every client consumer (cart, pickers, order
+  // pad, catalog filters) so no client component fetches or imports mock
+  // data itself.
+  const [products, categories, manufacturers, customers] = await Promise.all([
+    listProducts(),
+    listCategories(),
+    listManufacturers(),
+    listCustomers(),
+  ]);
+
   return (
     <html
       lang={locale}
@@ -54,7 +72,14 @@ export default async function RootLayout({
       className={`${rubik.variable} antialiased`}
     >
       <body className="min-h-dvh">
-        <CartProvider>{children}</CartProvider>
+        <ShopDataProvider
+          products={products}
+          categories={categories}
+          manufacturers={manufacturers}
+          customers={customers}
+        >
+          <CartProvider>{children}</CartProvider>
+        </ShopDataProvider>
       </body>
     </html>
   );

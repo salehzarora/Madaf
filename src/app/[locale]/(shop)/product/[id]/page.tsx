@@ -6,17 +6,17 @@ import { ProductDetailActions } from "@/components/product-detail-actions";
 import { ProductImage } from "@/components/product-image";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { formatCurrency } from "@/lib/format";
+import { packageLabel, productName } from "@/lib/catalog-helpers";
 import {
-  categoryById,
-  manufacturerById,
-  packageLabel,
-  productById,
-  productName,
-  products,
-} from "@/lib/mock";
+  getCategory,
+  getManufacturer,
+  getProduct,
+  listProducts,
+} from "@/lib/data";
+import { formatCurrency } from "@/lib/format";
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const products = await listProducts();
   return products.map((product) => ({ id: product.id }));
 }
 
@@ -27,12 +27,16 @@ export default async function ProductPage({
 }) {
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
-  const product = productById.get(id);
+  const product = await getProduct(id);
   if (!product) notFound();
 
   const dict = getDictionary(locale);
-  const category = categoryById.get(product.categoryId)!;
-  const manufacturer = manufacturerById.get(product.manufacturerId)!;
+  const [category, manufacturer, products] = await Promise.all([
+    getCategory(product.categoryId),
+    getManufacturer(product.manufacturerId),
+    listProducts(),
+  ]);
+  if (!category || !manufacturer) notFound();
   const related = products
     .filter((p) => p.categoryId === product.categoryId && p.id !== product.id)
     .slice(0, 4);
