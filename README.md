@@ -40,13 +40,17 @@ cp .env.example .env.local
 npm run dev        # the whole UI now reads from the seeded database
 ```
 
-Reads are server-side only (RSC) and writes go through Server Actions →
-service-role-only DB functions; no Supabase key ever reaches the
-browser, RLS is untouched, and the mode refuses to run in production or
-against a non-local Supabase URL — real authenticated access is the M4
-milestone. In this mode checkout creates real orders, admin status
-changes persist, and the admin catalog (products, inventory,
-manufacturers, product images) is fully editable.
+Reads are server-side only (RSC) and **all writes go through Server
+Actions → validated, service-role-only DB functions** — orders,
+products, inventory and manufacturers each have their own RPC, and the
+underlying tables are table-level read-only for authenticated clients
+(categories/customers stay read-only until a future RPC). No Supabase
+key ever reaches the browser, RLS stays deny-by-default (only ever
+tightened — never loosened, no anon/public access), and the mode refuses
+to run in production or against a non-local Supabase URL — real
+authenticated access is the M4 milestone. In this mode checkout creates
+real orders, admin status changes persist, and the admin catalog
+(products, inventory, manufacturers, product images) is fully editable.
 
 ## Try the demo
 
