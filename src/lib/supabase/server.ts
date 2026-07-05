@@ -1,12 +1,14 @@
+import "server-only";
+
 /**
- * Server-side Supabase client factories — RESERVED for M3/M4.
+ * Server-side Supabase client factories — RESERVED for M4.
  *
- * Nothing imports these yet: the M2 read path owns its own client inside
- * src/lib/data/supabase-reads.ts (server-only, dev-only, demo-tenant
- * scoped). These factories become relevant when M3 write paths and M4
- * cookie-bound auth sessions (@supabase/ssr) land. Until then the
- * anon-key client sees nothing (RLS deny-by-default) — the intended
- * posture while the demo UI is public.
+ * Nothing imports these yet: the M2/M3A data paths own their client in
+ * src/lib/data/supabase-context.ts (server-only, dev-only, demo-tenant
+ * scoped — shared by reads and the order writes). These factories become
+ * relevant when M4 cookie-bound auth sessions (@supabase/ssr) land.
+ * Until then the anon-key client sees nothing (RLS deny-by-default) —
+ * the intended posture while the demo UI is public.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 

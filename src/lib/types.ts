@@ -123,6 +123,19 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "cancelled",
 ];
 
+/**
+ * Valid pipeline transitions (M3A). Enforced by the update_order_status
+ * DB function; mirrored here so the UI can disable impossible steps.
+ * delivered/cancelled are terminal.
+ */
+export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  new: ["confirmed", "cancelled"],
+  confirmed: ["preparing", "cancelled"],
+  preparing: ["delivered", "cancelled"],
+  delivered: [],
+  cancelled: [],
+};
+
 export interface OrderItem {
   productId: string;
   /** Quantity in packages. */

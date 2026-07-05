@@ -9,6 +9,7 @@ import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
   getCustomer,
+  getDataMode,
   getOrder,
   listCategories,
   listDocumentsForOrder,
@@ -72,7 +73,13 @@ export default async function AdminOrderDetailPage({
               <CardTitle>{t.statusTitle}</CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <OrderStatusControl initialStatus={order.status} dict={dict} />
+              <OrderStatusControl
+                orderId={order.id}
+                initialStatus={order.status}
+                locale={locale}
+                live={getDataMode() === "supabase"}
+                dict={dict}
+              />
             </CardContent>
           </Card>
 

@@ -3,11 +3,13 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M2 read paths — every UI read goes
-through `src/lib/data/` (mock default, zero config; opt-in local-dev
-Supabase read mode). UI code must NOT import `src/lib/mock` — only the
-data layer does. Writes are still mock (M3).** Full context in `docs/`;
-backend setup in `supabase/README.md`.
+ar/he/en with RTL). **Current phase: M3A order writes — all reads AND
+order writes (checkout, status changes) go through `src/lib/data/`
+(mock default, zero config; opt-in local-dev Supabase mode via
+service-role-only RPCs + Server Actions in `src/lib/actions/`). UI code
+must NOT import `src/lib/mock` — only the data layer does. Product CRUD
+is still mock (M3B).** Full context in `docs/`; backend setup in
+`supabase/README.md`.
 
 ## Commands
 

@@ -39,6 +39,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705100000_core_schema.sql` | enums, 12 tables, composite tenant FKs, triggers (updated_at, order-status history) |
 | `migrations/20260705110000_rls_policies.sql` | RLS on every table, deny-by-default, tenant-membership helpers, `next_order_number()` |
 | `migrations/20260705120000_storage_product_images.sql` | private `product-images` bucket + tenant-scoped policies |
+| `migrations/20260705130000_order_write_rpcs.sql` | M3A: `create_order_request()` + `update_order_status()` — atomic, service-role-only order writes |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 
 ### Schema at a glance
@@ -158,5 +159,21 @@ It throws a helpful error when the key is missing and refuses to run in
 production builds. No key reaches the browser; RLS was not touched. M4
 replaces this path with cookie-bound authenticated clients + RLS.
 
-Writes are NOT wired: checkout, status changes and the product form stay
-mock-only until M3 (the DB write policies from M1.1 stand regardless).
+**Order writes (M3A):** in supabase mode, checkout and admin status
+changes are REAL. They flow client → Server Action
+(`src/lib/actions/orders.ts`) → data layer → service-role-only DB RPCs:
+
+- `create_order_request(tenant, items, customer?, notes?, source)` —
+  atomic: validates tenant/customer/products (active, same tenant),
+  merges duplicate lines, computes ALL money from live product data
+  (client prices are never trusted), draws the number via
+  `next_order_number()`, inserts order + snapshotted lines. Creates NO
+  documents (M5).
+- `update_order_status(tenant, order, next)` — validated pipeline
+  (new → confirmed → preparing → delivered, cancel from any active
+  state; terminal states stay terminal; same-status is a no-op). History
+  rows come from the existing trigger.
+
+Both RPCs `revoke` execute from anon/authenticated — service-role only
+until the M4 auth milestone replaces the service client with
+authenticated, RLS-scoped flows. The product form stays mock-only (M3B).

@@ -9,15 +9,21 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
+import { submitOrderAction } from "@/lib/actions/orders";
 import { useCart } from "@/lib/cart-context";
 import { productName } from "@/lib/catalog-helpers";
+import { getDataMode } from "@/lib/data/mode";
 import { formatCurrency } from "@/lib/format";
 import { useShopData } from "@/lib/shop-data-context";
 import { cn } from "@/lib/utils";
 
 /**
- * Order-request confirmation. Mock submit: clears the cart and navigates
- * to the success page with a generated demo order number.
+ * Order-request confirmation.
+ * - Mock mode (default): clears the cart and navigates to the success
+ *   page with a generated demo order number — no server involved.
+ * - Supabase mode (local dev): submits through the order Server Action,
+ *   which creates a real order + lines with server-computed totals and
+ *   returns the real MDF-#### number.
  */
 export function CheckoutView({
   locale,
@@ -32,6 +38,7 @@ export function CheckoutView({
   const { productById, customerById } = useShopData();
   const [delivery, setDelivery] = useState<"asap" | "scheduled">("asap");
   const [sending, setSending] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
 
   const customer = customerId ? customerById.get(customerId) : undefined;
 
@@ -42,15 +49,45 @@ export function CheckoutView({
     }
   }, [hydrated, items.length, sending, locale, router]);
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSending(true);
-    const orderNumber = `MDF-${1048 + Math.floor(Math.random() * 40)}`;
-    // Simulate a short round-trip so the demo feels real.
-    window.setTimeout(() => {
-      clear();
-      router.push(`/${locale}/order-success?n=${orderNumber}`);
-    }, 600);
+    setSendFailed(false);
+
+    if (getDataMode() === "mock") {
+      const orderNumber = `MDF-${1048 + Math.floor(Math.random() * 40)}`;
+      // Simulate a short round-trip so the demo feels real.
+      window.setTimeout(() => {
+        clear();
+        router.push(`/${locale}/order-success?n=${orderNumber}`);
+      }, 600);
+      return;
+    }
+
+    const notes = new FormData(event.currentTarget).get("notes");
+    try {
+      const result = await submitOrderAction({
+        customerId,
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        notes: typeof notes === "string" && notes.trim() ? notes : undefined,
+        locale,
+      });
+      if (result.ok && result.orderNumber) {
+        clear();
+        router.push(
+          `/${locale}/order-success?n=${encodeURIComponent(result.orderNumber)}`,
+        );
+        return;
+      }
+    } catch {
+      // Transport-level failure (server unreachable) — same recovery as a
+      // rejected order: keep the cart, re-enable the button, show the error.
+    }
+    setSending(false);
+    setSendFailed(true);
   }
 
   return (
@@ -140,7 +177,7 @@ export function CheckoutView({
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <Textarea placeholder={dict.cart.notesPlaceholder} />
+              <Textarea name="notes" placeholder={dict.cart.notesPlaceholder} />
             </CardContent>
           </Card>
         </div>
@@ -190,6 +227,14 @@ export function CheckoutView({
               <p className="text-xs leading-relaxed text-ink-muted">
                 {dict.checkout.disclaimer}
               </p>
+              {sendFailed ? (
+                <p
+                  role="alert"
+                  className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+                >
+                  {dict.checkout.sendError}
+                </p>
+              ) : null}
               <Button
                 type="submit"
                 size="lg"
