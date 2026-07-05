@@ -17,10 +17,14 @@ everything here was built to be wired, not rebuilt.
 >
 > Order WRITES (M3A) are real too: checkout → `create_order_request()`
 > and status → `update_order_status()`. Since M3A.1 those RPCs are the
-> ONLY order write paths: orders/order_items are table-level READ-ONLY
-> for authenticated users, and the service-role context refuses non-local
-> Supabase URLs on top of refusing production. Mock stays the zero-config
-> default. Earlier M2 status below still applies to reads:
+> ONLY order write paths. Since M3B.1 the SAME holds for master data:
+> products/inventory_items/manufacturers/categories/customers are
+> table-level READ-ONLY for authenticated — product/manufacturer/
+> inventory writes go through the M3B RPCs; categories/customers stay
+> read-only until a future validated RPC. The service-role context
+> refuses non-local Supabase URLs on top of refusing production. Mock
+> stays the zero-config default. Earlier M2 status below still applies to
+> reads:
 > Every UI read now goes through `src/lib/data/` — no page or component
 > imports `src/lib/mock` anymore (only the data layer does). Server pages
 > await the data functions; client components receive props or the
@@ -86,7 +90,7 @@ enum/column — derive it.)
 | ✅ Product create/edit (M3B) | `admin/product-form.tsx` → `create/updateProductAction` → `create_product()`/`update_product()` RPCs | done — validated, tenant-safe, incl. inventory |
 | ✅ Product images (M3B) | `product-image.tsx` prefers `imageUrl`; upload via `uploadProductImageAction` → Storage `<tenant>/products/<id>/…`, signed on read | done — private bucket, gradient fallback |
 | ✅ Manufacturers + logos (M3B) | `admin/manufacturers-manager.tsx` → `create/updateManufacturerAction` → RPCs | done — logo on catalog chips |
-| Dev service-role client (reads AND writes) | `src/lib/data/supabase-context.ts` (`getServiceContext()`) | authenticated cookie-bound client + RLS (M4) — delete that module. NOTE: M1.1 still lets owner/admin write master data directly; M4 decides whether to funnel those through the RPCs like orders (M3A.1) |
+| Dev service-role client (reads AND writes) | `src/lib/data/supabase-context.ts` (`getServiceContext()`) | authenticated cookie-bound client + RLS (M4) — delete that module. All writes now go through validated RPCs; M4 grants EXECUTE on those RPCs to authenticated (with in-function role checks) rather than restoring direct table writes |
 | Demo "today" | `DEMO_TODAY` in `inventory-table.tsx` | real `new Date()` |
 | Metrics | computed in `admin/page.tsx` | SQL aggregates (views) |
 

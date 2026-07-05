@@ -42,6 +42,33 @@ const MAX_ID_LENGTH = 64;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 
+/**
+ * Sniff the real image type from magic bytes so a spoofed Content-Type
+ * (client-controlled) can't smuggle a non-image through the allowlist.
+ * Dependency-free; recognizes exactly the allowed formats.
+ */
+function sniffImageMime(bytes: Uint8Array): string | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  // WebP: "RIFF"<4 bytes size>"WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
 function isPlausibleId(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -306,10 +333,16 @@ export async function uploadProductImageAction(
       return { ok: false, reason: "size" };
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
+    // Magic-byte check: the real content must be an allowed image AND
+    // match the declared type — a spoofed Content-Type is rejected.
+    const sniffed = sniffImageMime(bytes);
+    if (!sniffed || sniffed !== file.type) {
+      return { ok: false, reason: "type" };
+    }
     const result = await uploadProductImage({
       productId,
       fileName: file.name || "image",
-      contentType: file.type,
+      contentType: sniffed,
       bytes,
     });
     return { ok: true, path: result.path, previewUrl: result.previewUrl };
