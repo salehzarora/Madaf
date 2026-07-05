@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Browser-side Supabase client (lazy singleton).
+ * Browser-side Supabase client (lazy singleton) — RESERVED for M4+.
  *
- * Not used by any M0 surface — the UI still runs on src/lib/mock/*. This
- * exists so M2 client components have one blessed way to reach Supabase.
- * Auth session wiring (cookie-bound clients via @supabase/ssr) is an M4
- * concern; until then this is an anonymous client and RLS denies it all
- * tenant data by design.
+ * Nothing imports this: the M2 architecture keeps ALL data access on the
+ * server (client components receive props / ShopDataProvider context and
+ * never talk to Supabase). This factory exists for the M4 auth milestone
+ * (sign-in flows need a browser client); until then it stays unused, and
+ * RLS denies the anon key all tenant data by design.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 

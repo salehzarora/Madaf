@@ -13,14 +13,10 @@ import {
   type Locale,
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { productName } from "@/lib/catalog-helpers";
 import { formatCurrency, formatDateLong } from "@/lib/format";
-import {
-  customerById,
-  productName,
-  productById,
-  supplier,
-} from "@/lib/mock";
-import type { Order, OrderDocument } from "@/lib/types";
+import { useShopData } from "@/lib/shop-data-context";
+import type { Order, OrderDocument, Supplier } from "@/lib/types";
 import { VAT_RATE } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -36,15 +32,18 @@ import { cn } from "@/lib/utils";
 export function DocumentView({
   document,
   order,
+  supplier,
   uiLocale,
 }: {
   document: OrderDocument;
   order: Order;
+  supplier: Supplier;
   uiLocale: Locale;
 }) {
   const [docLocale, setDocLocale] = useState<Locale>(defaultDocumentLocale);
   const t = getDictionary(docLocale).docs;
   const uiDict = getDictionary(uiLocale);
+  const { productById, customerById } = useShopData();
 
   const customer = customerById.get(order.customerId);
   const subtotal = order.items.reduce(

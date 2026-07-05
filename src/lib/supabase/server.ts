@@ -1,13 +1,12 @@
 /**
- * Server-side Supabase clients (RSC / Server Actions / Route Handlers).
+ * Server-side Supabase client factories — RESERVED for M3/M4.
  *
- * Not used by any M0 surface — the UI still runs on src/lib/mock/*. M2
- * read paths should create one client per request via
- * `createSupabaseServerClient()`.
- *
- * Auth: cookie-bound user sessions (@supabase/ssr) arrive with M4. Until
- * then the anon-key client sees nothing (RLS deny-by-default), which is
- * the intended posture while the demo UI is public.
+ * Nothing imports these yet: the M2 read path owns its own client inside
+ * src/lib/data/supabase-reads.ts (server-only, dev-only, demo-tenant
+ * scoped). These factories become relevant when M3 write paths and M4
+ * cookie-bound auth sessions (@supabase/ssr) land. Until then the
+ * anon-key client sees nothing (RLS deny-by-default) — the intended
+ * posture while the demo UI is public.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 

@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { listCustomers, listOrders } from "@/lib/data";
 import { formatDate, formatNumber } from "@/lib/format";
-import { customers, orders } from "@/lib/mock";
 
 /** Shops list — with per-shop order stats and a "start order" deep link. */
 export default async function AdminCustomersPage({
@@ -18,6 +18,11 @@ export default async function AdminCustomersPage({
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.customers;
+
+  const [customers, orders] = await Promise.all([
+    listCustomers(),
+    listOrders(),
+  ]);
 
   const stats = new Map(
     customers.map((customer) => {

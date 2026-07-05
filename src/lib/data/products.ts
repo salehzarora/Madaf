@@ -1,21 +1,13 @@
 /**
  * Catalog data access — products, categories, manufacturers.
  *
- * M1: mock-backed (src/lib/mock/*). The M0 pages still import the mock
- * modules directly; they migrate to these functions in M2 so the switch to
- * Supabase happens here, in one file, without touching the UI.
+ * Mock mode (default): typed TS modules in src/lib/mock.
+ * Supabase mode (M2, local dev): server-only reads in ./supabase-reads —
+ * see the mapping notes there (name_ar/he/en → translations, package_unit
+ * → packageType, availability DERIVED from inventory_items, …).
  *
- * M2 mapping (see supabase/migrations/20260705100000_core_schema.sql):
- * - Product.translations.{ar,he,en}.name  ← products.name_ar/he/en
- * - Product.packageType                   ← products.package_unit
- * - Product.unitsPerPackage               ← products.package_quantity
- * - Product.baseUnit / unitSize           ← products.base_unit / unit_size
- * - Product.wholesalePrice                ← products.wholesale_price
- * - Product.availability                  ← DERIVED from inventory_items:
- *     quantity_available = 0                    → "outOfStock"
- *     quantity_available < low_stock_threshold  → "lowStock"
- *     otherwise                                 → "inStock"
- * - Category.hue ← categories.color_hue; Category.icon ← categories.icon
+ * Server components call these directly; client components receive the
+ * results as props/context (never fetch themselves).
  */
 import {
   categories,
@@ -27,36 +19,48 @@ import {
 } from "@/lib/mock";
 import type { Category, Manufacturer, Product } from "@/lib/types";
 
-import { getDataMode, supabaseNotWiredYet } from "./mode";
+import { getDataMode } from "./mode";
 
 export async function listProducts(): Promise<Product[]> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("listProducts");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListProducts();
+  }
   return products;
 }
 
 export async function getProduct(id: string): Promise<Product | undefined> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("getProduct");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbGetProduct(id);
+  }
   return productById.get(id);
 }
 
 export async function listCategories(): Promise<Category[]> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("listCategories");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListCategories();
+  }
   return categories;
 }
 
 export async function getCategory(id: string): Promise<Category | undefined> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("getCategory");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbGetCategory(id);
+  }
   return categoryById.get(id);
 }
 
 export async function listManufacturers(): Promise<Manufacturer[]> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("listManufacturers");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListManufacturers();
+  }
   return manufacturers;
 }
 
 export async function getManufacturer(
   id: string,
 ): Promise<Manufacturer | undefined> {
-  if (getDataMode() === "supabase") supabaseNotWiredYet("getManufacturer");
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbGetManufacturer(id);
+  }
   return manufacturerById.get(id);
 }

@@ -6,19 +6,19 @@ import { ProductImage } from "@/components/product-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
-  categoryById,
-  customerById,
-  documents,
-  orderById,
-  orderSubtotal,
-  orders,
-  productById,
-  productName,
-} from "@/lib/mock";
+  getCustomer,
+  getOrder,
+  listCategories,
+  listDocumentsForOrder,
+  listOrders,
+  listProducts,
+} from "@/lib/data";
+import { formatCurrency, formatDate } from "@/lib/format";
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const orders = await listOrders();
   return orders.map((order) => ({ id: order.id }));
 }
 
@@ -29,13 +29,19 @@ export default async function AdminOrderDetailPage({
 }) {
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
-  const order = orderById.get(id);
+  const order = await getOrder(id);
   if (!order) notFound();
 
   const dict = getDictionary(locale);
   const t = dict.admin.orders.detail;
-  const customer = customerById.get(order.customerId);
-  const orderDocs = documents.filter((doc) => doc.orderId === order.id);
+  const [customer, orderDocs, products, categories] = await Promise.all([
+    getCustomer(order.customerId),
+    listDocumentsForOrder(order.id),
+    listProducts(),
+    listCategories(),
+  ]);
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">

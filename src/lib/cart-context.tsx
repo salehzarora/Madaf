@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { productById } from "@/lib/mock/products";
+import { useShopData } from "@/lib/shop-data-context";
 import type { CartItem } from "@/lib/types";
 
 const STORAGE_KEY = "madaf.cart.v1";
@@ -42,6 +42,9 @@ interface CartContextValue extends CartState {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  // Catalog reference data comes from the server-hydrated shop data
+  // context — the cart never fetches and never imports mock data.
+  const { productById } = useShopData();
   const [state, setState] = useState<CartState>({
     items: [],
     customerId: null,
@@ -58,7 +61,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(raw) as CartState;
         // Merge, don't replace: anything set before hydration (e.g. a
         // ?customer= deep link) must survive the storage restore. Also
-        // drop items whose product no longer exists in the mock catalog.
+        // drop items whose product no longer exists in the catalog.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setState((prev) => ({
           items:
@@ -72,6 +75,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Corrupt storage — start fresh.
     }
     setHydrated(true);
+    // productById is stable for the session (server-hydrated reference
+    // data); this hydration must run exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -132,7 +138,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       sum += item.quantity * product.wholesalePrice;
     }
     return { totalPackages: packages, subtotal: sum };
-  }, [state.items]);
+  }, [state.items, productById]);
 
   const quantityOf = useCallback(
     (productId: string) =>

@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { categories, manufacturers } from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 
 /**
  * Mock "new product" form. Submitting shows a success banner only —
@@ -22,6 +22,7 @@ export function NewProductForm({
   dict: Dictionary;
 }) {
   const t = dict.admin.products.new;
+  const { categories, manufacturers } = useShopData();
   const [saved, setSaved] = useState(false);
 
   function submit(event: React.FormEvent) {

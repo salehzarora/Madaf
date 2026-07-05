@@ -7,8 +7,9 @@ import { QuantityStepper } from "@/components/quantity-stepper";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
+import { productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
-import { productById, productName } from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 
 /**
  * Sticky desktop/tablet-landscape order pad — the sales rep's running
@@ -24,6 +25,7 @@ export function OrderPad({
 }) {
   const { items, setQuantity, removeItem, subtotal, totalPackages, hydrated } =
     useCart();
+  const { productById } = useShopData();
 
   return (
     <aside className="sticky top-24 flex max-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">

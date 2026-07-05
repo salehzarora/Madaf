@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { DocumentView } from "@/components/document-view";
 import { isLocale } from "@/i18n/config";
-import { documentById, documents, orderById } from "@/lib/mock";
+import { getDocument, getOrder, getSupplier, listDocuments } from "@/lib/data";
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const documents = await listDocuments();
   return documents.map((doc) => ({ id: doc.id }));
 }
 
@@ -18,14 +19,22 @@ export default async function AdminDocumentDetailPage({
 }) {
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
-  const doc = documentById.get(id);
+  const doc = await getDocument(id);
   if (!doc) notFound();
-  const order = orderById.get(doc.orderId);
+  const [order, supplier] = await Promise.all([
+    getOrder(doc.orderId),
+    getSupplier(),
+  ]);
   if (!order) notFound();
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <DocumentView document={doc} order={order} uiLocale={locale} />
+      <DocumentView
+        document={doc}
+        order={order}
+        supplier={supplier}
+        uiLocale={locale}
+      />
     </div>
   );
 }

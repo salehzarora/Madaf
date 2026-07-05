@@ -8,13 +8,10 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
+import { isLowStock, productName } from "@/lib/catalog-helpers";
 import { formatDate, formatNumber } from "@/lib/format";
-import {
-  inventory,
-  isLowStock,
-  productById,
-  productName,
-} from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
+import type { InventoryItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Days ahead treated as "expiring soon" in the demo. */
@@ -22,15 +19,19 @@ const EXPIRY_HORIZON_DAYS = 21;
 /** Demo "today" — aligned with the mock order timeline. */
 const DEMO_TODAY = "2026-07-05";
 
-/** Inventory overview with low-stock filter and optional expiry column. */
+/** Inventory overview with low-stock filter and optional expiry column.
+ * Rows come from the server page (data layer). */
 export function InventoryTable({
+  inventory,
   locale,
   dict,
 }: {
+  inventory: InventoryItem[];
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.inventory;
+  const { productById } = useShopData();
   const [lowOnly, setLowOnly] = useState(false);
 
   const horizon =
@@ -48,7 +49,7 @@ export function InventoryTable({
             ? new Date(item.nearestExpiry).getTime() <= horizon
             : false,
         })),
-    [lowOnly, horizon],
+    [inventory, productById, lowOnly, horizon],
   );
 
   return (

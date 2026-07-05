@@ -7,8 +7,8 @@ import { QuantityStepper } from "@/components/quantity-stepper";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
+import { packageLabel, productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
-import { packageLabel, productName } from "@/lib/mock";
 import type { Availability, Category, Manufacturer, Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

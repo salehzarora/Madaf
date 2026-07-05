@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { listCustomers, listDocuments, listOrders } from "@/lib/data";
 import { formatDate } from "@/lib/format";
-import { customerById, documents, orderById } from "@/lib/mock";
 import type { DocumentType } from "@/lib/types";
 
 const typeTone: Record<DocumentType, "info" | "brand" | "warning"> = {
@@ -26,6 +26,13 @@ export default async function AdminDocumentsPage({
   const dict = getDictionary(locale);
   const t = dict.admin.documents;
 
+  const [documents, orders, customers] = await Promise.all([
+    listDocuments(),
+    listOrders(),
+    listCustomers(),
+  ]);
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const customerById = new Map(customers.map((c) => [c.id, c]));
   const sorted = [...documents].sort((a, b) => b.date.localeCompare(a.date));
 
   return (

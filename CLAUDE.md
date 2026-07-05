@@ -3,10 +3,11 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M1 backend foundation — the UI is
-still the M0 mock (reads `src/lib/mock/*`), plus a LOCAL Supabase backend
-(schema/RLS/seed in `supabase/`, not yet wired to the UI).** Full context
-in `docs/`; backend setup in `supabase/README.md`.
+ar/he/en with RTL). **Current phase: M2 read paths — every UI read goes
+through `src/lib/data/` (mock default, zero config; opt-in local-dev
+Supabase read mode). UI code must NOT import `src/lib/mock` — only the
+data layer does. Writes are still mock (M3).** Full context in `docs/`;
+backend setup in `supabase/README.md`.
 
 ## Commands
 

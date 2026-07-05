@@ -1,8 +1,5 @@
 import type { InventoryItem } from "@/lib/types";
 
-/** Threshold (in packages) under which stock counts as "low". */
-export const LOW_STOCK_THRESHOLD = 10;
-
 /** Mock warehouse stock. Expiry dates only where products track them. */
 export const inventory: InventoryItem[] = [
   { productId: "p01", stockPackages: 84, location: "A-01" },
@@ -69,21 +66,3 @@ export const inventory: InventoryItem[] = [
 export const inventoryByProductId = new Map(
   inventory.map((item) => [item.productId, item]),
 );
-
-export function isLowStock(item: InventoryItem): boolean {
-  return item.stockPackages < LOW_STOCK_THRESHOLD;
-}
-
-/** Items whose nearest expiry falls within `days` from the given date. */
-export function expiringSoon(
-  referenceIso: string,
-  days = 21,
-): InventoryItem[] {
-  const ref = new Date(referenceIso).getTime();
-  const horizon = ref + days * 24 * 60 * 60 * 1000;
-  return inventory.filter((item) => {
-    if (!item.nearestExpiry) return false;
-    const expiry = new Date(item.nearestExpiry).getTime();
-    return expiry <= horizon;
-  });
-}

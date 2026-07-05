@@ -16,19 +16,19 @@ import { ProductImage } from "@/components/product-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import {
-  categoryById,
-  customerById,
-  customers,
-  inventory,
   isLowStock,
   orderSubtotal,
-  orders,
-  productById,
   productName,
-  products,
-} from "@/lib/mock";
+} from "@/lib/catalog-helpers";
+import {
+  listCategories,
+  listCustomers,
+  listInventory,
+  listOrders,
+  listProducts,
+} from "@/lib/data";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 
 /** Admin dashboard — metrics, recent orders, low stock, quick actions. */
 export default async function AdminDashboardPage({
@@ -40,6 +40,18 @@ export default async function AdminDashboardPage({
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin;
+
+  const [orders, customers, inventory, products, categories] =
+    await Promise.all([
+      listOrders(),
+      listCustomers(),
+      listInventory(),
+      listProducts(),
+      listCategories(),
+    ]);
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   const newOrders = orders.filter((o) => o.status === "new");
   const openOrders = orders.filter((o) =>

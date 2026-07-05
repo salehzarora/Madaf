@@ -4,13 +4,17 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M1 shipped.** The Supabase foundation exists: local stack
-> (`supabase/`), migrations for the full schema below, deny-by-default
-> RLS, a private `product-images` bucket, a 1:1 seed of the mock data,
-> generated DB types (`src/lib/supabase/database.types.ts`) and a
-> mock-backed data access layer (`src/lib/data/`). The UI still reads
-> `src/lib/mock/*` directly — switching it to `src/lib/data/` is the M2
-> read-path milestone. Setup: `supabase/README.md`.
+> **STATUS — M2 shipped** (M1: schema + RLS + seed; M1.1: RLS hardening).
+> Every UI read now goes through `src/lib/data/` — no page or component
+> imports `src/lib/mock` anymore (only the data layer does). Server pages
+> await the data functions; client components receive props or the
+> `ShopDataProvider` context (`src/lib/shop-data-context.tsx`), so no
+> client ever fetches or sees a key. Pure helpers live in
+> `src/lib/catalog-helpers.ts`. Supabase read branches are implemented in
+> `src/lib/data/supabase-reads.ts` (server-only, local-dev service-role
+> client pinned to the demo tenant — replaced by authenticated clients in
+> M4). Mock remains the zero-config default; writes (checkout, CRUD,
+> status) stay mock until M3. Setup: `supabase/README.md`.
 >
 > The "Type → table mapping" section below describes what was actually
 > BUILT in M1 (it supersedes the original jsonb-translation sketch).
@@ -59,13 +63,13 @@ enum/column — derive it.)
 
 | Mock seam | File | Replace with |
 |---|---|---|
-| Catalog data | `src/lib/mock/*` imports in pages/components | server fetch (RSC) + search params |
-| Cart | `src/lib/cart-context.tsx` | keep client cart; submit via Server Action |
-| Checkout submit | `checkout-view.tsx` `submit()` | Server Action: create order + items, return real number |
-| Order status control | `order-status-control.tsx` local state | mutation + optimistic update + audit trail |
-| New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) |
-| Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback |
-| Documents list/preview | `src/lib/mock/documents.ts` | `documents` rows; keep derivation rules server-side |
+| ✅ Catalog/admin reads (M2) | all pages await `src/lib/data/*`; client components use props / `ShopDataProvider` | done — implement per-function supabase writes next |
+| Cart | `src/lib/cart-context.tsx` | keep client cart; submit via Server Action (M3) |
+| Checkout submit | `checkout-view.tsx` `submit()` | Server Action: create order + items via `next_order_number()`, return real number (M3) |
+| Order status control | `order-status-control.tsx` local state | plain `UPDATE orders.status` — history is trigger-written (M3) |
+| New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) (M3) |
+| Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback (M3) |
+| Dev read client | `src/lib/data/supabase-reads.ts` service-role context | authenticated cookie-bound client + RLS (M4) |
 | Demo "today" | `DEMO_TODAY` in `inventory-table.tsx` | real `new Date()` |
 | Metrics | computed in `admin/page.tsx` | SQL aggregates (views) |
 
@@ -88,9 +92,9 @@ additionally scoped by `customer_id`.
 1. ✅ M1 — Supabase schema + RLS + storage + seed mirroring
    `src/lib/mock/*` (done — hand-written SQL seed with deterministic
    UUIDs; see `supabase/seed.sql`).
-2. M2 — Read paths: switch pages from `src/lib/mock` imports to the
-   async functions in `src/lib/data/` and implement their supabase
-   branches (the mock↔table mapping is documented per function).
+2. ✅ M2 — Read paths (done): all pages read via `src/lib/data/`;
+   supabase read branches implemented server-side; mock stays the
+   zero-config default; supabase mode is local-dev only until M4.
 3. M3 — Write paths: checkout → orders (`next_order_number()`, item
    snapshots); status changes (plain `UPDATE` — history is trigger-
    written); product CRUD + image upload to `product-images`.

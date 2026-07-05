@@ -4,16 +4,20 @@
  * The app has exactly two data modes:
  *
  * - `"mock"` (default): everything reads from the typed TS modules in
- *   src/lib/mock/*. No database, no env vars, no network — this is how the
- *   M0 demo runs and it must keep working untouched.
- * - `"supabase"`: reads go to the local Supabase stack through
- *   src/lib/supabase/*. The schema exists (M1), but the read/write paths
- *   land in M2/M3 — until then supabase mode fails loudly instead of
- *   silently showing mock data.
+ *   src/lib/mock/*. No database, no env vars, no network — this is how
+ *   the demo runs and it must keep working with zero .env.local.
+ * - `"supabase"` (M2, read-only, LOCAL DEV ONLY): reads go to the local
+ *   Supabase stack through the server-only module ./supabase-reads. It
+ *   requires SUPABASE_SERVICE_ROLE_KEY in .env.local and refuses to run
+ *   in production — real authenticated access arrives with M4.
  *
  * Switch via NEXT_PUBLIC_MADAF_DATA_MODE in .env.local (see .env.example).
  * Anything other than the exact string "supabase" means mock — a missing
  * or misspelled value can never accidentally hit a database.
+ *
+ * The supabase branch is loaded with a dynamic import so mock mode never
+ * bundles @supabase/supabase-js, and so the server-only guard inside
+ * supabase-reads.ts can protect against client-side usage.
  */
 
 export type DataMode = "mock" | "supabase";
@@ -22,16 +26,4 @@ export function getDataMode(): DataMode {
   return process.env.NEXT_PUBLIC_MADAF_DATA_MODE === "supabase"
     ? "supabase"
     : "mock";
-}
-
-/**
- * Placeholder for Supabase-backed reads until M2 wires them.
- * Fails loudly so a half-configured environment is obvious.
- */
-export function supabaseNotWiredYet(what: string): never {
-  throw new Error(
-    `[madaf/data] ${what} is not wired to Supabase yet — the M1 schema ` +
-      "exists, but read paths land in M2 (docs/FUTURE_BACKEND_HANDOFF.md). " +
-      "Run in mock mode (NEXT_PUBLIC_MADAF_DATA_MODE=mock or unset) until then.",
-  );
 }

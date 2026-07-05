@@ -11,8 +11,9 @@ import { Label, Textarea } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
+import { packageLabel, productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
-import { categoryById, packageLabel, productById, productName } from "@/lib/mock";
+import { useShopData } from "@/lib/shop-data-context";
 
 /** Cart page body — items, shop selection, notes and order summary. */
 export function CartView({
@@ -24,6 +25,7 @@ export function CartView({
 }) {
   const { items, setQuantity, removeItem, subtotal, totalPackages, hydrated } =
     useCart();
+  const { productById, categoryById } = useShopData();
 
   if (!hydrated) {
     return (

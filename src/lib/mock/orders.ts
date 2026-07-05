@@ -113,14 +113,3 @@ export const orders: Order[] = [
 ];
 
 export const orderById = new Map(orders.map((o) => [o.id, o]));
-
-export function orderSubtotal(order: Order): number {
-  return order.items.reduce(
-    (sum, item) => sum + item.quantity * item.unitPrice,
-    0,
-  );
-}
-
-export function orderLineCount(order: Order): number {
-  return order.items.length;
-}

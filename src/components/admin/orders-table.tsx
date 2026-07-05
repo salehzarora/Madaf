@@ -10,19 +10,28 @@ import { Chip } from "@/components/ui/chip";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
+import { orderSubtotal } from "@/lib/catalog-helpers";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { customerById, orderSubtotal, orders } from "@/lib/mock";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
+import { useShopData } from "@/lib/shop-data-context";
+import {
+  ORDER_STATUSES,
+  type Order,
+  type OrderStatus,
+} from "@/lib/types";
 
-/** Admin orders list with status filter chips. */
+/** Admin orders list with status filter chips. Orders come from the
+ * server page (data layer); shop names from the shared reference data. */
 export function OrdersTable({
+  orders,
   locale,
   dict,
 }: {
+  orders: Order[];
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.orders;
+  const { customerById } = useShopData();
   const [status, setStatus] = useState<OrderStatus | null>(null);
 
   const filtered = useMemo(
@@ -30,7 +39,7 @@ export function OrdersTable({
       [...orders]
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .filter((order) => (status ? order.status === status : true)),
-    [status],
+    [orders, status],
   );
 
   return (

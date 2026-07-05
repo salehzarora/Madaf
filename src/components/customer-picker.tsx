@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
-import { customers } from "@/lib/mock/customers";
+import { useShopData } from "@/lib/shop-data-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,6 +22,7 @@ export function CustomerPicker({
   className?: string;
 }) {
   const { customerId, setCustomer, hydrated } = useCart();
+  const { customers } = useShopData();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
