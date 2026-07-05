@@ -7,9 +7,12 @@ ar/he/en with RTL). **Current phase: M3B catalog writes — all reads AND
 writes (checkout, order status, product/manufacturer/inventory CRUD,
 product image upload) go through `src/lib/data/` (mock default, zero
 config; opt-in local-dev Supabase mode via service-role-only RPCs +
-Server Actions in `src/lib/actions/`). UI code must NOT import
-`src/lib/mock` — only the data layer does. Auth is M4; documents/invoices
-M5/M6.** Full context in `docs/`; backend setup in `supabase/README.md`.
+Server Actions in `src/lib/actions/`). ALL writes go through validated
+RPCs — the underlying tables are read-only for authenticated clients
+(M3A.1 orders, M3B.1 master data); categories/customers stay read-only
+until a future RPC. UI code must NOT import `src/lib/mock` — only the
+data layer does. Auth is M4; documents/invoices M5/M6.** Full context in
+`docs/`; backend setup in `supabase/README.md`.
 
 ## Commands
 

@@ -42,6 +42,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705130000_order_write_rpcs.sql` | M3A: `create_order_request()` + `update_order_status()` — atomic, service-role-only order writes |
 | `migrations/20260705140000_lock_order_writes.sql` | M3A.1: orders/order_items are READ-ONLY for authenticated — writes only via the RPCs |
 | `migrations/20260705150000_product_crud_rpcs.sql` | M3B: product / manufacturer / inventory CRUD RPCs — service-role-only, tenant-validated |
+| `migrations/20260705160000_lock_catalog_writes.sql` | M3B.1: master-data tables READ-ONLY for authenticated — writes only via the RPCs |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 
 ### Schema at a glance
@@ -86,20 +87,27 @@ documents stay renderable after catalog or customer changes.
   `is_tenant_member(tenant_id)` / `has_tenant_role(tenant_id, roles[])` —
   SECURITY DEFINER helpers over `tenant_users`.
 - Role tiers: **any member** (incl. `sales_rep`) reads everything in
-  their tenant. **Only owner/admin** mutate master data — customers,
-  manufacturers, categories, products, inventory — and the tenant row.
-  A sales rep can never change a price, name, stock level or customer
-  record.
-- `orders` and `order_items` are **read-only at the table level for
-  every authenticated client** (M3A.1): no write policies, no write
-  grants — including TRUNCATE/REFERENCES/TRIGGER/MAINTAIN, which
-  Supabase's default ACL would otherwise leave behind (TRUNCATE is
-  RLS-exempt and is stripped from ALL tables for API roles). Creating an
-  order goes EXCLUSIVELY through `create_order_request()` and status
-  changes EXCLUSIVELY through `update_order_status()`; even
-  `next_order_number()` is no longer callable by authenticated users —
-  nobody can forge order numbers, totals, price snapshots, or jump
-  statuses.
+  their tenant. Master-data and order tables are all **read-only at the
+  table level for every authenticated client** — writes flow only
+  through validated, service-role-only RPCs (see below). A member can
+  never change a price, name, stock level, order or customer directly.
+- `orders` and `order_items` are read-only for authenticated (M3A.1):
+  no write policies, no write grants — including TRUNCATE/REFERENCES/
+  TRIGGER/MAINTAIN, which Supabase's default ACL would otherwise leave
+  behind (TRUNCATE is RLS-exempt and is stripped from ALL tables for API
+  roles). Creating an order goes EXCLUSIVELY through
+  `create_order_request()` and status changes EXCLUSIVELY through
+  `update_order_status()`; even `next_order_number()` is not callable by
+  authenticated users — nobody can forge order numbers, totals, price
+  snapshots, or jump statuses.
+- `products`, `inventory_items`, `manufacturers`, `categories` and
+  `customers` are read-only for authenticated too (M3B.1): the M1.1
+  owner/admin direct-write policies were dropped and the grants revoked.
+  Product/manufacturer/inventory writes go EXCLUSIVELY through the M3B
+  RPCs; `categories`/`customers` have no write RPC yet, so they are
+  read-only until a future validated RPC. No client can bypass the RPC
+  validation (name/description length caps, image_url sanity, SKU
+  uniqueness, cross-tenant guards) with a direct write, insert or delete.
 - `documents`, `order_status_history` and `audit_events` are
   **read-only for every client**: no write policies AND no write grants
   (grants mirror the policy matrix as defense in depth). History comes
@@ -144,8 +152,17 @@ Admin product/manufacturer/inventory edits flow client → Server Action
 All `revoke execute` from anon/authenticated — service-role only until
 M4. Cross-tenant attachment is rejected by both the RPC checks and the
 composite FKs. `availability` stays DERIVED from inventory (never stored).
-Note: M1.1's owner/admin direct master-data write policies remain (the
-future authenticated path); the M3B admin UI uses the RPCs.
+Since M3B.1 these RPCs are the ONLY catalog write paths: direct
+authenticated writes on products/inventory_items/manufacturers/
+categories/customers are blocked at both the policy and grant level
+(migration `20260705160000_lock_catalog_writes.sql`).
+
+Image upload additionally sniffs magic bytes (JPEG/PNG/WebP) so a
+spoofed `Content-Type` can't smuggle a non-image past the MIME + 5 MB
+checks. (This blocks non-image payloads; a byte-valid image carrying an
+embedded polyglot payload is still accepted — harmless here since the
+bucket is private, served via signed URLs with an image content-type,
+and never executed.)
 
 ## Seed data
 
