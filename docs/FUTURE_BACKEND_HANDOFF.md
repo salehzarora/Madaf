@@ -4,18 +4,23 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M3A.1 shipped** (M1: schema + RLS + seed; M1.1: RLS
-> hardening; M2: read paths; M3A: order writes). Order WRITES are real
-> in supabase mode: checkout → `create_order_request()` (atomic RPC,
-> server-computed money, real numbering) and admin status changes →
-> `update_order_status()` (validated transitions, trigger-written
-> history), both service-role-only until M4, reached via Server Actions
-> in `src/lib/actions/orders.ts`. Since M3A.1 these RPCs are the ONLY
-> write paths: orders/order_items are table-level READ-ONLY for
-> authenticated users (policies dropped + grants revoked), and the
-> temporary service-role context refuses non-local Supabase URLs on top
-> of refusing production. Mock stays the zero-config default.
-> Earlier M2 status below still applies to reads:
+> **STATUS — M3B shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
+> reads; M3A order writes; M3A.1 order-write lockdown). CATALOG WRITES
+> are now real in supabase mode: product create/update/activate,
+> inventory upsert, manufacturer create/update (+ logo), and product
+> image upload to Storage — via service-role-only RPCs in
+> `supabase/migrations/20260705150000_product_crud_rpcs.sql`, reached
+> through Server Actions in `src/lib/actions/products.ts`. Every RPC
+> validates tenant/parent ownership, numeric ranges, text lengths and
+> SKU uniqueness. `Product` gained `imageUrl`/`vatRate`/`isActive` and
+> `Manufacturer` gained `logoUrl` (contract change, src/lib/types.ts).
+>
+> Order WRITES (M3A) are real too: checkout → `create_order_request()`
+> and status → `update_order_status()`. Since M3A.1 those RPCs are the
+> ONLY order write paths: orders/order_items are table-level READ-ONLY
+> for authenticated users, and the service-role context refuses non-local
+> Supabase URLs on top of refusing production. Mock stays the zero-config
+> default. Earlier M2 status below still applies to reads:
 > Every UI read now goes through `src/lib/data/` — no page or component
 > imports `src/lib/mock` anymore (only the data layer does). Server pages
 > await the data functions; client components receive props or the
@@ -78,9 +83,10 @@ enum/column — derive it.)
 | ✅ Catalog/admin reads (M2) | all pages await `src/lib/data/*`; client components use props / `ShopDataProvider` | done |
 | ✅ Cart submit (M3A) | `checkout-view.tsx` → `submitOrderAction` → `create_order_request()` RPC | done — real order + lines + number in supabase mode |
 | ✅ Order status control (M3A) | `order-status-control.tsx` live mode → `updateOrderStatusAction` → `update_order_status()` RPC | done — validated transitions, trigger history |
-| New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) (M3B) |
-| Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback (M3B) |
-| Dev service-role client (reads AND writes) | `src/lib/data/supabase-context.ts` (`getServiceContext()`) | authenticated cookie-bound client + RLS (M4) — delete that module |
+| ✅ Product create/edit (M3B) | `admin/product-form.tsx` → `create/updateProductAction` → `create_product()`/`update_product()` RPCs | done — validated, tenant-safe, incl. inventory |
+| ✅ Product images (M3B) | `product-image.tsx` prefers `imageUrl`; upload via `uploadProductImageAction` → Storage `<tenant>/products/<id>/…`, signed on read | done — private bucket, gradient fallback |
+| ✅ Manufacturers + logos (M3B) | `admin/manufacturers-manager.tsx` → `create/updateManufacturerAction` → RPCs | done — logo on catalog chips |
+| Dev service-role client (reads AND writes) | `src/lib/data/supabase-context.ts` (`getServiceContext()`) | authenticated cookie-bound client + RLS (M4) — delete that module. NOTE: M1.1 still lets owner/admin write master data directly; M4 decides whether to funnel those through the RPCs like orders (M3A.1) |
 | Demo "today" | `DEMO_TODAY` in `inventory-table.tsx` | real `new Date()` |
 | Metrics | computed in `admin/page.tsx` | SQL aggregates (views) |
 
@@ -106,10 +112,10 @@ additionally scoped by `customer_id`.
 2. ✅ M2 — Read paths (done): all pages read via `src/lib/data/`;
    supabase read branches implemented server-side; mock stays the
    zero-config default; supabase mode is local-dev only until M4.
-3. ◐ M3 — Write paths: ✅ M3A orders done (checkout via atomic
-   `create_order_request()`, status via `update_order_status()`, Server
-   Actions, mock default untouched). M3B remains: product CRUD + image
-   upload to `product-images`.
+3. ✅ M3 — Write paths done: M3A orders
+   (`create_order_request()`/`update_order_status()`) + M3A.1 lockdown;
+   M3B catalog (product/manufacturer/inventory CRUD RPCs + Storage image
+   upload). All via Server Actions; mock default untouched.
 4. M4 — Auth + roles + tokenized shop links; tighten RLS (sales-rep
    scoping, shop-owner policies, tenant onboarding flow).
 5. M5 — Documents: real numbering, PDF generation, archival.

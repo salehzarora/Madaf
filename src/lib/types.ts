@@ -37,20 +37,25 @@ export interface Category {
 export interface Manufacturer {
   id: string;
   name: LocalizedText;
+  /** Optional brand logo (tenant-scoped). Shown as an avatar on chips. */
+  logoUrl?: string;
 }
 
-export type PackageType = "carton" | "pack" | "unit";
+export const PACKAGE_UNITS = ["carton", "pack", "unit"] as const;
+export type PackageType = (typeof PACKAGE_UNITS)[number];
 
-export type BaseUnit =
-  | "bottles"
-  | "cans"
-  | "packs"
-  | "units"
-  | "bags"
-  | "jars"
-  | "bars"
-  | "rolls"
-  | "tubs";
+export const BASE_UNITS = [
+  "bottles",
+  "cans",
+  "packs",
+  "units",
+  "bags",
+  "jars",
+  "bars",
+  "rolls",
+  "tubs",
+] as const;
+export type BaseUnit = (typeof BASE_UNITS)[number];
 
 export type Availability = "inStock" | "lowStock" | "outOfStock";
 
@@ -77,6 +82,21 @@ export interface Product {
   availability: Availability;
   /** Dairy & short-shelf-life goods get expiry tracking in inventory. */
   trackExpiry?: boolean;
+  /**
+   * Real product photo for DISPLAY — an external URL or a short-lived
+   * signed Storage URL. Absent → gradient placeholder.
+   */
+  imageUrl?: string;
+  /**
+   * The RAW stored image reference (a Storage object path) when the image
+   * lives in the bucket — persist THIS on edit, never the signed
+   * `imageUrl` (which expires). Undefined for external image URLs.
+   */
+  imageStoragePath?: string;
+  /** VAT rate for estimates (0.18 default). Present on DB-backed products. */
+  vatRate?: number;
+  /** Whether the product is sellable/visible in the catalog (DB-backed). */
+  isActive?: boolean;
 }
 
 export type CustomerType = "grocery" | "kiosk" | "supermarket" | "minimarket";
@@ -100,6 +120,11 @@ export interface InventoryItem {
   location: string;
   /** Nearest expiry date (ISO) — only for trackExpiry products. */
   nearestExpiry?: string;
+  /**
+   * Per-row low-stock threshold (DB-backed). Mock uses the global
+   * LOW_STOCK_THRESHOLD constant, so this is absent in mock mode.
+   */
+  lowStockThreshold?: number;
 }
 
 export interface CartItem {

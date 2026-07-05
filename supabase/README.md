@@ -41,6 +41,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705120000_storage_product_images.sql` | private `product-images` bucket + tenant-scoped policies |
 | `migrations/20260705130000_order_write_rpcs.sql` | M3A: `create_order_request()` + `update_order_status()` — atomic, service-role-only order writes |
 | `migrations/20260705140000_lock_order_writes.sql` | M3A.1: orders/order_items are READ-ONLY for authenticated — writes only via the RPCs |
+| `migrations/20260705150000_product_crud_rpcs.sql` | M3B: product / manufacturer / inventory CRUD RPCs — service-role-only, tenant-validated |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 
 ### Schema at a glance
@@ -117,9 +118,34 @@ then run the membership snippet at the top of `seed.sql`.
 ### Storage
 
 Bucket `product-images` (private, 5 MiB, image mime types). Path
-convention: `product-images/<tenant_id>/<product_id>/<file>` — policies
-key on the first folder segment being the tenant uuid. Uploads arrive with
-the M3 product form.
+convention: `<tenant_id>/products/<product_id>/<file>` — policies key on
+the first folder segment being the tenant uuid. **M3B wires real uploads**
+(`uploadProductImageAction` → `sbUploadProductImage`, service role): the
+server validates JPEG/PNG/WebP + 5 MB, writes under the tenant path, and
+stores that path in `products.image_url`. The read layer resolves storage
+paths to short-lived **signed URLs** (the bucket stays private); external
+`http(s)` image URLs pass through unchanged.
+
+### Catalog writes (M3B)
+
+Admin product/manufacturer/inventory edits flow client → Server Action
+(`src/lib/actions/products.ts`) → data layer → service-role-only RPCs
+(`20260705150000_product_crud_rpcs.sql`):
+
+- `create_product` / `update_product` (jsonb payload; validates tenant,
+  category/manufacturer ownership, ranges, lengths, SKU uniqueness;
+  optionally upserts inventory in the same call).
+- `set_product_active` (activate/deactivate — inactive products leave the
+  customer catalog but stay in admin).
+- `upsert_inventory_item` (quantity / threshold / location / expiry; no
+  negative stock).
+- `create_manufacturer` / `update_manufacturer` (+ `logo_url`).
+
+All `revoke execute` from anon/authenticated — service-role only until
+M4. Cross-tenant attachment is rejected by both the RPC checks and the
+composite FKs. `availability` stays DERIVED from inventory (never stored).
+Note: M1.1's owner/admin direct master-data write policies remain (the
+future authenticated path); the M3B admin UI uses the RPCs.
 
 ## Seed data
 
@@ -161,13 +187,15 @@ read goes through it; mock is the default and needs zero configuration.
 renders from the seeded database.
 
 How it works, and why the service key: there is no auth yet, and RLS
-correctly gives the anon key zero rows. So M2 dev reads run through
-`src/lib/data/supabase-reads.ts` — a **server-only** module (guarded by
-the `server-only` package + a dynamic import) that uses the service-role
-key pinned to the demo tenant (`MADAF_SUPABASE_TENANT_ID` to override).
-It throws a helpful error when the key is missing and refuses to run in
-production builds. No key reaches the browser; RLS was not touched. M4
-replaces this path with cookie-bound authenticated clients + RLS.
+correctly gives the anon key zero rows. So dev reads AND writes run
+through the server-only modules `src/lib/data/supabase-reads.ts` /
+`supabase-writes.ts` on the shared `supabase-context.ts` (guarded by the
+`server-only` package + dynamic imports) — a service-role client pinned
+to the demo tenant (`MADAF_SUPABASE_TENANT_ID` to override). It throws a
+helpful error when the key is missing, and refuses both production builds
+and non-local Supabase URLs. No key reaches the browser; RLS was not
+touched. M4 replaces this path with cookie-bound authenticated clients +
+RLS.
 
 **Order writes (M3A):** in supabase mode, checkout and admin status
 changes are REAL. They flow client → Server Action

@@ -130,6 +130,34 @@ export function ProductImage({
   const angle = 120 + Math.floor(rand() * 90);
   const tilt = Math.floor(rand() * 13) - 6;
 
+  // Real photo (uploaded or URL) wins over the gradient placeholder.
+  if (product.imageUrl) {
+    return (
+      <div
+        aria-hidden
+        className={cn("relative overflow-hidden bg-surface-sunken", className)}
+      >
+        {/* Plain <img>: sources are signed Storage URLs / arbitrary hosts,
+            so next/image remote config would need to allow everything. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={product.imageUrl}
+          alt=""
+          loading="lazy"
+          className="size-full object-cover"
+        />
+        {showSizeTag && product.unitSize ? (
+          <span
+            dir="ltr"
+            className="absolute bottom-2 end-2 rounded-md bg-white/85 px-1.5 py-0.5 text-[11px] font-bold tracking-tight text-ink shadow-sm backdrop-blur-sm"
+          >
+            {product.unitSize}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       aria-hidden

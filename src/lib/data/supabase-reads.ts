@@ -28,7 +28,7 @@ import type {
   Supplier,
 } from "@/lib/types";
 
-import { getServiceContext } from "./supabase-context";
+import { getServiceContext, type Db } from "./supabase-context";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -57,6 +57,7 @@ function mapManufacturer(row: Row<"manufacturers">): Manufacturer {
   return {
     id: row.id,
     name: { ar: row.name_ar, he: row.name_he, en: row.name_en },
+    logoUrl: row.logo_url ?? undefined,
   };
 }
 
@@ -105,7 +106,74 @@ function mapProduct(row: ProductRow): Product {
     wholesalePrice: row.wholesale_price,
     availability: deriveAvailability(row.inventory_items),
     trackExpiry: row.track_expiry || undefined,
+    // Raw image_url: an external URL passes through; a storage object path
+    // is resolved to a signed URL by signProductImages() before returning.
+    imageUrl: row.image_url ?? undefined,
+    vatRate: row.vat_rate,
+    isActive: row.is_active,
   };
+}
+
+/** Product-images bucket (private); storage paths get signed at read time. */
+const PRODUCT_IMAGE_BUCKET = "product-images";
+const SIGNED_URL_TTL_SECONDS = 3600;
+
+function isExternalUrl(value: string | undefined): boolean {
+  return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
+/**
+ * Resolve storage-object-path imageUrls to fresh signed URLs (the bucket
+ * is private) and record the raw path in imageStoragePath so the edit
+ * form can re-persist the PATH, not the ephemeral signed URL.
+ *
+ * Only paths under the CURRENT tenant's prefix are signed — a free-text
+ * image_url that isn't an http(s) URL and isn't an own-tenant object path
+ * falls back to no image (gradient), so a hand-typed cross-tenant path
+ * can never be signed and served. External http(s) URLs pass through.
+ * One batched signing call per read; reads are per-request server-side,
+ * so the short TTL never expires in a rendered page.
+ */
+async function signProductImages(
+  client: Db,
+  tenantId: string,
+  products: Product[],
+): Promise<Product[]> {
+  const prefix = `${tenantId}/`;
+  const pathItems = products
+    .map((p, index) => ({ index, path: p.imageUrl }))
+    .filter(
+      (x): x is { index: number; path: string } =>
+        typeof x.path === "string" &&
+        !isExternalUrl(x.path) &&
+        x.path.startsWith(prefix),
+    );
+
+  const out = products.map((p) =>
+    // External URL → keep as display, no storage path. Non-http value not
+    // under our tenant prefix → not a servable image (drop to gradient).
+    isExternalUrl(p.imageUrl)
+      ? p
+      : p.imageUrl && p.imageUrl.startsWith(prefix)
+        ? { ...p, imageStoragePath: p.imageUrl }
+        : { ...p, imageUrl: undefined },
+  );
+  if (pathItems.length === 0) return out;
+
+  const { data } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .createSignedUrls(
+      pathItems.map((x) => x.path),
+      SIGNED_URL_TTL_SECONDS,
+    );
+
+  pathItems.forEach((item, k) => {
+    const signed = data?.[k]?.signedUrl;
+    // Keep imageStoragePath (raw) for editing; imageUrl becomes the signed
+    // display URL, or undefined (gradient) if the object is missing.
+    out[item.index] = { ...out[item.index], imageUrl: signed ?? undefined };
+  });
+  return out;
 }
 
 function mapCustomer(row: Row<"customers">): Customer {
@@ -129,6 +197,7 @@ function mapInventory(row: Row<"inventory_items">): InventoryItem {
     stockPackages: row.quantity_available,
     location: row.warehouse_location ?? "",
     nearestExpiry: row.expiry_date ?? undefined,
+    lowStockThreshold: row.low_stock_threshold,
   };
 }
 
@@ -202,22 +271,27 @@ type ProductRowWithSort = ProductRow & {
   categories: Pick<Row<"categories">, "sort_order"> | null;
 };
 
-export async function sbListProducts(): Promise<Product[]> {
+export async function sbListProducts(
+  includeInactive = false,
+): Promise<Product[]> {
   const { client, tenantId } = getReadContext();
-  const { data, error } = await client
+  let query = client
     .from("products")
     .select(PRODUCT_SELECT)
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
+    .eq("tenant_id", tenantId);
+  // Catalog reads see only active products; admin passes includeInactive.
+  if (!includeInactive) query = query.eq("is_active", true);
+  const { data, error } = await query;
   if (error) fail("listProducts", error.message);
   // Match the mock catalog's visual order: category shelf order, then SKU.
-  return (data as ProductRowWithSort[])
+  const mapped = (data as ProductRowWithSort[])
     .sort(
       (a, b) =>
         (a.categories?.sort_order ?? 99) - (b.categories?.sort_order ?? 99) ||
         (a.sku ?? "").localeCompare(b.sku ?? ""),
     )
     .map(mapProduct);
+  return signProductImages(client, tenantId, mapped);
 }
 
 export async function sbGetProduct(id: string): Promise<Product | undefined> {
@@ -229,7 +303,11 @@ export async function sbGetProduct(id: string): Promise<Product | undefined> {
     .eq("id", id)
     .maybeSingle();
   if (error) fail("getProduct", error.message);
-  return data ? mapProduct(data as ProductRow) : undefined;
+  if (!data) return undefined;
+  const [signed] = await signProductImages(client, tenantId, [
+    mapProduct(data as ProductRow),
+  ]);
+  return signed;
 }
 
 export async function sbListCategories(): Promise<Category[]> {

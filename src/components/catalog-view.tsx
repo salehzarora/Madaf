@@ -230,8 +230,16 @@ export function CatalogView({
                   key={manufacturer.id}
                   selected={manufacturerIds.has(manufacturer.id)}
                   onClick={() => toggleManufacturer(manufacturer.id)}
-                  className="h-9 px-3 text-xs"
+                  className="h-9 gap-1.5 px-3 text-xs"
                 >
+                  {manufacturer.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={manufacturer.logoUrl}
+                      alt=""
+                      className="-ms-0.5 size-4 rounded-full object-cover"
+                    />
+                  ) : null}
                   {manufacturer.name[locale]}
                 </Chip>
               ))}
@@ -271,7 +279,7 @@ export function CatalogView({
                   key={product.id}
                   product={product}
                   category={categoryById.get(product.categoryId)!}
-                  manufacturer={manufacturerById.get(product.manufacturerId)!}
+                  manufacturer={manufacturerById.get(product.manufacturerId)}
                   locale={locale}
                   dict={dict}
                 />
