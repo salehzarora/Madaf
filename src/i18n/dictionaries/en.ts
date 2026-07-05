@@ -98,6 +98,7 @@ const en: Dictionary = {
       },
     },
     featuresTitle: "What's on the shelf",
+    browseByCategory: "Browse by category",
     features: [
       {
         title: "Catalog that sells",

@@ -1,7 +1,32 @@
-# Madaf Design System (M0)
+# Madaf Design System (M0.2)
 
 Tokens live in [`src/app/globals.css`](../src/app/globals.css) as Tailwind v4
-`@theme` variables. **Always use tokens — never raw hex values in components.**
+`@theme` variables. **Always use tokens — never raw hex values in components**
+— with ONE deliberate exception: the category identity system below.
+
+## Category identity system (M0.2)
+
+Madaf is a retail catalog, so each category owns a visual identity —
+defined once in [`src/lib/category-style.ts`](../src/lib/category-style.ts)
+and used by product art, catalog chips and landing tiles:
+
+| Category | Palette | Pattern (product art) |
+|---|---|---|
+| Drinks | sky blues | bubbles (carbonation) |
+| Snacks & Sweets | warm oranges | confetti |
+| Coffee & Tea | rich ambers/browns | coffee beans |
+| Canned & Pantry | tomato reds | can-top rings |
+| Dairy | soft milk blues | waves |
+| Cleaning | fresh emeralds | sparkles |
+
+Rules:
+- Category colors are for **identity only** (chips, tiles, placeholder
+  art) — never for actions, status or text hierarchy.
+- Product placeholder art (`product-image.tsx`) = category gradient +
+  drawn SVG pattern + category icon + unit-size shelf tag, all
+  **deterministic per product id** (stocked-shelf variety, stable renders).
+- New categories must be added to `category-style.ts` (falls back to a
+  neutral style otherwise).
 
 ## Typography
 
@@ -58,7 +83,10 @@ cancelled=danger.
 
 ## Spacing & layout
 
-- Content max width: `max-w-6xl` (storefront + admin content).
+- Content max width: **catalog & storefront header `max-w-[1720px]`**
+  (retail density on wide screens); landing sections & admin `max-w-6xl`.
+- Catalog grid: 2 cols mobile → 3 sm → 4 lg → 5 on 2xl, with a sticky
+  **order pad** column (330px, xl+) and a sticky search/filter zone (md+).
 - Page padding: `px-4 sm:px-6`; admin adds `lg:px-8`.
 - Card padding: `p-5 sm:p-6`; compact cards `p-4`.
 - **Tap targets:** interactive elements ≥ 44px on tablet — buttons are
@@ -76,8 +104,10 @@ cancelled=danger.
 | App shell | `app-shell.tsx` | storefront header + footer |
 | Admin shell | `admin-shell.tsx` | sidebar (start side), mobile drawer |
 | Locale switcher | `locale-switcher.tsx` | segmented, path-preserving |
-| Product card | `product-card.tsx` | image, availability, price, stepper |
-| Product image | `product-image.tsx` | deterministic gradient placeholder |
+| Product card | `product-card.tsx` | retail card: manufacturer eyebrow, bold name, LOUD package price + per-unit, solid stock badge on art, one-tap add |
+| Product image | `product-image.tsx` | category gradient + SVG pattern + unit-size shelf tag (deterministic) |
+| Order pad | `order-pad.tsx` | sticky POS-style order panel on catalog (xl+) |
+| Mini catalog preview | `mini-catalog-preview.tsx` | landing hero visual from real mock products |
 | Quantity stepper | `quantity-stepper.tsx` | package quantities, big targets |
 | Availability badge | `availability-badge.tsx` | dot + label |
 | Order status badge | `order-status-badge.tsx` | dot + label, tone-mapped |

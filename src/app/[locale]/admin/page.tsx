@@ -12,11 +12,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MetricCard } from "@/components/metric-card";
 import { OrderStatusBadge } from "@/components/order-status-badge";
+import { ProductImage } from "@/components/product-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
-import { getDictionary } from "@/i18n/dictionaries";
+import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import {
+  categoryById,
   customerById,
   customers,
   inventory,
@@ -128,7 +130,10 @@ export default async function AdminDashboardPage({
                         </p>
                         <p className="text-xs text-ink-muted">
                           <span dir="ltr">{order.number}</span> ·{" "}
-                          {formatDate(order.createdAt, locale)}
+                          {formatDate(order.createdAt, locale)} ·{" "}
+                          {interpolate(dict.admin.orders.detail.itemsCount, {
+                            count: order.items.length,
+                          })}
                         </p>
                       </div>
                       <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
@@ -156,22 +161,42 @@ export default async function AdminDashboardPage({
               </Link>
             </CardHeader>
             <CardContent className="pt-4">
-              <ul className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-2.5">
                 {lowStockItems.slice(0, 5).map((item) => {
                   const product = productById.get(item.productId)!;
+                  const category = categoryById.get(product.categoryId)!;
+                  const empty = item.stockPackages === 0;
                   return (
                     <li
                       key={item.productId}
-                      className="flex items-center justify-between gap-3 text-sm"
+                      className={
+                        "flex items-center gap-3 rounded-field border p-2 " +
+                        (empty
+                          ? "border-danger/30 bg-danger-soft"
+                          : "border-warning/30 bg-warning-soft")
+                      }
                     >
-                      <span className="min-w-0 flex-1 truncate text-ink-soft">
-                        {productName(product, locale)}
-                      </span>
+                      <ProductImage
+                        product={product}
+                        category={category}
+                        className="size-10 shrink-0 rounded-md"
+                        iconClassName="text-base"
+                        showSizeTag={false}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">
+                          {productName(product, locale)}
+                        </p>
+                        <p className="text-xs text-ink-muted" dir="ltr">
+                          {item.location}
+                        </p>
+                      </div>
                       <span
                         className={
-                          item.stockPackages === 0
-                            ? "font-bold tabular-nums text-danger"
-                            : "font-bold tabular-nums text-warning"
+                          "shrink-0 rounded-md px-2 py-1 text-sm font-extrabold tabular-nums " +
+                          (empty
+                            ? "bg-danger text-white"
+                            : "bg-warning text-white")
                         }
                       >
                         {formatNumber(item.stockPackages, locale)}

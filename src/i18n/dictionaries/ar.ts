@@ -98,6 +98,7 @@ const ar: Dictionary = {
       },
     },
     featuresTitle: "ماذا يوجد على الرف",
+    browseByCategory: "تصفّح حسب القسم",
     features: [
       {
         title: "كتالوج يبيع",

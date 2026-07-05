@@ -90,6 +90,7 @@ export interface Dictionary {
     };
     featuresTitle: string;
     features: { title: string; desc: string }[];
+    browseByCategory: string;
   };
   catalog: {
     title: string;

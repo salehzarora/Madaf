@@ -98,6 +98,7 @@ const he: Dictionary = {
       },
     },
     featuresTitle: "מה יש על המדף",
+    browseByCategory: "דפדוף לפי קטגוריה",
     features: [
       {
         title: "קטלוג שמוכר",

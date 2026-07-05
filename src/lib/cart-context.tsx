@@ -56,12 +56,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CartState;
-        // Drop items whose product no longer exists in the mock catalog.
+        // Merge, don't replace: anything set before hydration (e.g. a
+        // ?customer= deep link) must survive the storage restore. Also
+        // drop items whose product no longer exists in the mock catalog.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setState({
-          items: parsed.items.filter((i) => productById.has(i.productId)),
-          customerId: parsed.customerId ?? null,
-        });
+        setState((prev) => ({
+          items:
+            prev.items.length > 0
+              ? prev.items
+              : parsed.items.filter((i) => productById.has(i.productId)),
+          customerId: prev.customerId ?? parsed.customerId ?? null,
+        }));
       }
     } catch {
       // Corrupt storage — start fresh.
