@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+/*
+ * Madaf / מדף — Design tokens (M0)
+ * Light-only in this phase. Semantic tokens first, raw scales below.
+ * See docs/DESIGN_SYSTEM.md for usage rules.
+ */
+@theme {
+  /* Typography — Rubik covers Latin, Hebrew and Arabic scripts */
+  --font-sans: var(--font-rubik), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+
+  /* Surfaces & text (warm neutrals — "shelf" feeling, not cold gray) */
+  --color-background: #f7f6f3;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f1efeb;
+  --color-ink: #211e1b;
+  --color-ink-soft: #57524c;
+  --color-ink-muted: #8a847c;
+  --color-line: #e8e5e0;
+  --color-line-strong: #d6d2cb;
+
+  /* Brand — deep shelf teal */
+  --color-brand-50: #f0f9f7;
+  --color-brand-100: #d9f0ec;
+  --color-brand-200: #b3e1da;
+  --color-brand-300: #83ccc2;
+  --color-brand-400: #4fb0a5;
+  --color-brand-500: #2f958a;
+  --color-brand-600: #1e7a70;
+  --color-brand-700: #175f58;
+  --color-brand-800: #144c47;
+  --color-brand-900: #113e3a;
+  --color-brand-950: #082523;
+
+  /* Accent — warm amber, used sparingly (highlights, expiry, promos) */
+  --color-accent-50: #fff8eb;
+  --color-accent-100: #feeecc;
+  --color-accent-200: #fddd99;
+  --color-accent-300: #fbc75c;
+  --color-accent-400: #f8ac2b;
+  --color-accent-500: #f29411;
+  --color-accent-600: #d67708;
+  --color-accent-700: #b25806;
+  --color-accent-800: #8f4409;
+  --color-accent-900: #75380c;
+
+  /* Status */
+  --color-info: #2563eb;
+  --color-info-soft: #eff4ff;
+  --color-success: #16a34a;
+  --color-success-soft: #effaf1;
+  --color-warning: #d97706;
+  --color-warning-soft: #fdf6ec;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fdf1f1;
+
+  /* Shape & elevation */
+  --radius-card: 1rem;
+  --radius-field: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(33 30 27 / 0.05), 0 4px 14px rgb(33 30 27 / 0.06);
+  --shadow-float: 0 4px 10px rgb(33 30 27 / 0.08), 0 12px 32px rgb(33 30 27 / 0.12);
+}
+
+/* Hide scrollbars on horizontal chip rows (content still scrolls) */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Comfortable tap targets on coarse pointers (tablet-first product) */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a.tap-target {
+    min-height: 44px;
+  }
+}
+
+/* A4-like document sheet used by document previews */
+.doc-sheet {
+  width: 100%;
+  max-width: 794px; /* ~A4 @ 96dpi */
+  min-height: 1000px;
+  background: #fff;
+  color: #1c1917;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+  .print-hidden {
+    display: none !important;
+  }
+  .doc-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: none;
+    min-height: auto;
+  }
+}

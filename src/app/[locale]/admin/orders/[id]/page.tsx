@@ -1,0 +1,184 @@
+import { ArrowRight, FileText } from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { OrderStatusControl } from "@/components/order-status-control";
+import { ProductImage } from "@/components/product-image";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isLocale } from "@/i18n/config";
+import { getDictionary, interpolate } from "@/i18n/dictionaries";
+import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  categoryById,
+  customerById,
+  documents,
+  orderById,
+  orderSubtotal,
+  orders,
+  productById,
+  productName,
+} from "@/lib/mock";
+
+export function generateStaticParams() {
+  return orders.map((order) => ({ id: order.id }));
+}
+
+export default async function AdminOrderDetailPage({
+  params,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+}) {
+  const { locale, id } = await params;
+  if (!isLocale(locale)) notFound();
+  const order = orderById.get(id);
+  if (!order) notFound();
+
+  const dict = getDictionary(locale);
+  const t = dict.admin.orders.detail;
+  const customer = customerById.get(order.customerId);
+  const orderDocs = documents.filter((doc) => doc.orderId === order.id);
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      <div>
+        <Link
+          href={`/${locale}/admin/orders`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+        >
+          <ArrowRight className="size-4 ltr:-scale-x-100" aria-hidden />
+          {dict.admin.orders.title}
+        </Link>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-ink">
+            {t.title} <span dir="ltr">{order.number}</span>
+          </h1>
+        </div>
+        <p className="mt-1 text-sm text-ink-muted">
+          {t.placedOn} {formatDate(order.createdAt, locale)} ·{" "}
+          {interpolate(t.itemsCount, { count: order.items.length })}
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+        <div className="flex flex-col gap-4">
+          {/* Status pipeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.statusTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <OrderStatusControl initialStatus={order.status} dict={dict} />
+            </CardContent>
+          </Card>
+
+          {/* Items */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.itemsTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <ul className="divide-y divide-line/70">
+                {order.items.map((item) => {
+                  const product = productById.get(item.productId);
+                  if (!product) return null;
+                  const category = categoryById.get(product.categoryId)!;
+                  return (
+                    <li
+                      key={item.productId}
+                      className="flex items-center gap-3 py-3"
+                    >
+                      <ProductImage
+                        product={product}
+                        category={category}
+                        className="size-11 shrink-0 rounded-field"
+                        iconClassName="text-base"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">
+                          {productName(product, locale)}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          {formatCurrency(item.unitPrice, locale)} ×{" "}
+                          {item.quantity}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                        {formatCurrency(item.unitPrice * item.quantity, locale)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-2 flex justify-between border-t border-line pt-3 text-base font-bold text-ink">
+                <span>{dict.common.subtotal}</span>
+                <span className="tabular-nums">
+                  {formatCurrency(orderSubtotal(order), locale)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">{dict.cart.vatNote}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {/* Shop */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.shopTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-1.5 pt-3 text-sm">
+              <p className="text-base font-semibold text-ink">
+                {customer?.name ?? "—"}
+              </p>
+              {customer ? (
+                <>
+                  <p className="text-ink-soft">
+                    {dict.admin.customers.types[customer.type]} ·{" "}
+                    {customer.city[locale]}
+                  </p>
+                  <p className="text-ink-soft" dir="ltr">
+                    {customer.phone}
+                  </p>
+                  <p className="text-ink-soft">{customer.contactName}</p>
+                </>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.notesTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3 text-sm leading-relaxed text-ink-soft">
+              {order.notes ?? (
+                <span className="text-ink-muted">{t.noNotes}</span>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Documents */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.previewDoc}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 pt-3">
+              {orderDocs.map((doc) => (
+                <Link
+                  key={doc.id}
+                  href={`/${locale}/admin/documents/${doc.id}`}
+                  className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
+                >
+                  <FileText className="size-4 text-brand-600" aria-hidden />
+                  {dict.docs.types[doc.type]}
+                  <span className="ms-auto text-xs text-ink-muted" dir="ltr">
+                    {doc.number}
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
