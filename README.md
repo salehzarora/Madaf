@@ -5,9 +5,11 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M0 — design foundation.** Everything here is a polished,
-> trilingual mock: no backend, no auth, no payments, and **no legal tax
-> invoices** (drafts only). See [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md).
+> **Phase M1 — backend foundation.** The UI is still the polished,
+> trilingual M0 mock (no auth, no payments, and **no legal tax invoices** —
+> drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). New in M1: a
+> **local Supabase backend** — schema, RLS and seed — that the UI is *not*
+> wired to yet ([supabase/README.md](supabase/README.md)).
 
 ## Quick start
 
@@ -20,6 +22,18 @@ Other commands: `npm run build` (production build), `npm run start`
 (serve build), `npm run lint`.
 
 Requirements: Node 20+ (developed on Node 22), npm.
+The app runs in **mock mode** by default — no database or env vars needed.
+
+### Optional: local Supabase backend (M1)
+
+```bash
+supabase start     # needs Docker + Supabase CLI — see supabase/README.md
+supabase db reset  # re-apply migrations + demo seed
+```
+
+Schema, Row Level Security, storage and the demo seed live in
+[supabase/](supabase/README.md). The data-mode boundary (mock ↔ supabase)
+lives in `src/lib/data/`; the UI switches over in M2.
 
 ## Try the demo
 

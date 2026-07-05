@@ -4,6 +4,17 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M1 shipped.** The Supabase foundation exists: local stack
+> (`supabase/`), migrations for the full schema below, deny-by-default
+> RLS, a private `product-images` bucket, a 1:1 seed of the mock data,
+> generated DB types (`src/lib/supabase/database.types.ts`) and a
+> mock-backed data access layer (`src/lib/data/`). The UI still reads
+> `src/lib/mock/*` directly — switching it to `src/lib/data/` is the M2
+> read-path milestone. Setup: `supabase/README.md`.
+>
+> The "Type → table mapping" section below describes what was actually
+> BUILT in M1 (it supersedes the original jsonb-translation sketch).
+
 ## Ground rules carried over from M0
 
 - No secrets in the repo. Use `.env.local` (gitignored) + typed env access.
@@ -18,24 +29,31 @@ everything here was built to be wired, not rebuilt.
 - **Supabase** (Postgres + Auth + Storage + RLS) as designed for below.
 - Server Actions / Route Handlers for mutations; keep pages RSC-first.
 
-## Type → table mapping (src/lib/types.ts is the contract)
+## Type → table mapping (src/lib/types.ts is the contract) — AS BUILT in M1
+
+Trilingual text is explicit `*_ar` / `*_he` / `*_en` columns (not jsonb /
+translation tables). Full DDL: `supabase/migrations/`.
 
 | TS type | Table | Notes |
 |---|---|---|
-| `Supplier` | `suppliers` | tenant root; every table gets `supplier_id` FK for multi-tenant later |
-| `Category` | `categories` | `name` as jsonb `{ar,he,en}` or `category_translations` |
-| `Manufacturer` | `manufacturers` | same translation approach |
-| `Product` | `products` | keep `package_type`, `units_per_package`, `base_unit`, `unit_size`, `wholesale_price` (numeric, ILS excl. VAT), `availability`, `track_expiry` |
-| `ProductTranslation` | `product_translations` | `(product_id, locale, name, description)` — mirrors `translations` record |
-| `Customer` | `customers` | shops; `city` translated jsonb; add `created_by` |
-| `InventoryItem` | `inventory_items` | `stock_packages`, `location`, `nearest_expiry` |
-| `Order` | `orders` | human number via sequence `MDF-####`; `status` enum = `OrderStatus`; `notes` |
-| `OrderItem` | `order_items` | **`unit_price` snapshot at order time** — already modeled |
-| `OrderDocument` | `order_documents` | type enum = `DocumentType`; later: pdf_url, legal fields |
-| — | `profiles`/roles | auth: supplier_admin, sales_rep, shop_owner |
+| `Supplier` | `tenants` | tenant root; every tenant-owned table has `tenant_id` FK; `name_*`, `address_*`, `legal_name`, `company_id`, nullable tax fields, `order_seq` counter |
+| — | `tenant_users` | `(tenant_id, user_id, role)` membership over `auth.users`; roles: `owner` / `admin` / `sales_rep`; RLS helpers build on it |
+| `Category` | `categories` | `name_*`, `icon`, `color_hue` (= `Category.hue`), `sort_order` |
+| `Manufacturer` | `manufacturers` | `name_*`, `logo_url`, `sort_order` |
+| `Product` | `products` | `packageType`→`package_unit`, `unitsPerPackage`→`package_quantity`, plus `base_unit`, `unit_size`, `wholesale_price` (numeric ILS excl. VAT), `vat_rate` (0.18 default), `track_expiry`, `is_active`, `sku`/`barcode` nullable. **`availability` is DERIVED from inventory, not stored** |
+| `ProductTranslation` | *(columns on `products`)* | `name_*` + `description_*` |
+| `Customer` | `customers` | shop `name` (proper noun, single column), `city_*` per locale, `customer_type`, `contact_name`, `notes` |
+| `InventoryItem` | `inventory_items` | `stockPackages`→`quantity_available`, `location`→`warehouse_location`, `nearestExpiry`→`expiry_date`, per-row `low_stock_threshold` (mock global const = 10) |
+| `Order` | `orders` | `number`→`order_number` via `next_order_number(tenant_id)` (atomic counter, `MDF-1048…`); `status` enum = `OrderStatus`; denormalized `subtotal`/`vat_total`/`total`; `currency` (ILS), `source` |
+| `OrderItem` | `order_items` | price/VAT/name/package **snapshots** (`product_name_snapshot` is jsonb `{ar,he,en}` so documents re-render in any language after product edits) |
+| — | `order_status_history` | append-only; written automatically by an `orders` trigger — do not insert from app code |
+| `OrderDocument` | `documents` | type enum: `order`→`order_request`, `delivery`→`delivery_note`, `invoiceDraft`→`invoice_draft`; `legal_notice` NOT NULL for invoice drafts (CHECK); `totals_snapshot` jsonb; voided, never deleted |
+| — | `audit_events` | append-only generic trail |
 
-Enums to create: `order_status`, `document_type`, `package_type`,
-`base_unit`, `availability`, `customer_type`, `locale`.
+Enums created: `order_status`, `order_source`, `document_type`,
+`document_status`, `package_unit`, `base_unit`, `customer_type`,
+`tenant_role`, `locale_code`. (`availability` is intentionally NOT an
+enum/column — derive it.)
 
 ## Where mock meets real — exact seams
 
@@ -47,7 +65,7 @@ Enums to create: `order_status`, `document_type`, `package_type`,
 | Order status control | `order-status-control.tsx` local state | mutation + optimistic update + audit trail |
 | New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) |
 | Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback |
-| Documents list/preview | `src/lib/mock/documents.ts` | `order_documents` rows; keep derivation rules server-side |
+| Documents list/preview | `src/lib/mock/documents.ts` | `documents` rows; keep derivation rules server-side |
 | Demo "today" | `DEMO_TODAY` in `inventory-table.tsx` | real `new Date()` |
 | Metrics | computed in `admin/page.tsx` | SQL aggregates (views) |
 
@@ -62,16 +80,22 @@ Deep link `/catalog?customer=cXX` should become a tokenized share link
 - **Shop owner** (remote link): catalog scoped to the supplier, own orders.
 - Anonymous: nothing (today's public demo access goes away).
 
-RLS: all rows scoped by `supplier_id`; shop owners additionally scoped by
-`customer_id`.
+RLS: all rows scoped by `tenant_id` (as built in M1); shop owners
+additionally scoped by `customer_id`.
 
 ## Sequencing recommendation (M1…)
 
-1. M1 — Supabase schema + seed from `src/lib/mock/*` (write a seed script
-   that imports the mock modules — they're valid data).
-2. M2 — Read paths: catalog, product, admin lists from DB.
-3. M3 — Write paths: checkout → orders; status changes; product CRUD.
-4. M4 — Auth + roles + RLS + tokenized shop links.
+1. ✅ M1 — Supabase schema + RLS + storage + seed mirroring
+   `src/lib/mock/*` (done — hand-written SQL seed with deterministic
+   UUIDs; see `supabase/seed.sql`).
+2. M2 — Read paths: switch pages from `src/lib/mock` imports to the
+   async functions in `src/lib/data/` and implement their supabase
+   branches (the mock↔table mapping is documented per function).
+3. M3 — Write paths: checkout → orders (`next_order_number()`, item
+   snapshots); status changes (plain `UPDATE` — history is trigger-
+   written); product CRUD + image upload to `product-images`.
+4. M4 — Auth + roles + tokenized shop links; tighten RLS (sales-rep
+   scoping, shop-owner policies, tenant onboarding flow).
 5. M5 — Documents: real numbering, PDF generation, archival.
 6. M6 — Legal invoicing provider integration (see invoices guide).
 
