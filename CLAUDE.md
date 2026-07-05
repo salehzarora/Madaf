@@ -3,8 +3,10 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M0 design foundation — mock UI only,
-no backend.** Full context in `docs/`.
+ar/he/en with RTL). **Current phase: M1 backend foundation — the UI is
+still the M0 mock (reads `src/lib/mock/*`), plus a LOCAL Supabase backend
+(schema/RLS/seed in `supabase/`, not yet wired to the UI).** Full context
+in `docs/`; backend setup in `supabase/README.md`.
 
 ## Commands
 
@@ -37,7 +39,12 @@ npm run start   # serve the production build
   Arabic pins Western digits).
 - Domain types in `src/lib/types.ts` are the backend contract — change
   them deliberately and update `docs/FUTURE_BACKEND_HANDOFF.md`.
-- No secrets, no real Supabase, no payments in this phase.
+- No secrets in the repo, no hosted/production Supabase (local stack
+  only — `supabase/README.md`), no payments in this phase.
+- Data access goes through `src/lib/data/` (mode boundary; mock is the
+  default and must keep working with zero env vars). Schema changes =
+  new migration + `supabase db reset` + regenerate
+  `src/lib/supabase/database.types.ts` (generated file — never hand-edit).
 - Routes live under `src/app/[locale]/`; the root layout is inside
   `[locale]` (Next 16); locale redirect lives in `src/proxy.ts` (not
   middleware.ts — renamed in Next 16).
