@@ -4,13 +4,17 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M3A shipped** (M1: schema + RLS + seed; M1.1: RLS
-> hardening; M2: read paths). Order WRITES are real in supabase mode:
-> checkout → `create_order_request()` (atomic RPC, server-computed
-> money, real numbering) and admin status changes →
+> **STATUS — M3A.1 shipped** (M1: schema + RLS + seed; M1.1: RLS
+> hardening; M2: read paths; M3A: order writes). Order WRITES are real
+> in supabase mode: checkout → `create_order_request()` (atomic RPC,
+> server-computed money, real numbering) and admin status changes →
 > `update_order_status()` (validated transitions, trigger-written
 > history), both service-role-only until M4, reached via Server Actions
-> in `src/lib/actions/orders.ts`. Mock stays the zero-config default.
+> in `src/lib/actions/orders.ts`. Since M3A.1 these RPCs are the ONLY
+> write paths: orders/order_items are table-level READ-ONLY for
+> authenticated users (policies dropped + grants revoked), and the
+> temporary service-role context refuses non-local Supabase URLs on top
+> of refusing production. Mock stays the zero-config default.
 > Earlier M2 status below still applies to reads:
 > Every UI read now goes through `src/lib/data/` — no page or component
 > imports `src/lib/mock` anymore (only the data layer does). Server pages
