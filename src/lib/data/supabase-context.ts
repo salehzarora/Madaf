@@ -11,6 +11,10 @@ import "server-only";
  *   - requires SUPABASE_SERVICE_ROLE_KEY in .env.local (server env — the
  *     browser never sees it; this module refuses to load client-side),
  *   - refuses to run in production builds/servers,
+ *   - refuses any NON-LOCAL Supabase URL (M3A.1): a dev server pointed
+ *     at a hosted project with a service key would expose real writes
+ *     through the public Server Actions — only 127.0.0.1/localhost/::1
+ *     stacks are accepted,
  *   - callers must scope every query/RPC by the returned tenantId
  *     because the service role bypasses RLS.
  * M4 replaces this with cookie-bound authenticated clients + RLS, at
@@ -23,6 +27,37 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
 
 /** The tenant seeded by supabase/seed.sql. */
 const DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+
+/** Hostnames a local Supabase stack can live on — nothing else qualifies. */
+const LOCAL_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+/**
+ * Hard guard (M3A.1): the temporary service-role context must never talk
+ * to a hosted project. NODE_ENV=production is already refused above, but
+ * a *development* server pointed at https://<ref>.supabase.co with a
+ * service key would still expose real reads/writes through the public
+ * Server Actions — so the URL itself must be local.
+ */
+function assertLocalSupabaseUrl(url: string): void {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    throw new Error(
+      `[madaf/data] NEXT_PUBLIC_SUPABASE_URL is not a valid URL: "${url}".`,
+    );
+  }
+  if (!LOCAL_HOSTNAMES.has(hostname.toLowerCase())) {
+    throw new Error(
+      "[madaf/data] Madaf temporary service-role mode only supports local " +
+        `Supabase URLs. NEXT_PUBLIC_SUPABASE_URL is "${url}" — hosted ` +
+        "projects (e.g. https://<ref>.supabase.co) are refused until the " +
+        "M4 auth milestone. Point it at the local stack " +
+        "(http://127.0.0.1:55321, from `supabase status`) or run in mock " +
+        "mode.",
+    );
+  }
+}
 
 export type Db = SupabaseClient<Database>;
 
@@ -48,6 +83,7 @@ export function getServiceContext(): { client: Db; tenantId: string } {
     );
   }
   const { url } = getSupabaseEnv();
+  assertLocalSupabaseUrl(url);
   const client = createClient<Database>(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

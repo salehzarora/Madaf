@@ -40,6 +40,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705110000_rls_policies.sql` | RLS on every table, deny-by-default, tenant-membership helpers, `next_order_number()` |
 | `migrations/20260705120000_storage_product_images.sql` | private `product-images` bucket + tenant-scoped policies |
 | `migrations/20260705130000_order_write_rpcs.sql` | M3A: `create_order_request()` + `update_order_status()` — atomic, service-role-only order writes |
+| `migrations/20260705140000_lock_order_writes.sql` | M3A.1: orders/order_items are READ-ONLY for authenticated — writes only via the RPCs |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 
 ### Schema at a glance
@@ -84,18 +85,27 @@ documents stay renderable after catalog or customer changes.
   `is_tenant_member(tenant_id)` / `has_tenant_role(tenant_id, roles[])` —
   SECURITY DEFINER helpers over `tenant_users`.
 - Role tiers: **any member** (incl. `sales_rep`) reads everything in
-  their tenant and runs the order flow (create orders + lines, move
-  status, draw order numbers). **Only owner/admin** mutate master data —
-  customers, manufacturers, categories, products, inventory — and the
-  tenant row. A sales rep can never change a price, name, stock level or
-  customer record.
+  their tenant. **Only owner/admin** mutate master data — customers,
+  manufacturers, categories, products, inventory — and the tenant row.
+  A sales rep can never change a price, name, stock level or customer
+  record.
+- `orders` and `order_items` are **read-only at the table level for
+  every authenticated client** (M3A.1): no write policies, no write
+  grants — including TRUNCATE/REFERENCES/TRIGGER/MAINTAIN, which
+  Supabase's default ACL would otherwise leave behind (TRUNCATE is
+  RLS-exempt and is stripped from ALL tables for API roles). Creating an
+  order goes EXCLUSIVELY through `create_order_request()` and status
+  changes EXCLUSIVELY through `update_order_status()`; even
+  `next_order_number()` is no longer callable by authenticated users —
+  nobody can forge order numbers, totals, price snapshots, or jump
+  statuses.
 - `documents`, `order_status_history` and `audit_events` are
   **read-only for every client**: no write policies AND no write grants
   (grants mirror the policy matrix as defense in depth). History comes
   from the status trigger; documents/audit rows come from seed/service
-  role only in M1 — no client can forge an invoice draft, flip a
-  document to `generated` (also blocked by CHECK, even for the service
-  role), or plant audit entries.
+  role only — no client can forge an invoice draft, flip a document to
+  `generated` (also blocked by CHECK, even for the service role), or
+  plant audit entries.
 - Admins cannot touch owner memberships or grant the owner role — only
   owners manage owners.
 - Tenant onboarding (creating `tenants` + first `tenant_users` row) is
@@ -176,4 +186,12 @@ changes are REAL. They flow client → Server Action
 
 Both RPCs `revoke` execute from anon/authenticated — service-role only
 until the M4 auth milestone replaces the service client with
-authenticated, RLS-scoped flows. The product form stays mock-only (M3B).
+authenticated, RLS-scoped flows. Since M3A.1 these RPCs are the ONLY
+order write paths: direct table writes on orders/order_items are blocked
+for authenticated users at both the policy and grant level. The product
+form stays mock-only (M3B).
+
+The temporary service-role context additionally refuses any NON-LOCAL
+Supabase URL (only `127.0.0.1`/`localhost`/`::1`), on top of refusing
+production builds — a dev server pointed at a hosted project cannot run
+this mode.
