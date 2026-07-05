@@ -28,21 +28,31 @@ export default async function ProductPage({
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
   const product = await getProduct(id);
-  if (!product) notFound();
+  // Inactive products (supabase mode) are removed from the storefront —
+  // not just the list — so a bookmarked/shared link can't order them.
+  if (!product || product.isActive === false) notFound();
 
   const dict = getDictionary(locale);
   const [category, manufacturer, products] = await Promise.all([
     getCategory(product.categoryId),
-    getManufacturer(product.manufacturerId),
+    // A product may legitimately have no manufacturer.
+    product.manufacturerId
+      ? getManufacturer(product.manufacturerId)
+      : Promise.resolve(undefined),
     listProducts(),
   ]);
-  if (!category || !manufacturer) notFound();
+  if (!category) notFound();
   const related = products
     .filter((p) => p.categoryId === product.categoryId && p.id !== product.id)
     .slice(0, 4);
 
   const specs: [string, React.ReactNode][] = [
-    [dict.product.manufacturer, manufacturer.name[locale]],
+    ...(manufacturer
+      ? ([[dict.product.manufacturer, manufacturer.name[locale]]] as [
+          string,
+          React.ReactNode,
+        ][])
+      : []),
     [dict.product.category, `${category.icon} ${category.name[locale]}`],
     [dict.product.packageInfo, packageLabel(product, dict)],
     [
@@ -72,9 +82,11 @@ export default async function ProductPage({
 
         <div className="flex flex-col gap-4">
           <div>
-            <p className="text-sm font-medium text-ink-muted">
-              {manufacturer.name[locale]}
-            </p>
+            {manufacturer ? (
+              <p className="text-sm font-medium text-ink-muted">
+                {manufacturer.name[locale]}
+              </p>
+            ) : null}
             <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">
               {productName(product, locale)}
             </h1>

@@ -686,6 +686,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assert_service_role: { Args: { p_fn: string }; Returns: undefined }
+      create_manufacturer: {
+        Args: {
+          p_logo_url?: string
+          p_name_ar: string
+          p_name_en: string
+          p_name_he: string
+          p_sort_order?: number
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       create_order_request: {
         Args: {
           p_customer_id?: string
@@ -699,6 +711,10 @@ export type Database = {
           order_number: string
         }[]
       }
+      create_product: {
+        Args: { p_inventory?: Json; p_product: Json; p_tenant_id: string }
+        Returns: string
+      }
       has_tenant_role: {
         Args: {
           p_roles: Database["public"]["Enums"]["tenant_role"][]
@@ -708,6 +724,26 @@ export type Database = {
       }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      set_product_active: {
+        Args: {
+          p_is_active: boolean
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      update_manufacturer: {
+        Args: {
+          p_logo_url?: string
+          p_manufacturer_id: string
+          p_name_ar: string
+          p_name_en: string
+          p_name_he: string
+          p_sort_order?: number
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       update_order_status: {
         Args: {
           p_new_status: Database["public"]["Enums"]["order_status"]
@@ -718,6 +754,43 @@ export type Database = {
           new_status: Database["public"]["Enums"]["order_status"]
           old_status: Database["public"]["Enums"]["order_status"]
           order_id: string
+        }[]
+      }
+      update_product: {
+        Args: {
+          p_inventory?: Json
+          p_product: Json
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      upsert_inventory_item: {
+        Args: { p_inventory: Json; p_product_id: string; p_tenant_id: string }
+        Returns: string
+      }
+      validate_product_payload: {
+        Args: { p_product: Json; p_tenant_id: string }
+        Returns: {
+          barcode: string
+          base_unit: Database["public"]["Enums"]["base_unit"]
+          category_id: string
+          description_ar: string
+          description_en: string
+          description_he: string
+          image_url: string
+          is_active: boolean
+          manufacturer_id: string
+          name_ar: string
+          name_en: string
+          name_he: string
+          package_quantity: number
+          package_unit: Database["public"]["Enums"]["package_unit"]
+          sku: string
+          track_expiry: boolean
+          unit_size: string
+          vat_rate: number
+          wholesale_price: number
         }[]
       }
     }

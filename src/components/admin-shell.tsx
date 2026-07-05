@@ -2,6 +2,7 @@
 
 import {
   Boxes,
+  Factory,
   FileText,
   LayoutDashboard,
   Menu,
@@ -39,6 +40,7 @@ export function AdminShell({
   const nav = [
     { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
     { href: `${base}/products`, label: dict.nav.products, icon: Package },
+    { href: `${base}/manufacturers`, label: dict.nav.manufacturers, icon: Factory },
     { href: `${base}/orders`, label: dict.nav.orders, icon: ShoppingBag },
     { href: `${base}/inventory`, label: dict.nav.inventory, icon: Boxes },
     { href: `${base}/customers`, label: dict.nav.customers, icon: Store },

@@ -5,15 +5,16 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M3A — order writes.** The UI is the polished trilingual M0
+> **Phase M3B — catalog writes.** The UI is the polished trilingual M0
 > design (no auth, no payments, and **no legal tax invoices** — drafts
 > only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). All reads go through
 > the **data layer** (`src/lib/data/`), and in the opt-in local-dev
-> Supabase mode, **checkout creates real orders** (atomic DB function,
-> server-computed totals, real MDF-#### numbers) and **admin status
-> changes persist** with validated transitions + history. Mock stays the
-> zero-config default with the original demo behavior. Product CRUD and
-> image upload arrive in M3B; auth in M4.
+> Supabase mode, admin can now **create/edit/activate products, update
+> inventory, manage manufacturers + logos, and upload product images**
+> (Storage) — on top of the M3A real checkout + order-status writes. All
+> writes go through validated, service-role-only DB functions; mock stays
+> the zero-config default with the original demo behavior. Auth is M4;
+> documents/invoices are M5/M6.
 
 ## Quick start
 
@@ -41,10 +42,11 @@ npm run dev        # the whole UI now reads from the seeded database
 
 Reads are server-side only (RSC) and writes go through Server Actions →
 service-role-only DB functions; no Supabase key ever reaches the
-browser, RLS is untouched, and the mode refuses to run in production —
-real authenticated access is the M4 milestone. In this mode checkout
-creates real orders and admin status changes persist (with validated
-pipeline transitions and trigger-written history).
+browser, RLS is untouched, and the mode refuses to run in production or
+against a non-local Supabase URL — real authenticated access is the M4
+milestone. In this mode checkout creates real orders, admin status
+changes persist, and the admin catalog (products, inventory,
+manufacturers, product images) is fully editable.
 
 ## Try the demo
 

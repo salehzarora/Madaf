@@ -9,12 +9,22 @@
  */
 export { getDataMode, type DataMode } from "./mode";
 export {
+  createManufacturer,
+  createProduct,
   getCategory,
   getManufacturer,
   getProduct,
   listCategories,
   listManufacturers,
   listProducts,
+  setProductActive,
+  updateManufacturer,
+  updateProduct,
+  uploadProductImage,
+  upsertInventory,
+  type InventoryWriteInput,
+  type ManufacturerWriteInput,
+  type ProductWriteInput,
 } from "./products";
 export { getCustomer, listCustomers } from "./customers";
 export {

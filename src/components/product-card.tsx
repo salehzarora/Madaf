@@ -32,7 +32,8 @@ export function ProductCard({
 }: {
   product: Product;
   category: Category;
-  manufacturer: Manufacturer;
+  /** Optional — a product may have no manufacturer. */
+  manufacturer?: Manufacturer;
   locale: Locale;
   dict: Dictionary;
 }) {
@@ -82,7 +83,7 @@ export function ProductCard({
       {/* Copy */}
       <div className="pointer-events-none flex flex-1 flex-col gap-0.5 px-3 pt-2.5 sm:px-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">
-          {manufacturer.name[locale]}
+          {manufacturer?.name[locale] ?? " "}
         </p>
         <h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-ink">
           {productName(product, locale)}
