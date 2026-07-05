@@ -151,6 +151,8 @@ export interface Dictionary {
     disclaimer: string;
     /** `{count}` — number of lines in the order */
     itemsCount: string;
+    /** Shown when a real (Supabase-mode) order submission fails. */
+    sendError: string;
   };
   orderSuccess: {
     title: string;
@@ -239,6 +241,10 @@ export interface Dictionary {
         noNotes: string;
         statusTitle: string;
         statusHint: string;
+        /** Hint when status changes really persist (Supabase mode). */
+        statusHintLive: string;
+        /** Shown when a real (Supabase-mode) status update fails. */
+        statusUpdateError: string;
         previewDoc: string;
         placedOn: string;
         /** `{count}` — number of lines in the order */

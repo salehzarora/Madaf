@@ -4,17 +4,25 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M2 shipped** (M1: schema + RLS + seed; M1.1: RLS hardening).
+> **STATUS — M3A shipped** (M1: schema + RLS + seed; M1.1: RLS
+> hardening; M2: read paths). Order WRITES are real in supabase mode:
+> checkout → `create_order_request()` (atomic RPC, server-computed
+> money, real numbering) and admin status changes →
+> `update_order_status()` (validated transitions, trigger-written
+> history), both service-role-only until M4, reached via Server Actions
+> in `src/lib/actions/orders.ts`. Mock stays the zero-config default.
+> Earlier M2 status below still applies to reads:
 > Every UI read now goes through `src/lib/data/` — no page or component
 > imports `src/lib/mock` anymore (only the data layer does). Server pages
 > await the data functions; client components receive props or the
 > `ShopDataProvider` context (`src/lib/shop-data-context.tsx`), so no
 > client ever fetches or sees a key. Pure helpers live in
-> `src/lib/catalog-helpers.ts`. Supabase read branches are implemented in
-> `src/lib/data/supabase-reads.ts` (server-only, local-dev service-role
-> client pinned to the demo tenant — replaced by authenticated clients in
-> M4). Mock remains the zero-config default; writes (checkout, CRUD,
-> status) stay mock until M3. Setup: `supabase/README.md`.
+> `src/lib/catalog-helpers.ts`. Supabase branches live in
+> `src/lib/data/supabase-reads.ts` / `supabase-writes.ts`, both on the
+> shared service context in `src/lib/data/supabase-context.ts`
+> (server-only, local-dev service-role client pinned to the demo tenant —
+> replaced by authenticated clients in M4). Product CRUD and image upload
+> stay mock until M3B. Setup: `supabase/README.md`.
 >
 > The "Type → table mapping" section below describes what was actually
 > BUILT in M1 (it supersedes the original jsonb-translation sketch).
@@ -63,13 +71,12 @@ enum/column — derive it.)
 
 | Mock seam | File | Replace with |
 |---|---|---|
-| ✅ Catalog/admin reads (M2) | all pages await `src/lib/data/*`; client components use props / `ShopDataProvider` | done — implement per-function supabase writes next |
-| Cart | `src/lib/cart-context.tsx` | keep client cart; submit via Server Action (M3) |
-| Checkout submit | `checkout-view.tsx` `submit()` | Server Action: create order + items via `next_order_number()`, return real number (M3) |
-| Order status control | `order-status-control.tsx` local state | plain `UPDATE orders.status` — history is trigger-written (M3) |
-| New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) (M3) |
-| Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback (M3) |
-| Dev read client | `src/lib/data/supabase-reads.ts` service-role context | authenticated cookie-bound client + RLS (M4) |
+| ✅ Catalog/admin reads (M2) | all pages await `src/lib/data/*`; client components use props / `ShopDataProvider` | done |
+| ✅ Cart submit (M3A) | `checkout-view.tsx` → `submitOrderAction` → `create_order_request()` RPC | done — real order + lines + number in supabase mode |
+| ✅ Order status control (M3A) | `order-status-control.tsx` live mode → `updateOrderStatusAction` → `update_order_status()` RPC | done — validated transitions, trigger history |
+| New product form | `admin/new-product-form.tsx` | real insert incl. translations + image upload (Storage) (M3B) |
+| Product images | `product-image.tsx` gradients | Storage URLs with gradient fallback (M3B) |
+| Dev service-role client (reads AND writes) | `src/lib/data/supabase-context.ts` (`getServiceContext()`) | authenticated cookie-bound client + RLS (M4) — delete that module |
 | Demo "today" | `DEMO_TODAY` in `inventory-table.tsx` | real `new Date()` |
 | Metrics | computed in `admin/page.tsx` | SQL aggregates (views) |
 
@@ -95,9 +102,10 @@ additionally scoped by `customer_id`.
 2. ✅ M2 — Read paths (done): all pages read via `src/lib/data/`;
    supabase read branches implemented server-side; mock stays the
    zero-config default; supabase mode is local-dev only until M4.
-3. M3 — Write paths: checkout → orders (`next_order_number()`, item
-   snapshots); status changes (plain `UPDATE` — history is trigger-
-   written); product CRUD + image upload to `product-images`.
+3. ◐ M3 — Write paths: ✅ M3A orders done (checkout via atomic
+   `create_order_request()`, status via `update_order_status()`, Server
+   Actions, mock default untouched). M3B remains: product CRUD + image
+   upload to `product-images`.
 4. M4 — Auth + roles + tokenized shop links; tighten RLS (sales-rep
    scoping, shop-owner policies, tenant onboarding flow).
 5. M5 — Documents: real numbering, PDF generation, archival.

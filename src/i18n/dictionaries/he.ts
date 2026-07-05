@@ -176,6 +176,7 @@ const he: Dictionary = {
     disclaimer:
       "פעולה זו שולחת בקשת הזמנה לספק. זו אינה חשבונית ולא מתבצע כאן תשלום.",
     itemsCount: "{count} שורות",
+    sendError: "שליחת ההזמנה נכשלה — נסו שוב.",
   },
   orderSuccess: {
     title: "בקשת ההזמנה נשלחה!",
@@ -268,6 +269,8 @@ const he: Dictionary = {
         noNotes: "אין הערות להזמנה זו.",
         statusTitle: "סטטוס",
         statusHint: "דמו: שינויי סטטוס הם ויזואליים בלבד ומתאפסים ברענון.",
+        statusHintLive: "שינויי סטטוס נשמרים ונרשמים בהיסטוריית ההזמנה.",
+        statusUpdateError: "עדכון הסטטוס נכשל — נסו שוב.",
         previewDoc: "תצוגת מסמכים",
         placedOn: "התקבלה בתאריך",
         itemsCount: "{count} שורות",

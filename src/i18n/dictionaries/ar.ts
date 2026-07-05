@@ -176,6 +176,7 @@ const ar: Dictionary = {
     disclaimer:
       "هذا الإجراء يرسل طلبية إلى المورّد. هذه ليست فاتورة ولا يتم أي دفع هنا.",
     itemsCount: "{count} سطر",
+    sendError: "فشل إرسال الطلبية — حاول مرة أخرى.",
   },
   orderSuccess: {
     title: "تم إرسال الطلبية!",
@@ -268,6 +269,8 @@ const ar: Dictionary = {
         noNotes: "لا توجد ملاحظات على هذه الطلبية.",
         statusTitle: "الحالة",
         statusHint: "تجريبي: تغييرات الحالة بصرية فقط وتُعاد عند التحديث.",
+        statusHintLive: "تغييرات الحالة تُحفظ وتُسجَّل في سجل الطلبية.",
+        statusUpdateError: "فشل تحديث الحالة — حاول مرة أخرى.",
         previewDoc: "معاينة المستندات",
         placedOn: "استُلمت بتاريخ",
         itemsCount: "{count} سطر",

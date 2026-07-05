@@ -18,11 +18,16 @@ export {
 } from "./products";
 export { getCustomer, listCustomers } from "./customers";
 export {
+  createOrderRequest,
   getDocument,
   getOrder,
   listDocuments,
   listDocumentsForOrder,
   listOrders,
+  updateOrderStatus,
+  type CreateOrderInput,
+  type CreateOrderResult,
+  type OrderSource,
 } from "./orders";
 export { getInventoryForProduct, listInventory } from "./inventory";
 export { getSupplier } from "./supplier";

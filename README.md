@@ -5,14 +5,15 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M2 — read paths.** The UI is the polished trilingual M0 design
-> (no auth, no payments, and **no legal tax invoices** — drafts only; see
-> [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)), now reading everything through
-> the **data layer** (`src/lib/data/`). Mock data stays the default; an
-> opt-in local-dev Supabase read mode renders the whole app from the
-> seeded database ([supabase/README.md](supabase/README.md)). Writes
-> (checkout, product CRUD, status changes) are still mock and arrive in
-> M3.
+> **Phase M3A — order writes.** The UI is the polished trilingual M0
+> design (no auth, no payments, and **no legal tax invoices** — drafts
+> only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). All reads go through
+> the **data layer** (`src/lib/data/`), and in the opt-in local-dev
+> Supabase mode, **checkout creates real orders** (atomic DB function,
+> server-computed totals, real MDF-#### numbers) and **admin status
+> changes persist** with validated transitions + history. Mock stays the
+> zero-config default with the original demo behavior. Product CRUD and
+> image upload arrive in M3B; auth in M4.
 
 ## Quick start
 
@@ -38,10 +39,12 @@ cp .env.example .env.local
 npm run dev        # the whole UI now reads from the seeded database
 ```
 
-Reads are server-side only (RSC); no Supabase key ever reaches the
+Reads are server-side only (RSC) and writes go through Server Actions →
+service-role-only DB functions; no Supabase key ever reaches the
 browser, RLS is untouched, and the mode refuses to run in production —
-real authenticated access is the M4 milestone. Writes stay mock either
-way until M3.
+real authenticated access is the M4 milestone. In this mode checkout
+creates real orders and admin status changes persist (with validated
+pipeline transitions and trigger-written history).
 
 ## Try the demo
 

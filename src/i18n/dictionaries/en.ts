@@ -176,6 +176,7 @@ const en: Dictionary = {
     disclaimer:
       "This sends an order request to the supplier. It is not an invoice and no payment happens here.",
     itemsCount: "{count} lines",
+    sendError: "Sending the order failed — please try again.",
   },
   orderSuccess: {
     title: "Order request sent!",
@@ -268,6 +269,8 @@ const en: Dictionary = {
         noNotes: "No notes on this order.",
         statusTitle: "Status",
         statusHint: "Demo: status changes are visual only and reset on reload.",
+        statusHintLive: "Status changes are saved and logged in the order history.",
+        statusUpdateError: "Updating the status failed — please try again.",
         previewDoc: "Preview documents",
         placedOn: "Placed on",
         itemsCount: "{count} lines",

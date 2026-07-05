@@ -9,23 +9,12 @@ import "server-only";
  * via a dynamic import, so nothing here (or in @supabase/supabase-js)
  * ever enters a client bundle.
  *
- * ── Access model in M2 (READ THIS) ──────────────────────────────────────
- * There is no auth yet, and RLS (correctly) gives the anon key zero rows.
- * Rather than loosening RLS or shipping keys to the browser, supabase
- * mode runs on a LOCAL-DEV-ONLY server-side service-role client, pinned
- * to the demo tenant:
- *   - requires SUPABASE_SERVICE_ROLE_KEY in .env.local (server env — the
- *     browser never sees it; this module refuses to load client-side),
- *   - refuses to run in production builds/servers,
- *   - every query filters tenant_id explicitly because the service role
- *     bypasses RLS.
- * M4 replaces this with cookie-bound authenticated clients + RLS, at
- * which point the service-role path here is deleted.
+ * Access model: see ./supabase-context.ts — a local-dev-only, server-only
+ * service-role client pinned to the demo tenant (every query filters
+ * tenant_id explicitly because the service role bypasses RLS). M4
+ * replaces it with cookie-bound authenticated clients + RLS.
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
 import type { Database } from "@/lib/supabase/database.types";
-import { getSupabaseEnv } from "@/lib/supabase/env";
 import type {
   Availability,
   Category,
@@ -39,42 +28,12 @@ import type {
   Supplier,
 } from "@/lib/types";
 
-/** The tenant seeded by supabase/seed.sql. */
-const DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+import { getServiceContext } from "./supabase-context";
 
-type Db = SupabaseClient<Database>;
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
 
-let cached: { client: Db; tenantId: string } | undefined;
-
-function getReadContext(): { client: Db; tenantId: string } {
-  if (cached) return cached;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "[madaf/data] Supabase read mode is local-development only in M2 — " +
-        "production reads require the M4 auth milestone (authenticated " +
-        "clients + RLS). Build and run in mock mode instead.",
-    );
-  }
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) {
-    throw new Error(
-      "[madaf/data] Supabase read mode needs SUPABASE_SERVICE_ROLE_KEY in " +
-        ".env.local (local stack key — run `supabase status`). Without " +
-        "auth (M4) the anon key correctly sees zero rows under RLS, so " +
-        "M2 dev reads go through a server-only, demo-tenant-scoped " +
-        "service-role client. See supabase/README.md.",
-    );
-  }
-  const { url } = getSupabaseEnv();
-  const client = createClient<Database>(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const tenantId = process.env.MADAF_SUPABASE_TENANT_ID ?? DEMO_TENANT_ID;
-  cached = { client, tenantId };
-  return cached;
-}
+const getReadContext = getServiceContext;
 
 function fail(what: string, message: string): never {
   throw new Error(`[madaf/data] supabase read failed (${what}): ${message}`);

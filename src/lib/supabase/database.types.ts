@@ -686,6 +686,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_order_request: {
+        Args: {
+          p_customer_id?: string
+          p_items: Json
+          p_notes?: string
+          p_source?: Database["public"]["Enums"]["order_source"]
+          p_tenant_id: string
+        }
+        Returns: {
+          order_id: string
+          order_number: string
+        }[]
+      }
       has_tenant_role: {
         Args: {
           p_roles: Database["public"]["Enums"]["tenant_role"][]
@@ -695,6 +708,18 @@ export type Database = {
       }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      update_order_status: {
+        Args: {
+          p_new_status: Database["public"]["Enums"]["order_status"]
+          p_order_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          new_status: Database["public"]["Enums"]["order_status"]
+          old_status: Database["public"]["Enums"]["order_status"]
+          order_id: string
+        }[]
+      }
     }
     Enums: {
       base_unit:
