@@ -43,7 +43,9 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705140000_lock_order_writes.sql` | M3A.1: orders/order_items are READ-ONLY for authenticated — writes only via the RPCs |
 | `migrations/20260705150000_product_crud_rpcs.sql` | M3B: product / manufacturer / inventory CRUD RPCs — service-role-only, tenant-validated |
 | `migrations/20260705160000_lock_catalog_writes.sql` | M3B.1: master-data tables READ-ONLY for authenticated — writes only via the RPCs |
+| `migrations/20260705170000_auth_and_private_links.sql` | M4A: `authorize_tenant()` + `current_membership()` + `create_tenant_with_owner()`; write RPCs re-gated for authenticated owner/admin/sales_rep; `customer_access_links` table + tokenized shop RPCs (`get_token_catalog`, `create_order_request_from_token`) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
+| `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
 ### Schema at a glance
 
@@ -79,10 +81,15 @@ documents stay renderable after catalog or customer changes.
 > weaken any of these without reading
 > `docs/DOCUMENTS_AND_INVOICES_GUIDE.md`.
 
-### RLS model (deny by default, hardened in M1.1)
+### RLS model (deny by default, hardened in M1.1; auth path live in M4A)
 
-- `anon` has **no grants and no policies** — zero database access. The
-  public demo UI keeps running on mock data and never touches the DB.
+- `anon` has **no table grants and no read policies** — zero direct
+  database access, and the catalog is never globally public. Its ONLY
+  reach is the two anon-granted tokenized-shop RPCs (`get_token_catalog`,
+  `create_order_request_from_token`), which validate a link token and
+  scope everything server-side. A raw anon `SELECT` on any table still
+  raises `permission denied`, so the app's read layer short-circuits to
+  empty for tenantless callers before querying (see `supabase-reads.ts`).
 - `authenticated` reaches only rows of tenants they belong to, via
   `is_tenant_member(tenant_id)` / `has_tenant_role(tenant_id, roles[])` —
   SECURITY DEFINER helpers over `tenant_users`.
@@ -117,11 +124,16 @@ documents stay renderable after catalog or customer changes.
   plant audit entries.
 - Admins cannot touch owner memberships or grant the owner role — only
   owners manage owners.
-- Tenant onboarding (creating `tenants` + first `tenant_users` row) is
-  service-role only until the M4 auth milestone.
+- Tenant onboarding is live in M4A: a signed-in, membership-less user
+  creates their tenant + first `owner` `tenant_users` row atomically via
+  `create_tenant_with_owner()` (authenticated, membership-less only).
+- Every tenant-owned write RPC is now gated by `authorize_tenant(tenant,
+  roles[])`, which derives the tenant from the caller's membership and
+  rejects a mismatched client `tenant_id` or a disallowed role (`42501`).
+  The client-submitted `tenant_id` is never trusted.
 
-To explore as a member locally: create a user in Studio → Authentication,
-then run the membership snippet at the top of `seed.sql`.
+To sign in as a member locally, run `bootstrap-auth.sql` after a reset
+(4 demo users). Full model: `docs/AUTH_AND_ACCESS_MODEL.md`.
 
 ### Storage
 
@@ -203,16 +215,17 @@ read goes through it; mock is the default and needs zero configuration.
 `npm run dev` — the entire UI (catalog, product pages, admin, documents)
 renders from the seeded database.
 
-How it works, and why the service key: there is no auth yet, and RLS
-correctly gives the anon key zero rows. So dev reads AND writes run
-through the server-only modules `src/lib/data/supabase-reads.ts` /
-`supabase-writes.ts` on the shared `supabase-context.ts` (guarded by the
-`server-only` package + dynamic imports) — a service-role client pinned
-to the demo tenant (`MADAF_SUPABASE_TENANT_ID` to override). It throws a
-helpful error when the key is missing, and refuses both production builds
-and non-local Supabase URLs. No key reaches the browser; RLS was not
-touched. M4 replaces this path with cookie-bound authenticated clients +
-RLS.
+**Since M4A this runs on real auth.** Supplier users sign in at `/login`
+(create the demo users with `bootstrap-auth.sql`); the session lives in
+httpOnly cookies and `src/proxy.ts` refreshes it each request. Reads and
+writes both go through the cookie-bound **authenticated** client
+(`src/lib/auth/session.ts` → `supabase-reads.ts` / `supabase-writes.ts`),
+scoped by RLS to the member's tenant. Anonymous / not-yet-onboarded
+callers carry the `NO_TENANT` sentinel and their reads short-circuit to
+empty (anon holds no table grants). The old service-role context remains
+only for local bootstrap/seed tooling and still refuses production builds
+and non-local URLs; the app no longer uses it. Full model:
+`docs/AUTH_AND_ACCESS_MODEL.md`.
 
 **Order writes (M3A):** in supabase mode, checkout and admin status
 changes are REAL. They flow client → Server Action
@@ -229,12 +242,14 @@ changes are REAL. They flow client → Server Action
   state; terminal states stay terminal; same-status is a no-op). History
   rows come from the existing trigger.
 
-Both RPCs `revoke` execute from anon/authenticated — service-role only
-until the M4 auth milestone replaces the service client with
-authenticated, RLS-scoped flows. Since M3A.1 these RPCs are the ONLY
-order write paths: direct table writes on orders/order_items are blocked
-for authenticated users at both the policy and grant level. The product
-form stays mock-only (M3B).
+Since M4A these RPCs are `EXECUTE`-granted to **authenticated** and gated
+by `authorize_tenant` (owner/admin/sales_rep can create orders;
+owner/admin change status). Since M3A.1 they remain the ONLY order write
+paths: direct table writes on orders/order_items are blocked for
+authenticated users at both the policy and grant level. Customers with a
+private link place orders through the anon `create_order_request_from_token`
+RPC (`source='remote_customer'`), which reuses the same server-side money
+logic.
 
 The temporary service-role context additionally refuses any NON-LOCAL
 Supabase URL (only `127.0.0.1`/`localhost`/`::1`), on top of refusing

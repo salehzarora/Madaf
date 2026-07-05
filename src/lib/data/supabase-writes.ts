@@ -15,7 +15,7 @@ import "server-only";
  * client code (see supabase-context.ts for the access model). No
  * documents/invoice drafts are created here (M5).
  */
-import { getServiceContext } from "./supabase-context";
+import { getDataContext } from "@/lib/auth/session";
 import type { OrderSource } from "./orders";
 import type {
   InventoryWriteInput,
@@ -35,7 +35,7 @@ export async function sbCreateOrderRequest(input: {
   notes?: string;
   source: OrderSource;
 }): Promise<{ orderId: string; orderNumber: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .rpc("create_order_request", {
       p_tenant_id: tenantId,
@@ -56,7 +56,7 @@ export async function sbUpdateOrderStatus(
   orderId: string,
   nextStatus: OrderStatus,
 ): Promise<{ orderId: string; oldStatus: OrderStatus; newStatus: OrderStatus }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .rpc("update_order_status", {
       p_tenant_id: tenantId,
@@ -112,7 +112,7 @@ export async function sbCreateProduct(
   input: ProductWriteInput,
   inventory?: InventoryWriteInput,
 ): Promise<{ productId: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("create_product", {
     p_tenant_id: tenantId,
     p_product: toProductPayload(input),
@@ -127,7 +127,7 @@ export async function sbUpdateProduct(
   input: ProductWriteInput,
   inventory?: InventoryWriteInput,
 ): Promise<{ productId: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("update_product", {
     p_tenant_id: tenantId,
     p_product_id: productId,
@@ -142,7 +142,7 @@ export async function sbSetProductActive(
   productId: string,
   isActive: boolean,
 ): Promise<{ productId: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("set_product_active", {
     p_tenant_id: tenantId,
     p_product_id: productId,
@@ -156,7 +156,7 @@ export async function sbUpsertInventory(
   productId: string,
   inventory: InventoryWriteInput,
 ): Promise<void> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { error } = await client.rpc("upsert_inventory_item", {
     p_tenant_id: tenantId,
     p_product_id: productId,
@@ -168,7 +168,7 @@ export async function sbUpsertInventory(
 export async function sbCreateManufacturer(
   input: ManufacturerWriteInput,
 ): Promise<{ manufacturerId: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("create_manufacturer", {
     p_tenant_id: tenantId,
     p_name_ar: input.nameAr,
@@ -185,7 +185,7 @@ export async function sbUpdateManufacturer(
   manufacturerId: string,
   input: ManufacturerWriteInput,
 ): Promise<{ manufacturerId: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("update_manufacturer", {
     p_tenant_id: tenantId,
     p_manufacturer_id: manufacturerId,
@@ -215,7 +215,7 @@ export async function sbUploadProductImage(input: {
   contentType: string;
   bytes: Uint8Array;
 }): Promise<{ path: string; previewUrl: string }> {
-  const { client, tenantId } = getServiceContext();
+  const { client, tenantId } = await getDataContext();
 
   const { data: product, error: productError } = await client
     .from("products")

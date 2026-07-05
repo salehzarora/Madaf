@@ -5,16 +5,20 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M3B — catalog writes.** The UI is the polished trilingual M0
-> design (no auth, no payments, and **no legal tax invoices** — drafts
-> only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). All reads go through
-> the **data layer** (`src/lib/data/`), and in the opt-in local-dev
-> Supabase mode, admin can now **create/edit/activate products, update
-> inventory, manage manufacturers + logos, and upload product images**
-> (Storage) — on top of the M3A real checkout + order-status writes. All
-> writes go through validated, service-role-only DB functions; mock stays
-> the zero-config default with the original demo behavior. Auth is M4;
-> documents/invoices are M5/M6.
+> **Phase M4A — auth & access.** The UI is the polished trilingual M0
+> design (no payments, and **no legal tax invoices** — drafts only; see
+> [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). In the opt-in local-dev
+> Supabase mode there is now **real Supabase Auth**: supplier users sign
+> in at `/login`, `/admin` needs a session + tenant membership (with
+> `/onboarding` for new tenants), and the whole data path runs on
+> cookie-bound **authenticated** clients under RLS — roles are owner/admin
+> (catalog + orders + status + links) and sales_rep (orders only).
+> Customers order with **no login** through private tokenized links
+> (`/shop/<token>`; hash-only storage, revocable). This sits on the M3A
+> checkout/order-status writes and M3B catalog writes, all still through
+> tenant-validated RPCs. **Mock stays the zero-config default** — no auth,
+> open demo admin, original behavior. Documents/invoices are M5/M6. See
+> [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 
 ## Quick start
 
@@ -29,28 +33,29 @@ Other commands: `npm run build` (production build), `npm run start`
 Requirements: Node 20+ (developed on Node 22), npm.
 The app runs in **mock mode** by default — no database or env vars needed.
 
-### Optional: Supabase read mode (M2, local dev only)
+### Optional: Supabase mode with real auth (M4A, local dev only)
 
 ```bash
 supabase start     # needs Docker + Supabase CLI — see supabase/README.md
 supabase db reset  # re-apply migrations + demo seed
+docker exec -i supabase_db_Madaf psql -U postgres -d postgres \
+  < supabase/bootstrap-auth.sql          # create the demo auth users
 cp .env.example .env.local
-# in .env.local: set NEXT_PUBLIC_MADAF_DATA_MODE=supabase and paste the
-# "Secret" key from `supabase status` into SUPABASE_SERVICE_ROLE_KEY
-npm run dev        # the whole UI now reads from the seeded database
+# in .env.local: set NEXT_PUBLIC_MADAF_DATA_MODE=supabase
+# (NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY come pre-filled)
+npm run dev        # sign in at /he/login as owner@madaf.local / madaf-demo-1234
 ```
 
-Reads are server-side only (RSC) and **all writes go through Server
-Actions → validated, service-role-only DB functions** — orders,
-products, inventory and manufacturers each have their own RPC, and the
-underlying tables are table-level read-only for authenticated clients
-(categories/customers stay read-only until a future RPC). No Supabase
-key ever reaches the browser, RLS stays deny-by-default (only ever
-tightened — never loosened, no anon/public access), and the mode refuses
-to run in production or against a non-local Supabase URL — real
-authenticated access is the M4 milestone. In this mode checkout creates
-real orders, admin status changes persist, and the admin catalog
-(products, inventory, manufacturers, product images) is fully editable.
+Reads are server-side only (RSC) under RLS; **all writes go through Server
+Actions → tenant-validated DB functions** gated by `authorize_tenant`
+(the client-submitted `tenant_id` is never trusted). Anonymous visitors
+see no supplier data (the catalog is not public); customers reach a
+tenant-scoped catalog only through a private link token, and place orders
+via an anon RPC that prices everything server-side. No Supabase key beyond
+the public anon key reaches the browser, and the session lives in httpOnly
+cookies. RLS stays deny-by-default (only ever tightened), and the mode
+refuses to run in production or against a non-local Supabase URL. Full
+model: [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 
 ## Try the demo
 
@@ -90,6 +95,7 @@ hand-rolled shadcn-style UI primitives (no runtime UI deps).
 | [docs/INFORMATION_ARCHITECTURE.md](docs/INFORMATION_ARCHITECTURE.md) | routes, folders, data model |
 | [docs/I18N_RTL_GUIDE.md](docs/I18N_RTL_GUIDE.md) | locales, RTL rules, formatting |
 | [docs/DOCUMENTS_AND_INVOICES_GUIDE.md](docs/DOCUMENTS_AND_INVOICES_GUIDE.md) | legal wording & invoice safety |
+| [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md) | auth, roles, RLS, tenant links (M4A) |
 | [docs/FUTURE_BACKEND_HANDOFF.md](docs/FUTURE_BACKEND_HANDOFF.md) | Supabase plan for the next agent |
 | [CLAUDE.md](CLAUDE.md) | rules for AI agents working here |
 

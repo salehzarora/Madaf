@@ -1,7 +1,8 @@
 /**
- * Supplier (tenant) data access. Mock by default; Supabase branch is
- * server-only local dev reading the demo tenants row. Tenant resolution
- * from the signed-in user arrives with auth in M4.
+ * Supplier (tenant) data access. Mock by default; the Supabase branch is
+ * server-only and reads the tenant row under RLS — scoped to the signed-in
+ * user's membership tenant (resolved in `getDataContext`, M4A). Anon callers
+ * see zero rows.
  */
 import { supplier } from "@/lib/mock";
 import type { Supplier } from "@/lib/types";
