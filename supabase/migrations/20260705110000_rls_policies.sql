@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- Madaf M1 — Row Level Security
+-- Madaf M1 — Row Level Security (hardened in M1.1)
 --
 -- Posture: deny by default.
 -- - RLS is enabled on every table; a row is only reachable through an
@@ -10,6 +10,16 @@
 -- - `authenticated` users only reach rows of tenants they are members of
 --   (tenant_users), via the security-definer helpers below.
 --
+-- Role tiers inside a tenant (M1.1):
+-- - ANY member (incl. sales_rep): READ everything in their tenant; run the
+--   order flow (create orders + lines, move status, draw order numbers).
+-- - owner/admin ONLY: mutate master data (customers, manufacturers,
+--   categories, products, inventory_items) and the tenant row.
+-- - NOBODY via the API: write documents, order_status_history or
+--   audit_events — those are seed/service-role/trigger territory in M1,
+--   enforced BOTH by the absence of policies AND by table grants
+--   (authenticated only has SELECT on them).
+--
 -- TEMPORARY / FUTURE (M4 — auth milestone):
 -- - Sales reps currently read ALL tenant rows like admins. M4 narrows
 --   order visibility to rows they created and scopes the shop picker.
@@ -18,6 +28,9 @@
 -- - Tenant onboarding (insert into tenants + first owner membership) is
 --   service-role only for now — there is deliberately no INSERT policy on
 --   tenants/tenant_users for regular users.
+-- - If sales reps ever need to register a new shop in the field, add a
+--   dedicated RPC ("customer request") with its own validation — do NOT
+--   reopen direct table writes.
 -- ═══════════════════════════════════════════════════════════════════════
 
 -- ── Helper functions ─────────────────────────────────────────────────────
@@ -114,9 +127,14 @@ grant execute on function public.next_order_number(uuid) to authenticated, servi
 -- Newer Supabase defaults do not auto-expose new tables through the Data
 -- API; we grant explicitly — to `authenticated` and `service_role` only.
 -- `anon` deliberately gets nothing.
+--
+-- Grants mirror the policy matrix exactly (defense in depth): a table
+-- with no UPDATE policy also carries no UPDATE grant, so even a future
+-- policy mistake cannot silently open a write path.
 
 grant usage on schema public to authenticated, service_role;
 
+-- service_role: full access (bypasses RLS anyway; used by seed/scripts).
 grant select, insert, update, delete on
   public.tenants,
   public.tenant_users,
@@ -130,10 +148,41 @@ grant select, insert, update, delete on
   public.order_status_history,
   public.documents,
   public.audit_events
-to authenticated, service_role;
+to service_role;
 
--- audit_events uses an identity column.
-grant usage, select on all sequences in schema public to authenticated, service_role;
+-- authenticated: everything is readable (RLS scopes rows to the tenant)…
+grant select on
+  public.tenants,
+  public.tenant_users,
+  public.customers,
+  public.manufacturers,
+  public.categories,
+  public.products,
+  public.inventory_items,
+  public.orders,
+  public.order_items,
+  public.order_status_history,
+  public.documents,
+  public.audit_events
+to authenticated;
+
+-- …but write grants exist only where a write policy exists:
+grant update on public.tenants to authenticated;                    -- owner/admin (policy)
+grant insert, update, delete on public.tenant_users to authenticated; -- owner/admin (policy)
+grant insert, update, delete on
+  public.customers,
+  public.manufacturers,
+  public.categories,
+  public.products,
+  public.inventory_items
+to authenticated;                                                    -- owner/admin (policy)
+grant insert, update on public.orders to authenticated;              -- members (policy); no delete
+grant insert, update, delete on public.order_items to authenticated; -- members (policy)
+-- documents, order_status_history, audit_events: SELECT only —
+-- seed/service-role/trigger writes exclusively in M1.
+
+-- audit_events uses an identity column (service-role inserts only).
+grant usage, select on all sequences in schema public to service_role;
 
 -- Belt & braces: make sure anon has nothing, even if defaults change.
 revoke all on all tables in schema public from anon;
@@ -224,18 +273,22 @@ create policy "tenant_users: owners/admins can remove members"
 
 -- ── Master data: customers / manufacturers / categories / products /
 --    inventory_items ──────────────────────────────────────────────────────
--- Members read and write day-to-day; destructive deletes are owner/admin.
+-- M1.1 hardening: ALL members read; ONLY owner/admin write. A sales_rep
+-- must never change a price, product name, stock quantity, manufacturer,
+-- category or customer record — their job in M1 is browsing the catalog
+-- and creating orders. If reps later need to register shops in the field,
+-- that becomes a dedicated validated RPC, not a direct table write.
 
 create policy "customers: members can read"
   on public.customers for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "customers: members can insert"
+create policy "customers: owners/admins can insert"
   on public.customers for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "customers: members can update"
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
+create policy "customers: owners/admins can update"
   on public.customers for update to authenticated
-  using (public.is_tenant_member(tenant_id))
-  with check (public.is_tenant_member(tenant_id));
+  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 create policy "customers: owners/admins can delete"
   on public.customers for delete to authenticated
   using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
@@ -243,13 +296,13 @@ create policy "customers: owners/admins can delete"
 create policy "manufacturers: members can read"
   on public.manufacturers for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "manufacturers: members can insert"
+create policy "manufacturers: owners/admins can insert"
   on public.manufacturers for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "manufacturers: members can update"
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
+create policy "manufacturers: owners/admins can update"
   on public.manufacturers for update to authenticated
-  using (public.is_tenant_member(tenant_id))
-  with check (public.is_tenant_member(tenant_id));
+  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 create policy "manufacturers: owners/admins can delete"
   on public.manufacturers for delete to authenticated
   using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
@@ -257,13 +310,13 @@ create policy "manufacturers: owners/admins can delete"
 create policy "categories: members can read"
   on public.categories for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "categories: members can insert"
+create policy "categories: owners/admins can insert"
   on public.categories for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "categories: members can update"
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
+create policy "categories: owners/admins can update"
   on public.categories for update to authenticated
-  using (public.is_tenant_member(tenant_id))
-  with check (public.is_tenant_member(tenant_id));
+  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 create policy "categories: owners/admins can delete"
   on public.categories for delete to authenticated
   using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
@@ -271,13 +324,13 @@ create policy "categories: owners/admins can delete"
 create policy "products: members can read"
   on public.products for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "products: members can insert"
+create policy "products: owners/admins can insert"
   on public.products for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "products: members can update"
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
+create policy "products: owners/admins can update"
   on public.products for update to authenticated
-  using (public.is_tenant_member(tenant_id))
-  with check (public.is_tenant_member(tenant_id));
+  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 create policy "products: owners/admins can delete"
   on public.products for delete to authenticated
   using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
@@ -285,13 +338,13 @@ create policy "products: owners/admins can delete"
 create policy "inventory_items: members can read"
   on public.inventory_items for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "inventory_items: members can insert"
+create policy "inventory_items: owners/admins can insert"
   on public.inventory_items for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "inventory_items: members can update"
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
+create policy "inventory_items: owners/admins can update"
   on public.inventory_items for update to authenticated
-  using (public.is_tenant_member(tenant_id))
-  with check (public.is_tenant_member(tenant_id));
+  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
+  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 create policy "inventory_items: owners/admins can delete"
   on public.inventory_items for delete to authenticated
   using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
@@ -341,32 +394,28 @@ create policy "order_status_history: members can read"
   using (public.is_tenant_member(tenant_id));
 
 -- ── documents ────────────────────────────────────────────────────────────
--- ⚠️ LEGAL: no delete policy on purpose — documents are voided (status),
--- never removed. Only owner/admin may update (e.g. void); nobody can strip
--- the legal notice off an invoice draft thanks to the table CHECK.
+-- ⚠️ LEGAL (M1.1): documents are READ-ONLY for every authenticated client
+-- — no insert/update/delete policies (and no write grants, see above).
+-- No client can forge an invoice_draft, tamper with totals_snapshot,
+-- flip status to 'generated', strip a legal notice, or void/remove a
+-- document. Creation happens only via seed/service role in M1; the M5
+-- write path will be a server-side flow, never a direct table insert.
+-- The table CHECKs additionally guarantee (even against the service
+-- role) that invoice drafts always carry their legal notice and cannot
+-- be marked 'generated' before the M5/M6 legal integration.
 
 create policy "documents: members can read"
   on public.documents for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "documents: members can insert"
-  on public.documents for insert to authenticated
-  with check (public.is_tenant_member(tenant_id));
-create policy "documents: owners/admins can update"
-  on public.documents for update to authenticated
-  using (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]))
-  with check (public.has_tenant_role(tenant_id, array['owner', 'admin']::public.tenant_role[]));
 
 -- ── audit_events ─────────────────────────────────────────────────────────
--- Append-only. No update/delete policies — the trail is immutable
--- through the API. Inserts must be attributed honestly: actor_user_id is
--- either the caller or null (system events go through the service role).
+-- M1.1: READ-ONLY for authenticated clients — no insert/update/delete
+-- policies (and no write grants). An audit trail that clients can write
+-- to is not an audit trail: rows are produced only by triggers/server
+-- code via the service role. (No such triggers exist yet beyond the
+-- order-status one writing to order_status_history — that is fine; the
+-- seed's demo events show the intended shape.)
 
 create policy "audit_events: members can read"
   on public.audit_events for select to authenticated
   using (public.is_tenant_member(tenant_id));
-create policy "audit_events: members can insert as themselves"
-  on public.audit_events for insert to authenticated
-  with check (
-    public.is_tenant_member(tenant_id)
-    and (actor_user_id is null or actor_user_id = (select auth.uid()))
-  );

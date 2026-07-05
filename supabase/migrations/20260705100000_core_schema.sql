@@ -56,10 +56,14 @@ create type public.document_type as enum
 create type public.document_status as enum ('draft', 'generated', 'voided');
 
 -- ── updated_at trigger ───────────────────────────────────────────────────
+-- search_path pinned empty (advisor: mutable search_path). The body only
+-- touches NEW and pg_catalog's now(), so nothing else needs qualifying;
+-- no SECURITY DEFINER — it must run with the invoker's privileges.
 
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -294,7 +298,8 @@ create table public.inventory_items (
     on delete cascade
 );
 
-create index inventory_items_tenant_id_idx on public.inventory_items (tenant_id);
+-- (tenant_id) lookups are covered by the unique (tenant_id, product_id)
+-- index — no separate tenant_id index needed.
 
 create trigger inventory_items_set_updated_at
   before update on public.inventory_items
@@ -339,7 +344,9 @@ create table public.orders (
 -- (tenant_id) alone is covered by the leading column of the composites.
 create index orders_tenant_status_idx on public.orders (tenant_id, status);
 create index orders_tenant_created_at_idx on public.orders (tenant_id, created_at desc);
-create index orders_customer_id_idx on public.orders (customer_id);
+-- Supports the composite customers FK (SET NULL scans) + per-shop order
+-- lists ("start order" deep link, M4 shop-owner scoping).
+create index orders_tenant_customer_idx on public.orders (tenant_id, customer_id);
 -- Supports auth.users ON DELETE SET NULL scans + M4 rep-scoped queries.
 create index orders_sales_rep_idx on public.orders (sales_rep_user_id);
 
@@ -391,7 +398,11 @@ create table public.order_items (
     on delete set null (product_id)
 );
 
-create index order_items_tenant_id_idx on public.order_items (tenant_id);
+-- Composite-FK support (orders cascade) + tenant-scoped line queries;
+-- (tenant_id) alone is covered by its leading column.
+create index order_items_tenant_order_idx on public.order_items (tenant_id, order_id);
+-- Per-order joins where only order_id is constrained (RLS filters tenant
+-- via a function predicate, which cannot seek a tenant-leading index).
 create index order_items_order_id_idx on public.order_items (order_id);
 -- Supports the products ON DELETE SET NULL scan.
 create index order_items_tenant_product_idx on public.order_items (tenant_id, product_id);
@@ -414,8 +425,13 @@ create table public.order_status_history (
     on delete cascade
 );
 
-create index order_status_history_tenant_id_idx on public.order_status_history (tenant_id);
+-- Composite-FK support (orders cascade); covers (tenant_id) too.
+create index order_status_history_tenant_order_idx
+  on public.order_status_history (tenant_id, order_id);
 create index order_status_history_order_id_idx on public.order_status_history (order_id);
+-- Supports the auth.users ON DELETE SET NULL scan.
+create index order_status_history_changed_by_idx
+  on public.order_status_history (changed_by);
 
 create or replace function public.log_order_status_change()
 returns trigger
@@ -478,13 +494,21 @@ create table public.documents (
   -- An invoice draft may never exist without its legal notice.
   constraint documents_invoice_draft_needs_notice check (
     document_type <> 'invoice_draft' or length(trim(legal_notice)) > 0
+  ),
+  -- ⚠️ LEGAL: an invoice draft can never be marked 'generated' in this
+  -- phase — not even by the service role. Madaf does not issue legal tax
+  -- invoices; relax this constraint only as part of the M5/M6 legal
+  -- invoicing integration (docs/DOCUMENTS_AND_INVOICES_GUIDE.md).
+  constraint documents_invoice_draft_never_generated check (
+    not (document_type = 'invoice_draft' and status = 'generated')
   )
 );
 
 comment on table public.documents is
   'Order-derived documents. invoice_draft is a DRAFT preview only — never a legal tax invoice until the M6 provider integration (docs/DOCUMENTS_AND_INVOICES_GUIDE.md).';
 
-create index documents_tenant_id_idx on public.documents (tenant_id);
+-- Composite-FK support (orders NO ACTION checks); covers (tenant_id) too.
+create index documents_tenant_order_idx on public.documents (tenant_id, order_id);
 create index documents_order_id_idx on public.documents (order_id);
 
 -- ── audit_events ─────────────────────────────────────────────────────────
@@ -505,3 +529,5 @@ create table public.audit_events (
 
 create index audit_events_tenant_created_idx
   on public.audit_events (tenant_id, created_at desc);
+-- Supports the auth.users ON DELETE SET NULL scan.
+create index audit_events_actor_idx on public.audit_events (actor_user_id);

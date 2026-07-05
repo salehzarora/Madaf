@@ -75,17 +75,26 @@ documents stay renderable after catalog or customer changes.
 > weaken any of these without reading
 > `docs/DOCUMENTS_AND_INVOICES_GUIDE.md`.
 
-### RLS model (deny by default)
+### RLS model (deny by default, hardened in M1.1)
 
 - `anon` has **no grants and no policies** — zero database access. The
   public demo UI keeps running on mock data and never touches the DB.
 - `authenticated` reaches only rows of tenants they belong to, via
   `is_tenant_member(tenant_id)` / `has_tenant_role(tenant_id, roles[])` —
   SECURITY DEFINER helpers over `tenant_users`.
-- Append-only tables (`order_status_history`, `audit_events`) and
-  `documents` have no UPDATE/DELETE (or admin-only UPDATE) policies.
-  History is written **only** by the status trigger; audit inserts must
-  be attributed to the caller (or null).
+- Role tiers: **any member** (incl. `sales_rep`) reads everything in
+  their tenant and runs the order flow (create orders + lines, move
+  status, draw order numbers). **Only owner/admin** mutate master data —
+  customers, manufacturers, categories, products, inventory — and the
+  tenant row. A sales rep can never change a price, name, stock level or
+  customer record.
+- `documents`, `order_status_history` and `audit_events` are
+  **read-only for every client**: no write policies AND no write grants
+  (grants mirror the policy matrix as defense in depth). History comes
+  from the status trigger; documents/audit rows come from seed/service
+  role only in M1 — no client can forge an invoice draft, flip a
+  document to `generated` (also blocked by CHECK, even for the service
+  role), or plant audit entries.
 - Admins cannot touch owner memberships or grant the owner role — only
   owners manage owners.
 - Tenant onboarding (creating `tenants` + first `tenant_users` row) is
