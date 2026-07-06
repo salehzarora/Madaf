@@ -55,7 +55,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260710100000_document_storage.sql` | M5B: PRIVATE `documents` storage bucket + storage-metadata columns on `documents` (`storage_path`/`generated_at`/`file_size_bytes`/`checksum`); `set_document_storage()` RPC (the only writer of those columns) |
 | `migrations/20260711100000_lock_document_uploads.sql` | M5B.1: DROP the authenticated `documents`-bucket `storage.objects` policies (uploads/reads now go ONLY through the trusted server-only service-role client; normal users cannot upload/overwrite/read directly, closing a forgery vector); harden `set_document_storage` to validate the EXACT DB-derived path (rejects mismatched tenant/order/type/id/locale, traversal, non-.pdf, blank) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
-| `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
+| `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (M5C: seeds `auth.users` token/`*_change` columns as `''` not NULL so GoTrue sign-in works on the first attempt). See `docs/AUTH_AND_ACCESS_MODEL.md` |
 
 ### Schema at a glance
 
@@ -199,8 +199,21 @@ documents stay renderable after catalog or customer changes.
   ONLY if it's one of the caller's own memberships with an allowed role
   (`42501` otherwise); the client-submitted `tenant_id` is never trusted.
 
-To sign in as a member locally, run `bootstrap-auth.sql` after a reset
-(4 demo users). Full model: `docs/AUTH_AND_ACCESS_MODEL.md`.
+To sign in as a member locally, run `bootstrap-auth.sql` after a reset:
+
+```bash
+supabase db reset --local
+docker exec -i supabase_db_Madaf psql -U postgres -d postgres \
+  < supabase/bootstrap-auth.sql          # creates 4 demo users
+```
+
+Demo users (password `madaf-demo-1234`): `owner@madaf.local`,
+`admin@madaf.local`, `rep@madaf.local` (demo tenant), `other@madaf.local`
+(second tenant). **M5C:** the bootstrap sets the `auth.users` token /
+`*_change` columns to `''` (not NULL), so GoTrue password sign-in works on
+the FIRST attempt — a manually-seeded row with NULL token columns otherwise
+makes sign-in fail with a 500 ("converting NULL to string is unsupported").
+Full model: `docs/AUTH_AND_ACCESS_MODEL.md`.
 
 ### Storage
 
@@ -219,12 +232,20 @@ Bucket `documents` (**M5B**, private, 10 MiB, `application/pdf` only). Path
 convention: `<tenant_id>/documents/<order_id>/<document_type>/<document_id>_
 <locale>.pdf` — no token_hash/secret in the path. **M5B.1: this bucket has NO
 `storage.objects` policies** — RLS therefore denies every anon/authenticated
-read/insert/update/delete on it. Uploads + signing run ONLY through the
-server-only, fail-closed **service-role** client (`getServiceContext`), used
-from `src/lib/data/document-storage.ts` AFTER the route authorizes the
-request; normal users can never upload/overwrite/read documents objects
-directly (this closes a forgery vector where a user with `can_access_order`
-could plant a fake PDF at the deterministic path). The download route
+read/insert/update/delete on it. Uploads + signing run ONLY through a
+server-only, fail-closed **service-role** client — since **M5C** a DEDICATED
+`src/lib/data/trusted-document-storage.ts` (separate from the generic demo
+`getServiceContext`), used from `src/lib/data/document-storage.ts` AFTER the
+route authorizes the request; normal users can never upload/overwrite/read
+documents objects directly (this closes a forgery vector where a user with
+`can_access_order` could plant a fake PDF at the deterministic path). The
+trusted client is **local-only by default** and refuses production/non-local
+URLs; production stored PDFs are an explicit opt-in
+(`MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
+`MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<ref>` pinning the URL to
+`<ref>.supabase.co` + `SUPABASE_SERVICE_ROLE_KEY`; see `.env.example`). If it
+is unavailable/misconfigured the route safely streams the PDF without storing.
+The download route
 (`/admin/orders/[id]/documents/[type]`) reads the order under RLS
 (`can_access_order` → 404 for rep-unassigned/non-member), records via
 `create_order_document`, records the path via `set_document_storage` (which

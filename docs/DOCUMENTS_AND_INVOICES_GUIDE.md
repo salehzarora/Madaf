@@ -136,12 +136,18 @@ drafts, still no tax invoices, no numbering, no provider, no payments).
 - **Mock mode** stores nothing and streams the freshly-rendered bytes (M5A).
 - **Not exposed to tokenized customers**: PDF download stays admin-only;
   customer/token PDF access is a future, fully-scoped addition.
-- **Trusted-storage limitation**: the service-role client is server-only and
-  **fail-closed** (refuses production `NODE_ENV` and non-local Supabase URLs,
-  key from a non-public env var, never in a client bundle). So storage +
-  signing work in local-dev supabase mode (`npm run dev`); a hardened
-  server-only production storage model is future work — if the trusted client
-  is unavailable the route safely falls back to streaming the bytes.
+- **Trusted-storage client (M5C)**: upload/sign use a DEDICATED server-only
+  service-role client (`src/lib/data/trusted-document-storage.ts`), separate
+  from the generic demo `getServiceContext`. It is **local-only by default and
+  fails closed** (refuses production `NODE_ENV` and non-local URLs; key from a
+  non-public env var; never in a client bundle). **Production is an explicit
+  opt-in**: set `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` plus
+  `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<ref>` (which pins the Supabase
+  URL to `<ref>.supabase.co`) and `SUPABASE_SERVICE_ROLE_KEY` — a hosted URL
+  without a matching ref is refused. If the client is unavailable /
+  misconfigured, the route safely **streams** the freshly-rendered PDF without
+  storing it (never errors, never leaks). See `.env.example` and
+  `supabase/README.md`.
 
 ## What the backend agent must add before invoices become real
 

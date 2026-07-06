@@ -126,6 +126,7 @@ hand-rolled shadcn-style UI primitives (no runtime UI deps).
 | [docs/DOCUMENTS_AND_INVOICES_GUIDE.md](docs/DOCUMENTS_AND_INVOICES_GUIDE.md) | legal wording & invoice safety |
 | [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md) | auth, roles, RLS, tenant links (M4A) |
 | [docs/FUTURE_BACKEND_HANDOFF.md](docs/FUTURE_BACKEND_HANDOFF.md) | Supabase plan for the next agent |
+| [docs/security/AUDIT_NOTES.md](docs/security/AUDIT_NOTES.md) | `npm audit` status & handling |
 | [CLAUDE.md](CLAUDE.md) | rules for AI agents working here |
 
 ## Manual test checklist

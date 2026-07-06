@@ -40,23 +40,37 @@ begin
   end if;
 
   -- Auth users (email confirmed so password login works immediately).
+  --
+  -- IMPORTANT (GoTrue): the token / *_change text columns MUST be '' (empty
+  -- string), NOT NULL. GoTrue scans them into non-nullable Go strings, so a
+  -- manually-seeded row with NULL confirmation_token / recovery_token /
+  -- email_change_token_new / email_change makes password sign-in fail with a
+  -- 500 ("converting NULL to string is unsupported"). We set all eight to ''
+  -- for robustness across GoTrue versions (some default to '', some to NULL).
   insert into auth.users
     (id, instance_id, aud, role, email, encrypted_password,
      email_confirmed_at, created_at, updated_at,
-     raw_app_meta_data, raw_user_meta_data)
+     raw_app_meta_data, raw_user_meta_data,
+     confirmation_token, recovery_token, email_change_token_new, email_change,
+     email_change_token_current, phone_change, phone_change_token,
+     reauthentication_token)
   values
     (v_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'owner@madaf.local', v_pw, now(), now(), now(),
-     '{"provider":"email","providers":["email"]}', '{}'),
+     '{"provider":"email","providers":["email"]}', '{}',
+     '', '', '', '', '', '', '', ''),
     (v_admin, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'admin@madaf.local', v_pw, now(), now(), now(),
-     '{"provider":"email","providers":["email"]}', '{}'),
+     '{"provider":"email","providers":["email"]}', '{}',
+     '', '', '', '', '', '', '', ''),
     (v_rep, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'rep@madaf.local', v_pw, now(), now(), now(),
-     '{"provider":"email","providers":["email"]}', '{}'),
+     '{"provider":"email","providers":["email"]}', '{}',
+     '', '', '', '', '', '', '', ''),
     (v_other, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'other@madaf.local', v_pw, now(), now(), now(),
-     '{"provider":"email","providers":["email"]}', '{}')
+     '{"provider":"email","providers":["email"]}', '{}',
+     '', '', '', '', '', '', '', '')
   on conflict (id) do nothing;
 
   -- Email identities (GoTrue looks these up for password sign-in).

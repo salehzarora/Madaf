@@ -13,21 +13,22 @@ import "server-only";
  * overwrite objects in this bucket (the storage.objects policies were
  * dropped), which closes the M5B forgery vector (a user with can_access_order
  * could upload a fake PDF at the deterministic path). Upload + signing now run
- * on the TRUSTED, server-only SERVICE-ROLE client (`getServiceContext` —
- * fail-closed: server-only, refuses production and non-local URLs, key from a
- * non-public env var, never in a client bundle). ACCESS IS STILL VERIFIED via
- * the authenticated context BEFORE any service-role op: the route reads the
- * order under RLS (`can_access_order` → 404) and records via
- * `create_order_document`; recording the storage metadata goes through the
- * `set_document_storage` RPC on the AUTHENTICATED client, which re-checks
- * access AND validates the exact expected path. The service role is used only
- * to write/sign that already-authorized object. Reached only through the data
- * layer — never from client code.
+ * on the TRUSTED, server-only service-role client
+ * (`getTrustedDocumentStorageClient`, M5C — a DEDICATED document-storage
+ * client with an explicit local-only-by-default / opt-in-for-production model;
+ * server-only, key from a non-public env var, never in a client bundle).
+ * ACCESS IS STILL VERIFIED via the authenticated context BEFORE any
+ * service-role op: the route reads the order under RLS (`can_access_order` →
+ * 404) and records via `create_order_document`; recording the storage metadata
+ * goes through the `set_document_storage` RPC on the AUTHENTICATED client,
+ * which re-checks access AND validates the exact expected path. The service
+ * role is used only to write/sign that already-authorized object. Reached only
+ * through the data layer — never from client code.
  */
 import { getDataContext } from "@/lib/auth/session";
 
-import { getServiceContext } from "./supabase-context";
 import { sbSetDocumentStorage } from "./supabase-writes";
+import { getTrustedDocumentStorageClient } from "./trusted-document-storage";
 
 const DOCUMENTS_BUCKET = "documents";
 /** Signed URLs are short-lived: handed only to the authorized caller who just
@@ -47,12 +48,13 @@ function objectPath(
   return `${tenantId}/documents/${orderId}/${dbType}/${documentId}_${locale}.pdf`;
 }
 
-/** Trusted, server-only service-role storage client (fail-closed). Returns
- * null if unavailable (e.g. no service key / production) so the caller can
- * gracefully fall back to streaming the freshly-rendered bytes. */
+/** Trusted, server-only document-storage client (fail-closed). Returns null if
+ * unavailable/misconfigured (no service key, production without opt-in, wrong
+ * project ref, …) so the caller gracefully falls back to streaming the
+ * freshly-rendered bytes. */
 function serviceStorage() {
   try {
-    return getServiceContext().client.storage;
+    return getTrustedDocumentStorageClient().storage;
   } catch (error) {
     console.error("[madaf/pdf] trusted storage client unavailable:", error);
     return null;

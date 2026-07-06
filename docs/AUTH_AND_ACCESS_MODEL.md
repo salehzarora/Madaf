@@ -399,6 +399,11 @@ docker exec -i supabase_db_<project> psql -U postgres -d postgres \
 | `rep@madaf.local` | sales_rep | demo |
 | `other@madaf.local` | owner | a second tenant (isolation testing) |
 
+**M5C:** the bootstrap seeds the `auth.users` token / `*_change` columns as
+`''` (not NULL), so GoTrue password sign-in succeeds on the **first** attempt.
+(A manually-inserted `auth.users` row with those columns left NULL makes
+sign-in fail with a 500 — GoTrue scans them into non-nullable Go strings.)
+
 Then set `NEXT_PUBLIC_MADAF_DATA_MODE=supabase` +
 `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` in
 `.env.local`, `npm run dev`, and sign in at `/he/login`. To exercise team
