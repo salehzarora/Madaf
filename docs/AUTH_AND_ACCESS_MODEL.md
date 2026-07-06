@@ -119,6 +119,7 @@ what the UI sends.
 |---|:---:|:---:|:---:|
 | Read catalog / orders (own tenant) | ✓ | ✓ | ✓ |
 | Read customers | ✓ (all) | ✓ (all) | assigned only |
+| Read orders / items / status / documents | ✓ (all) | ✓ (all) | assigned-customer orders only |
 | Create / update products, inventory, manufacturers | ✓ | ✓ | — |
 | Create order requests | ✓ (any customer) | ✓ (any customer) | assigned customer only |
 | Change order status | ✓ | ✓ | — |
@@ -137,15 +138,24 @@ last-owner-protected; self-demotion allowed only while another owner
 remains) — no one else can grant the owner role, and there are still no
 owner invites.
 
-**sales_rep customer scoping (ENFORCED in M4D):** a `sales_rep` sees ONLY
-the customers assigned to them (`sales_rep_customers`) and can create orders
-ONLY for an assigned customer — enforced at the DB level via
+**sales_rep customer scoping (ENFORCED):** a `sales_rep` sees ONLY the
+customers assigned to them (`sales_rep_customers`) and can create orders ONLY
+for an assigned customer — enforced at the DB level via
 `can_access_customer(tenant, customer)` in the `customers` SELECT policy and
 in `create_order_request` (a rep order with no/unassigned customer →
-`42501`; no fall-back to "all customers"). owner/admin still see and order
-for every customer in the tenant. Assignments are managed by owner/admin
-(`assign_customer_to_rep` / `unassign_customer_from_rep`); the tokenized
-shop flow (SECURITY DEFINER, `source='remote_customer'`) is unaffected.
+`42501`; no fall-back to "all customers").
+
+**sales_rep order-read scoping (ENFORCED in M4D.1):** reads of `orders`,
+`order_items`, `order_status_history` and `documents` are scoped by
+`can_access_order(tenant, order)` — owner/admin read all tenant rows; a
+`sales_rep` reads only rows tied to an order whose customer is assigned to
+them (a null-customer walk-in order is owner/admin only). So a rep can no
+longer list unassigned-customer orders or read their names via an order /
+document `customer_snapshot`. owner/admin still see and order for every
+customer in the tenant. Assignments are managed by owner/admin
+(`assign_customer_to_rep` / `unassign_customer_from_rep`); the tokenized shop
+flow (SECURITY DEFINER, `source='remote_customer'`) and order creation are
+unaffected — those RPCs run past RLS and validate scope themselves.
 
 ## 5. Reads — RLS, and the anon short-circuit
 
@@ -394,6 +404,11 @@ that email, then open `/he/invite/<token>` while signed in as it).
   a **stronger rate limiter** (global per-purpose failure counter that never
   blocks valid tokens). Team page gains sales_rep customer assignment +
   promote/demote controls.
+- **M4D.1 — sales_rep ORDER-READ scoping ENFORCED** (`can_access_order` on the
+  `orders` / `order_items` / `order_status_history` / `documents` SELECT
+  policies) — a rep can no longer read unassigned-customer orders or their
+  names via order/document snapshots. sales_rep scoping is now enforced for
+  customer reads, order creation, AND order reads.
 
 ## 13. Deferred to M5 / infra
 

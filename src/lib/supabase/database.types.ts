@@ -914,6 +914,10 @@ export type Database = {
         Args: { p_customer_id: string; p_tenant_id: string }
         Returns: boolean
       }
+      can_access_order: {
+        Args: { p_order_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
       create_manufacturer: {
         Args: {
           p_logo_url?: string

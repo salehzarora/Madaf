@@ -4,8 +4,16 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M4D shipped** (M1–M4C as below). **M4D enforces access
-> control**: sales_rep customer scoping is now ENFORCED via
+> **STATUS — M4D.1 shipped** (M1–M4D as below). **M4D.1 enforces sales_rep
+> ORDER-READ scoping**: `can_access_order(tenant, order)` re-scopes the
+> `orders` / `order_items` / `order_status_history` / `documents` SELECT
+> policies so a rep reads only orders tied to an assigned customer (a
+> null-customer walk-in order is owner/admin only) — closing the M4D gap
+> where a rep could read unassigned-customer names via order/document
+> snapshots. owner/admin unchanged; SECURITY DEFINER order/token RPCs
+> unaffected. sales_rep scoping is now enforced for customer reads, order
+> creation, AND order reads. **M4D enforced access
+> control**: sales_rep customer scoping via
 > `can_access_customer(tenant, customer)` — owner/admin see/order for all
 > tenant customers; a sales_rep sees ONLY assigned customers (customers RLS
 > policy) and can `create_order_request` ONLY for an assigned customer (no
