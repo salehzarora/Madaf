@@ -145,6 +145,32 @@ export async function removeMember(userId: string): Promise<void> {
   }
 }
 
+export async function promoteOwner(userId: string): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("promote_tenant_owner", {
+    p_tenant_id: tenantId,
+    p_user_id: userId,
+  });
+  if (error) {
+    throw new Error(`[madaf/data] promoteOwner failed: ${error.message}`);
+  }
+}
+
+export async function demoteOwner(input: {
+  userId: string;
+  role: "admin" | "sales_rep";
+}): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("demote_tenant_owner", {
+    p_tenant_id: tenantId,
+    p_user_id: input.userId,
+    p_new_role: input.role,
+  });
+  if (error) {
+    throw new Error(`[madaf/data] demoteOwner failed: ${error.message}`);
+  }
+}
+
 /**
  * Accept an invite with the RAW token (hashed server-side). Returns the
  * error's SQLSTATE on failure so the caller can localize the reason

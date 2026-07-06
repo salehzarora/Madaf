@@ -4,7 +4,19 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M4C shipped** (M1–M4B as below). **M4C adds multi-tenant
+> **STATUS — M4D shipped** (M1–M4C as below). **M4D enforces access
+> control**: sales_rep customer scoping is now ENFORCED via
+> `can_access_customer(tenant, customer)` — owner/admin see/order for all
+> tenant customers; a sales_rep sees ONLY assigned customers (customers RLS
+> policy) and can `create_order_request` ONLY for an assigned customer (no
+> fall-back). Owner transfer is real: `promote_tenant_owner` /
+> `demote_tenant_owner` (owner-only, last-owner-protected; self-demote only
+> while another owner remains) — the owner role is granted only here, never
+> by invite. The anon-token rate limiter gained a global per-purpose counter
+> (sentinel fingerprint `*`) that tightens aggregate abuse but never blocks a
+> valid token. Team page adds sales_rep customer assignment +
+> promote/demote. All M4A–M4C guarantees intact (grant audit + direct-write
+> regression). Earlier summary follows. **M4C added multi-tenant
 > membership + switching**: the M4A `unique(user_id)` on `tenant_users` is
 > dropped (only `unique(tenant_id, user_id)` remains), `authorize_tenant`
 > now VERIFIES the caller-named tenant against membership (no single-tenant

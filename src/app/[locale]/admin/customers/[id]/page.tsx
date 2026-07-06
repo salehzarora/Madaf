@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { CustomerLinksManager } from "@/components/admin/customer-links-manager";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { getSessionContext } from "@/lib/auth/session";
 import { getCustomer, getDataMode } from "@/lib/data";
 import { listCustomerLinks } from "@/lib/data/customer-links";
 
@@ -23,8 +24,14 @@ export default async function AdminCustomerDetailPage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
+  // Private-link management is owner/admin only. A sales_rep only reaches
+  // customers assigned to them (RLS-scoped getCustomer), and even then does
+  // not manage links.
   const isSupabase = getDataMode() === "supabase";
-  const links = isSupabase ? await listCustomerLinks(id) : [];
+  const canManageLinks = isSupabase
+    ? (await getSessionContext()).membership?.role !== "sales_rep"
+    : false;
+  const links = isSupabase && canManageLinks ? await listCustomerLinks(id) : [];
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -71,25 +78,27 @@ export default async function AdminCustomerDetailPage({
         </div>
       </Card>
 
-      {/* Private links */}
-      <Card className="p-5 sm:p-6">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-ink">{t.title}</h2>
-          <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
-        </div>
-        {isSupabase ? (
-          <CustomerLinksManager
-            locale={locale}
-            dict={dict}
-            customerId={id}
-            initialLinks={links}
-          />
-        ) : (
-          <p className="rounded-field bg-surface-sunken px-4 py-3 text-sm text-ink-soft">
-            {t.mockNote}
-          </p>
-        )}
-      </Card>
+      {/* Private links — owner/admin only */}
+      {!isSupabase || canManageLinks ? (
+        <Card className="p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-ink">{t.title}</h2>
+            <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+          </div>
+          {isSupabase ? (
+            <CustomerLinksManager
+              locale={locale}
+              dict={dict}
+              customerId={id}
+              initialLinks={links}
+            />
+          ) : (
+            <p className="rounded-field bg-surface-sunken px-4 py-3 text-sm text-ink-soft">
+              {t.mockNote}
+            </p>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }

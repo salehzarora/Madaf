@@ -3,15 +3,18 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M4C multi-tenant switching & hardening
-— a user may belong to MANY tenants and switch between them via a
-membership-verified `madaf_tenant` cookie (`authorize_tenant` verifies the
-NAMED tenant; team/link RPCs take an explicit `p_tenant_id`; the switcher is
-in the admin top bar). Adds a `sales_rep_customers` assignment foundation
-(RPCs only; enforcement is M4D), a minimal anonymous-token rate limiter
-(`token_access_attempts`, fingerprint-based, raw token never stored), and
-sign-up + client-side password reset. Built on M4B team & access hardening,
-on top of M4A auth (supplier sign-in at `/login`, `/admin` needs a session +
+ar/he/en with RTL). **Current phase: M4D access-control enforcement — on top
+of M4C multi-tenant switching (membership-verified `madaf_tenant` cookie;
+`authorize_tenant` verifies the NAMED tenant; team/link RPCs take an explicit
+`p_tenant_id`). M4D ENFORCES sales_rep customer scoping: a rep sees only
+assigned customers (`sales_rep_customers` via `can_access_customer` in the
+customers RLS policy) and can order ONLY for an assigned customer (gated in
+`create_order_request`; no fall-back to all customers). Adds owner transfer
+(`promote_tenant_owner`/`demote_tenant_owner`, last-owner-protected) and a
+stronger anonymous-token rate limiter (global per-purpose counter; valid
+tokens never blocked; raw token never stored). owner/admin manage rep
+assignments + owner transfer on `/admin/team`. Built on M4B team & access
+hardening, on top of M4A auth (supplier sign-in at `/login`, `/admin` needs a session +
 tenant membership, cookie-bound authenticated clients under RLS, write
 RPCs gated by `authorize_tenant`, customers order with NO login via
 tokenized `/shop/<token>` links). M4B adds tenant TEAM management: owner
@@ -23,8 +26,8 @@ Roles: owner (everything incl. role changes/removal), admin (catalog +
 orders + status + links + invite/revoke), sales_rep (orders only). Anon
 has zero direct table access. Mock stays the zero-config default (no auth,
 open demo admin). All reads/writes go through `src/lib/data/`; UI code
-must NOT import `src/lib/mock`. Documents/invoices are M5/M6; sales_rep
-scoping ENFORCEMENT is M4D.** Full context in `docs/`; auth in
+must NOT import `src/lib/mock`. Documents/invoices are M5/M6; edge/IP rate
+limiting is infra work.** Full context in `docs/`; auth in
 `docs/AUTH_AND_ACCESS_MODEL.md`; backend setup in `supabase/README.md`.
 
 ## Commands
@@ -73,9 +76,12 @@ npm run start   # serve the production build
   `sales_rep_customers` — RPC-only), add broad anon/public read policies,
   ship the service-role key to the browser, or let a stale cookie select a
   non-member tenant. Store only `token_hash` for shop links, team invites,
-  and the rate-limiter fingerprint (never the raw token). Membership RPCs
-  must preserve last-owner protection, block self-promotion, and never
-  grant the owner role outside onboarding. See
+  and the rate-limiter fingerprint (never the raw token). A `sales_rep` may
+  see/order only for ASSIGNED customers (`can_access_customer`) — never
+  fall back to all customers, and never trust a client customer_id.
+  Membership / owner-transfer RPCs must preserve last-owner protection,
+  block self-promotion, and grant the owner role ONLY via
+  `promote_tenant_owner` (owner-only) — never by invite. See
   `docs/AUTH_AND_ACCESS_MODEL.md`.
 - Data access goes through `src/lib/data/` (mode boundary; mock is the
   default and must keep working with zero env vars). Schema changes =

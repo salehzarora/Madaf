@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, Copy, Trash2, UserPlus } from "lucide-react";
+import {
+  Check,
+  Copy,
+  ShieldMinus,
+  ShieldPlus,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +18,8 @@ import type { Dictionary } from "@/i18n/types";
 import type { TenantRole } from "@/lib/auth/session";
 import {
   createInviteAction,
+  demoteOwnerAction,
+  promoteOwnerAction,
   removeMemberAction,
   revokeInviteAction,
   updateMemberRoleAction,
@@ -115,6 +124,28 @@ export function TeamManager({
       router.refresh();
     });
   }
+
+  function onPromoteOwner(userId: string) {
+    if (!window.confirm(t.confirmPromote)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await promoteOwnerAction({ userId, locale });
+      if (!result.ok) setError(t.ownerError);
+      router.refresh();
+    });
+  }
+
+  function onDemoteOwner(userId: string) {
+    if (!window.confirm(t.confirmDemote)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await demoteOwnerAction({ userId, role: "admin", locale });
+      if (!result.ok) setError(t.ownerError);
+      router.refresh();
+    });
+  }
+
+  const ownerCount = initialMembers.filter((m) => m.role === "owner").length;
 
   const statusTone: Record<InviteStatus, "success" | "danger" | "neutral" | "warning"> = {
     pending: "warning",
@@ -274,16 +305,43 @@ export function TeamManager({
                         {formatDate(m.createdAt, locale)}
                       </td>
                       <td className="px-3 py-3 text-end">
-                        {canManageMembers && !isSelf && !isOwner ? (
-                          <button
-                            type="button"
-                            onClick={() => onRemove(m.userId)}
-                            disabled={pending}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
-                          >
-                            <Trash2 className="size-3.5" aria-hidden />
-                            {t.remove}
-                          </button>
+                        {canManageMembers ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isOwner ? (
+                              <button
+                                type="button"
+                                onClick={() => onDemoteOwner(m.userId)}
+                                disabled={pending || ownerCount <= 1}
+                                title={ownerCount <= 1 ? t.lastOwnerNote : t.demoteOwner}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-40"
+                              >
+                                <ShieldMinus className="size-3.5" aria-hidden />
+                                {t.demoteOwner}
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => onPromoteOwner(m.userId)}
+                                  disabled={pending}
+                                  title={t.promoteOwner}
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50"
+                                >
+                                  <ShieldPlus className="size-3.5" aria-hidden />
+                                  {t.promoteOwner}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onRemove(m.userId)}
+                                  disabled={pending}
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                                >
+                                  <Trash2 className="size-3.5" aria-hidden />
+                                  {t.remove}
+                                </button>
+                              </>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-ink-muted">{t.none}</span>
                         )}

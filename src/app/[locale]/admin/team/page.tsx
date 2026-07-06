@@ -1,10 +1,12 @@
 import { notFound, redirect } from "next/navigation";
+import { RepAssignments } from "@/components/admin/rep-assignments";
 import { TeamManager } from "@/components/admin/team-manager";
 import { Card } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode } from "@/lib/data";
+import { getDataMode, listCustomers } from "@/lib/data";
+import { listRepAssignments } from "@/lib/data/rep-assignments";
 import { listTenantInvites, listTenantMembers } from "@/lib/data/team";
 
 /** Tenant team management — owner/admin only (Supabase mode). */
@@ -27,10 +29,17 @@ export default async function AdminTeamPage({
   const dict = getDictionary(locale);
   const t = dict.access.team;
 
-  const [members, invites] = await Promise.all([
+  const [members, invites, customers, assignments] = await Promise.all([
     listTenantMembers(),
     listTenantInvites(),
+    listCustomers(),
+    listRepAssignments(),
   ]);
+
+  const reps = members
+    .filter((m) => m.role === "sales_rep")
+    .map((m) => ({ userId: m.userId, email: m.email }));
+  const customerOptions = customers.map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -48,6 +57,13 @@ export default async function AdminTeamPage({
           initialInvites={invites}
         />
       </Card>
+      <RepAssignments
+        locale={locale}
+        dict={dict}
+        reps={reps}
+        customers={customerOptions}
+        assignments={assignments}
+      />
     </div>
   );
 }
