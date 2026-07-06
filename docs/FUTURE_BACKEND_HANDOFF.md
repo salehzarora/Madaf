@@ -76,7 +76,8 @@ everything here was built to be wired, not rebuilt.
 > `src/lib/data/supabase-reads.ts` / `supabase-writes.ts`, both on the
 > shared service context in `src/lib/data/supabase-context.ts`
 > (server-only, local-dev service-role client pinned to the demo tenant —
-> replaced by authenticated clients in M4). Product CRUD and image upload
+> since replaced by authenticated cookie clients in M4A, so this context is
+> now bootstrap/local-only and fails closed). Product CRUD and image upload
 > stay mock until M3B. Setup: `supabase/README.md`.
 >
 > The "Type → table mapping" section below describes what was actually
@@ -157,7 +158,8 @@ additionally scoped by `customer_id`.
    UUIDs; see `supabase/seed.sql`).
 2. ✅ M2 — Read paths (done): all pages read via `src/lib/data/`;
    supabase read branches implemented server-side; mock stays the
-   zero-config default; supabase mode is local-dev only until M4.
+   zero-config default; supabase mode is local-dev only (it runs on real
+   auth + RLS since M4A).
 3. ✅ M3 — Write paths done: M3A orders
    (`create_order_request()`/`update_order_status()`) + M3A.1 lockdown;
    M3B catalog (product/manufacturer/inventory CRUD RPCs + Storage image

@@ -131,8 +131,9 @@ Team rules the RPCs enforce: no **owner** invites or promotions (owner is
 set only at onboarding); no self-role-change; **last-owner protection** (a
 tenant can never drop to zero owners); admin can invite/revoke but cannot
 change roles or remove members. `sales_rep` is still **tenant-wide** (sees
-and orders for the whole tenant); per-customer/per-rep scoping is deferred
-to **M4C**.
+and orders for the whole tenant); the `sales_rep_customers` assignment
+foundation landed in M4C, but read/order **enforcement** (a rep limited to
+assigned customers) is deferred to **M4D**.
 
 ## 5. Reads — RLS, and the anon short-circuit
 
@@ -330,8 +331,8 @@ a link, or — after following it — set a new password via the browser client.
 - Do **not** expose the service-role key to the browser, point it at a
   hosted/non-local URL, or use it as the app's runtime data path.
 - Do **not** trust a client-submitted `tenant_id`, price, or total —
-  `authorize_tenant` derives the tenant; RPCs compute money from live
-  product data.
+  `authorize_tenant` accepts a tenant only if it's one of the caller's own
+  memberships (M4C); RPCs compute money from live product data.
 - Store **only** `token_hash`; return the raw token once, at creation.
 - Keep tokens opaque (no tenant/customer encoded); keep them revocable
   and expirable.
