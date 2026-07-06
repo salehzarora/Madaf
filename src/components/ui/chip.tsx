@@ -14,11 +14,11 @@ export function Chip({ selected = false, className, ...props }: ChipProps) {
       type="button"
       aria-pressed={selected}
       className={cn(
-        "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium",
-        "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
+        "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[13px] font-semibold",
+        "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
         selected
-          ? "border-brand-600 bg-brand-600 text-white shadow-sm"
-          : "border-line-strong bg-surface text-ink-soft hover:border-brand-300 hover:text-ink",
+          ? "border-brand-600 bg-brand-50 text-brand-800 shadow-[inset_0_0_0_1px_var(--color-brand-600)]"
+          : "border-line-strong bg-surface text-ink-soft hover:border-ink",
         className,
       )}
       {...props}

@@ -30,7 +30,7 @@ export function QuantityStepper({
   return (
     <div
       className={cn(
-        "inline-flex items-center rounded-field border border-line-strong bg-surface",
+        "inline-flex items-center overflow-hidden rounded-field border border-line-strong bg-surface-warm",
         className,
       )}
     >
@@ -48,9 +48,10 @@ export function QuantityStepper({
       </button>
       <span
         className={cn(
-          "min-w-10 text-center text-sm font-semibold tabular-nums",
+          "min-w-9 text-center font-mono text-sm font-semibold tabular-nums",
           value > 0 ? "text-ink" : "text-ink-muted",
         )}
+        dir="ltr"
       >
         {value}
       </span>

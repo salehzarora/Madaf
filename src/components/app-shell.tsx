@@ -22,7 +22,9 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 border-b border-line bg-surface/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line bg-surface-warm/95 backdrop-blur">
+        {/* Bottle-green shelf edge */}
+        <div className="h-1 bg-band" aria-hidden />
         <div className="mx-auto flex h-16 w-full max-w-[1720px] items-center gap-3 px-4 sm:px-6">
           <Link
             href={`/${locale}`}
@@ -40,7 +42,7 @@ export function AppShell({
           <nav className="ms-2 hidden items-center gap-1 md:flex">
             <Link
               href={`/${locale}/catalog`}
-              className="rounded-field px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="rounded-field px-3 py-2 text-sm font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               {dict.nav.catalog}
             </Link>
@@ -50,7 +52,8 @@ export function AppShell({
             <CartLink locale={locale} label={dict.nav.cart} />
             <Link
               href={`/${locale}/admin`}
-              className="inline-flex h-11 items-center gap-2 rounded-field px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
+              aria-label={dict.nav.admin}
+              className="inline-flex h-11 items-center gap-2 rounded-field px-3 text-sm font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <LayoutDashboard className="size-5" aria-hidden />
               <span className="hidden lg:inline">{dict.nav.admin}</span>
@@ -66,12 +69,12 @@ export function AppShell({
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t border-line bg-surface py-6">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-2 px-4 text-center text-xs text-ink-muted sm:px-6">
-          <p>
+      <footer className="border-t border-line bg-band text-band-muted">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-2.5 px-4 py-7 text-center sm:px-6">
+          <p className="text-sm font-semibold text-band-ink">
             {dict.meta.appNameNative} · {dict.meta.tagline}
           </p>
-          <p className="rounded-full bg-surface-sunken px-3 py-1">
+          <p className="rounded-badge border border-band-ink/15 bg-band-ink/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
             {dict.common.mockNotice}
           </p>
         </div>

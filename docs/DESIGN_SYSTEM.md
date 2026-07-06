@@ -1,8 +1,59 @@
-# Madaf Design System (M0.2)
+# Madaf Design System (M0.2 → Madaf Ledger refresh)
 
 Tokens live in [`src/app/globals.css`](../src/app/globals.css) as Tailwind v4
 `@theme` variables. **Always use tokens — never raw hex values in components**
-— with ONE deliberate exception: the category identity system below.
+— with TWO deliberate exceptions: the category identity colors below
+(`category-style.ts`) and manufacturer brand tiles.
+
+## Madaf Ledger visual system (sitewide refresh)
+
+The current visual language is **"Madaf Ledger"** — a wholesale supplier's
+paper ledger digitized. Full spec lives in
+[`docs/design/madaf-ledger/`](design/madaf-ledger/).
+
+**Foundations**
+- **Canvas** — warm paper `--color-background: #F2EFE7`; cards are white
+  `bg-surface` with `border-line` + `shadow-card` (no floating white-on-white).
+  Warm fills: `bg-surface-warm` (strip headers, table heads, footers),
+  `bg-surface-sunken` (wells).
+- **Band** — deep bottle-green `--color-band: #12312A` for the admin
+  sidebar, storefront footer, order-pad header and other "spine" surfaces;
+  text on it is `text-band-ink` / `text-band-muted`.
+- **Accent** — amber `--color-accent: #E8A33D` for the active-nav marker,
+  cart count, and invoice-draft emphasis. Amber text on light uses
+  `text-accent-text` / `text-accent-deep` for contrast; never as body color.
+- **Brand** — bottle greens `brand-600` (primary action) → `brand-800`
+  (active). Scale is 50/100/300/500/600/700/800/900/950 (no 200/400).
+
+**Type**
+- Two families via `next/font/google` in `[locale]/layout.tsx`: **Rubik**
+  (`--font-rubik`, all scripts) and **IBM Plex Mono** (`--font-plex-mono`,
+  Latin identifiers only). Use `font-mono` for every Latin identifier —
+  SKUs, order/doc numbers (`MDF-####`, `DOC-####-X`), phones, emails,
+  slot codes, `7 / 10` composites, chart values — each also wrapped in
+  `dir="ltr"`.
+- Page titles: `text-[28px] font-extrabold tracking-[-0.02em]` over an
+  eyebrow `text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted`,
+  closed with a `<ShelfRule>`.
+
+**Ledger components** (`src/components/ui/`)
+- `ShelfRule` — 2px ink rule + 1px hairline, sits under page titles / in
+  the document view (shelf-edge motif).
+- `Badge` — squared "ticket" (`rounded-badge`, `border-current/25`) with a
+  `dot` (square pip) and `dashed` variant; invoice-draft badges are dashed
+  amber.
+- `Select` — native `<select>` in a squared field with a logical-end chevron
+  (catalog sort).
+- `Chip` / `Input` / `Button` / `Card` (with `CardHeader variant="strip"`)
+  all follow the squared, hairline-ruled ledger idiom; focus ring is
+  `outline-brand-600` (amber on band surfaces).
+
+**Category dots** — the ledger identity is a single muted **color dot**
+per category (`categoryDot()` in `category-style.ts`), a small square pip on
+cards/tabs. Product art (`product-image.tsx`) is now a **neutral** paper
+placeholder (faint package glyph + mono unit-size tag), no gradient/pattern.
+The older `categoryStyle()` gradient/chip palette is retained only where the
+landing tiles and storefront still consume it.
 
 ## Category identity system (M0.2)
 

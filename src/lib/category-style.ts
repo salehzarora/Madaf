@@ -114,3 +114,22 @@ const fallback: CategoryStyle = {
 export function categoryStyle(categoryId: string): CategoryStyle {
   return styles[categoryId] ?? fallback;
 }
+
+/**
+ * "Madaf Ledger" category identity dot — a single muted color per category,
+ * used as a small square dot on cards/chips/tabs (identity only, never for
+ * actions or status). Literal hex is the deliberate exception to the token
+ * rule (kept centralized here).
+ */
+const categoryDots: Record<string, string> = {
+  "cat-drinks": "#7FB6D9",
+  "cat-snacks": "#E5A05C",
+  "cat-coffee": "#A9825A",
+  "cat-canned": "#D98A79",
+  "cat-dairy": "#9FB4D9",
+  "cat-cleaning": "#7FBFA5",
+};
+
+export function categoryDot(categoryId: string): string {
+  return categoryDots[categoryId] ?? "#CBC3B0"; // line-strong fallback
+}

@@ -5,6 +5,7 @@ import { OrderStatusControl } from "@/components/order-status-control";
 import { ProductImage } from "@/components/product-image";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { orderSubtotal, productName } from "@/lib/catalog-helpers";
@@ -57,15 +58,22 @@ export default async function AdminOrderDetailPage({
           <ArrowRight className="size-4 ltr:-scale-x-100" aria-hidden />
           {dict.admin.orders.title}
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-ink">
-            {t.title} <span dir="ltr">{order.number}</span>
+        <div className="mt-2 flex flex-wrap items-baseline gap-2.5">
+          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+            {t.title}
           </h1>
+          <span
+            dir="ltr"
+            className="font-mono text-lg font-semibold text-brand-700"
+          >
+            {order.number}
+          </span>
         </div>
         <p className="mt-1 text-sm text-ink-muted">
           {t.placedOn} {formatDate(order.createdAt, locale)} ·{" "}
           {interpolate(t.itemsCount, { count: order.items.length })}
         </p>
+        <ShelfRule className="mt-4" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -92,7 +100,7 @@ export default async function AdminOrderDetailPage({
               <CardTitle>{t.itemsTitle}</CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <ul className="divide-y divide-line/70">
+              <ul className="divide-y divide-line-hair">
                 {order.items.map((item) => {
                   const product = productById.get(item.productId);
                   if (!product) return null;
@@ -106,18 +114,19 @@ export default async function AdminOrderDetailPage({
                         product={product}
                         category={category}
                         className="size-11 shrink-0 rounded-field"
-                        iconClassName="text-base"
+                        iconClassName="size-5"
+                        showSizeTag={false}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-ink">
+                        <p className="truncate text-sm font-semibold text-ink">
                           {productName(product, locale)}
                         </p>
-                        <p className="text-xs text-ink-muted">
+                        <p className="text-xs text-ink-muted" dir="ltr">
                           {formatCurrency(item.unitPrice, locale)} ×{" "}
                           {item.quantity}
                         </p>
                       </div>
-                      <p className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                      <p className="shrink-0 text-sm font-bold tabular-nums text-ink">
                         {formatCurrency(item.unitPrice * item.quantity, locale)}
                       </p>
                     </li>
@@ -185,24 +194,28 @@ export default async function AdminOrderDetailPage({
                 (docType) => {
                   const existing = docsByType.get(docType);
                   const base = `/${locale}/admin/orders/${order.id}/documents/${docType}`;
+                  const isDraft = docType === "invoiceDraft";
                   return (
                     <div
                       key={docType}
-                      className="rounded-field border border-line p-3"
+                      className={
+                        isDraft
+                          ? "rounded-field border border-dashed border-warning/45 bg-accent-wash p-3"
+                          : "rounded-field border border-line bg-surface-warm p-3"
+                      }
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <FileText
                           className="size-4 text-brand-600"
                           aria-hidden
                         />
-                        <span className="text-sm font-medium text-ink">
+                        <span className="text-sm font-bold text-ink">
                           {dict.docs.types[docType]}
                         </span>
                         {existing?.status ? (
                           <Badge
-                            tone={
-                              docType === "invoiceDraft" ? "warning" : "neutral"
-                            }
+                            tone={isDraft ? "warning" : "neutral"}
+                            dashed={isDraft}
                           >
                             {dict.docs.status[existing.status]}
                           </Badge>
@@ -211,7 +224,9 @@ export default async function AdminOrderDetailPage({
                       <p className="mt-1 text-xs text-ink-muted">
                         {existing ? (
                           <>
-                            <span dir="ltr">{existing.number}</span>
+                            <span dir="ltr" className="font-mono">
+                              {existing.number}
+                            </span>
                             {" · "}
                             {dict.docs.docDate}:{" "}
                             {formatDate(
@@ -255,7 +270,7 @@ export default async function AdminOrderDetailPage({
               )}
 
               {/* Permanent legal notice: drafts are previews, not tax invoices. */}
-              <p className="text-xs leading-relaxed text-ink-muted">
+              <p className="text-xs leading-relaxed text-ink-soft">
                 {dict.admin.documents.legalBanner}
               </p>
             </CardContent>

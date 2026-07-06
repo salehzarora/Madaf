@@ -21,8 +21,7 @@ export function OrderStatusBadge({
   dict: Dictionary["status"];
 }) {
   return (
-    <Badge tone={toneFor[status]}>
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+    <Badge tone={toneFor[status]} dot>
       {dict[status]}
     </Badge>
   );

@@ -114,6 +114,12 @@ export interface Dictionary {
     inCart: string;
     viewCart: string;
     expiryTracked: string;
+    /** Catalog v2 command-bar sort control. */
+    sort: string;
+    sortFeatured: string;
+    sortPriceAsc: string;
+    sortPriceDesc: string;
+    sortName: string;
   };
   product: {
     packageInfo: string;
@@ -191,6 +197,20 @@ export interface Dictionary {
     actionNewProduct: string;
     actionViewOrders: string;
     actionOpenCatalog: string;
+    /** Dashboard v2 (charts + widgets). */
+    dashboard: {
+      trend: string;
+      trendSub: string;
+      statusMix: string;
+      topProducts: string;
+      topCustomers: string;
+      byRevenue: string;
+      today: string;
+      lowSub: string;
+      emptyLabel: string;
+      /** `{count}` orders. */
+      ordersCount: string;
+    };
     products: {
       title: string;
       subtitle: string;

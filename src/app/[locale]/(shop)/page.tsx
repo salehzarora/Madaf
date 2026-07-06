@@ -51,7 +51,7 @@ export default async function LandingPage({
       ...dict.landing.roles.admin,
       icon: LayoutDashboard,
       href: `/${locale}/admin`,
-      accent: "bg-accent-500 text-white",
+      accent: "bg-accent text-white",
     },
   ];
 
@@ -63,7 +63,7 @@ export default async function LandingPage({
       <section className="overflow-hidden border-b border-line bg-gradient-to-b from-brand-50 via-background to-background">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-8 lg:py-16">
           <div className="text-center lg:text-start">
-            <span className="inline-block rounded-full border border-brand-200 bg-surface px-4 py-1.5 text-xs font-semibold text-brand-700">
+            <span className="inline-block rounded-full border border-brand-100 bg-surface px-4 py-1.5 text-xs font-semibold text-brand-700">
               {dict.landing.heroBadge}
             </span>
             <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
@@ -151,7 +151,7 @@ export default async function LandingPage({
                 <Link
                   key={role.title}
                   href={role.href}
-                  className="group flex flex-col gap-3 rounded-card border border-line bg-background p-6 transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-float"
+                  className="group flex flex-col gap-3 rounded-card border border-line bg-background p-6 transition-all hover:-translate-y-0.5 hover:border-brand-100 hover:shadow-float"
                 >
                   <span
                     className={cn(

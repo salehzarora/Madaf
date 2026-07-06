@@ -100,13 +100,13 @@ export function OrderStatusControl({
               >
                 <span
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition-colors",
+                    "flex size-6 shrink-0 items-center justify-center rounded-badge border text-xs font-bold tabular-nums transition-colors",
                     reached
                       ? "border-brand-600 bg-brand-600 text-white"
                       : "border-line-strong bg-surface text-ink-muted",
                   )}
                 >
-                  {reached ? <Check className="size-3.5" /> : index + 1}
+                  {reached ? <Check className="size-3.5" strokeWidth={3} /> : index + 1}
                 </span>
                 {dict.status[step]}
               </button>
@@ -114,9 +114,9 @@ export function OrderStatusControl({
                 <span
                   aria-hidden
                   className={cn(
-                    "mx-1 hidden h-px flex-1 sm:block",
+                    "mx-1 hidden h-0.5 flex-1 sm:block",
                     status !== "cancelled" && index < currentIndex
-                      ? "bg-brand-400"
+                      ? "bg-brand-600"
                       : "bg-line-strong",
                   )}
                 />
@@ -136,7 +136,7 @@ export function OrderStatusControl({
         }
         disabled={pending || (live && !allowed.includes("cancelled"))}
         className={cn(
-          "self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
+          "inline-flex min-h-11 items-center self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
           status === "cancelled"
             ? "bg-danger-soft text-danger"
             : "text-ink-muted hover:bg-danger-soft hover:text-danger",

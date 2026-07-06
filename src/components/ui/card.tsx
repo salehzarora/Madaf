@@ -18,11 +18,18 @@ export function Card({
 
 export function CardHeader({
   className,
+  variant = "plain",
   ...props
-}: HTMLAttributes<HTMLDivElement>) {
+}: HTMLAttributes<HTMLDivElement> & { variant?: "plain" | "strip" }) {
+  // "strip" = the warm shelf-edge header band on every list/table/widget card.
   return (
     <div
-      className={cn("flex flex-col gap-1 p-5 pb-0 sm:p-6 sm:pb-0", className)}
+      className={cn(
+        variant === "strip"
+          ? "flex items-center justify-between border-b border-line bg-surface-warm px-5 py-3.5"
+          : "flex flex-col gap-1 p-5 pb-0 sm:p-6 sm:pb-0",
+        className,
+      )}
       {...props}
     />
   );
@@ -34,7 +41,7 @@ export function CardTitle({
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("text-base font-semibold text-ink", className)}
+      className={cn("text-[15px] font-bold text-ink", className)}
       {...props}
     />
   );

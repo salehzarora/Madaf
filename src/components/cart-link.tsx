@@ -21,15 +21,19 @@ export function CartLink({
   return (
     <Link
       href={`/${locale}/cart`}
+      aria-label={label}
       className={cn(
-        "relative inline-flex h-11 items-center gap-2 rounded-field px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink",
+        "relative inline-flex h-11 items-center gap-2 rounded-field bg-ink px-3.5 text-sm font-bold text-background transition-colors hover:bg-band",
         className,
       )}
     >
       <ShoppingCart className="size-5" aria-hidden />
       <span className="hidden sm:inline">{label}</span>
       {hydrated && totalPackages > 0 ? (
-        <span className="absolute -top-0.5 end-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-500 px-1 text-[11px] font-bold text-white">
+        <span
+          dir="ltr"
+          className="absolute -top-1 -end-1 flex h-5 min-w-5 items-center justify-center rounded-badge bg-accent px-1 font-mono text-[11px] font-bold text-ink"
+        >
           {totalPackages > 99 ? "99+" : totalPackages}
         </span>
       ) : null}

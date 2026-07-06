@@ -29,17 +29,20 @@ export function OrderPad({
 
   return (
     <aside className="sticky top-24 flex max-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
-      <header className="border-b border-line px-4 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-bold text-ink">
-          <ShoppingCart className="size-4 text-brand-600" aria-hidden />
+      <header className="border-b border-line">
+        <h2 className="flex items-center gap-2 bg-band px-4 py-3 text-sm font-bold text-band-ink">
+          <ShoppingCart className="size-4 text-accent" aria-hidden />
           {dict.cart.orderSummary}
           {hydrated && totalPackages > 0 ? (
-            <span className="ms-auto rounded-full bg-brand-600 px-2 py-0.5 text-xs font-bold text-white">
+            <span
+              dir="ltr"
+              className="ms-auto rounded-badge bg-accent px-2 py-0.5 font-mono text-xs font-bold text-ink"
+            >
               {totalPackages}
             </span>
           ) : null}
         </h2>
-        <div className="mt-2.5">
+        <div className="bg-surface-warm px-4 py-3">
           <CustomerPicker locale={locale} dict={dict} className="w-full" />
         </div>
       </header>
@@ -55,7 +58,7 @@ export function OrderPad({
             <p className="text-xs text-ink-muted">{dict.cart.emptyHint}</p>
           </div>
         ) : (
-          <ul className="divide-y divide-line/60">
+          <ul className="divide-y divide-line-hair">
             {items.map((item) => {
               const product = productById.get(item.productId);
               if (!product) return null;
@@ -69,7 +72,7 @@ export function OrderPad({
                       type="button"
                       onClick={() => removeItem(item.productId)}
                       aria-label={dict.common.remove}
-                      className="shrink-0 rounded p-1 text-ink-muted transition-colors hover:text-danger"
+                      className="flex size-9 shrink-0 items-center justify-center rounded text-ink-muted transition-colors hover:text-danger"
                     >
                       <Trash2 className="size-3.5" aria-hidden />
                     </button>
@@ -80,7 +83,7 @@ export function OrderPad({
                       value={item.quantity}
                       onChange={(next) => setQuantity(item.productId, next)}
                     />
-                    <p className="text-sm font-bold tabular-nums text-ink">
+                    <p className="font-mono text-sm font-bold tabular-nums text-ink">
                       {formatCurrency(
                         product.wholesalePrice * item.quantity,
                         locale,
@@ -95,16 +98,16 @@ export function OrderPad({
       </div>
 
       {/* Totals + CTA */}
-      <footer className="border-t border-line bg-surface-sunken/50 px-4 py-3">
+      <footer className="border-t border-line bg-surface-warm px-4 py-3">
         <div className="flex items-baseline justify-between">
-          <span className="text-sm font-medium text-ink-soft">
+          <span className="text-sm font-semibold text-ink-soft">
             {dict.common.subtotal}
           </span>
-          <span className="text-lg font-extrabold tabular-nums tracking-tight text-ink">
+          <span className="font-mono text-lg font-extrabold tabular-nums tracking-tight text-ink">
             {formatCurrency(subtotal, locale)}
           </span>
         </div>
-        <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">
+        <p className="mt-0.5 text-[11px] leading-snug text-ink-soft">
           {dict.cart.vatNote}
         </p>
         <Link
