@@ -406,7 +406,7 @@ invites end-to-end you need a **second** local auth user whose email you
 control (create one in Studio → Authentication, sign in as owner, invite
 that email, then open `/he/invite/<token>` while signed in as it).
 
-## 12. Delivered in M4C · M4D · M4D.1 · M4D.2
+## 12. Delivered in M4C · M4D · M4D.1 · M4D.2 · M5A
 
 - **M4C — Multi-tenant membership + tenant switcher** (verified `madaf_tenant`
   cookie; `authorize_tenant` verifies the named tenant), the
@@ -432,6 +432,24 @@ that email, then open `/he/invite/<token>` while signed in as it).
   created-by). `token_hash` stays column-hidden (M4A.1), writes stay
   RPC-only, and the anon SECURITY DEFINER token RPCs bypass RLS, so the
   tokenized shop flow and owner/admin link management are unaffected.
+- **M5A — order-document generation (owner/admin/sales_rep, order-scoped).**
+  Documents (order request / delivery note / invoice **draft**) are recorded
+  ONLY through the SECURITY DEFINER `create_order_document(p_tenant_id,
+  p_order_id, p_document_type, p_document_locale, p_legal_notice)` RPC —
+  documents stay table-level read-only (no direct INSERT/UPDATE/DELETE). The
+  RPC runs `authorize_tenant([owner,admin,sales_rep])` then
+  `can_access_order`, so owner/admin generate for any tenant order, a
+  `sales_rep` only for an assigned-customer order, and a walk-in/null-customer
+  order is owner/admin only (`MDF20` otherwise); a non-member is rejected
+  (`42501`); anon has no EXECUTE. The download route
+  (`/[locale]/admin/orders/[id]/documents/[type]`) first reads the order
+  through the authenticated RLS client (`can_access_order` → a rep/non-member
+  sees nothing → 404), then records the row + streams the PDF. invoice_draft
+  is a DRAFT PREVIEW only: status forced `draft` (the
+  `documents_invoice_draft_never_generated` CHECK blocks `generated` even for
+  the service role), a non-blank `legal_notice` is guaranteed, and the number
+  is an internal `DOC-####-x` (never a legal tax sequence). No storage bucket,
+  no signing, no provider integration (M5B/M6).
 
 ## 13. Deferred to M5 / infra
 

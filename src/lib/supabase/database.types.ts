@@ -929,6 +929,33 @@ export type Database = {
         }
         Returns: string
       }
+      create_order_document: {
+        Args: {
+          p_document_locale?: Database["public"]["Enums"]["locale_code"]
+          p_document_type: Database["public"]["Enums"]["document_type"]
+          p_legal_notice?: string
+          p_order_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          document_locale: Database["public"]["Enums"]["locale_code"]
+          document_number: string
+          document_type: Database["public"]["Enums"]["document_type"]
+          id: string
+          legal_notice: string
+          order_id: string
+          status: Database["public"]["Enums"]["document_status"]
+          tenant_id: string
+          totals_snapshot: Json
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "documents"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       create_order_request: {
         Args: {
           p_customer_id?: string

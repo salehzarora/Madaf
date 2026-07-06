@@ -27,6 +27,7 @@ export {
   type ProductWriteInput,
 } from "./products";
 export { getCustomer, listCustomers } from "./customers";
+export { getOrderDocumentSource, recordOrderDocument } from "./documents";
 export {
   createOrderRequest,
   getDocument,

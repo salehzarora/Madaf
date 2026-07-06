@@ -20,6 +20,7 @@ import "server-only";
  * BEFORE touching the DB — the catalog is never globally public.
  */
 import type { Database } from "@/lib/supabase/database.types";
+import type { OrderDocumentSource } from "@/lib/pdf/document-model";
 import type {
   Availability,
   Category,
@@ -517,6 +518,106 @@ export async function sbListDocumentsForOrder(
     .order("document_number");
   if (error) fail("listDocumentsForOrder", error.message);
   return data.map(mapDocument).sort(byDocumentLifecycle);
+}
+
+// ── Document render source (M5A) ──────────────────────────────────────────
+// A snapshot-faithful read for PDF generation: the order's totals +
+// customer_snapshot + every order_items snapshot column. Runs under the
+// authenticated RLS client, so `can_access_order` (M4D.1) gates it — a
+// sales_rep only sees assigned-customer orders; anyone else gets undefined.
+
+interface DocOrderData {
+  order_number: string;
+  created_at: string;
+  notes: string | null;
+  customer_snapshot: unknown;
+  subtotal: number;
+  vat_total: number;
+  total: number;
+  currency: string;
+  order_items: {
+    id: string;
+    product_name_snapshot: unknown;
+    package_unit_snapshot: Row<"order_items">["package_unit_snapshot"];
+    package_quantity_snapshot: number;
+    quantity: number;
+    unit_price_snapshot: number;
+    line_subtotal: number;
+    created_at: string;
+  }[];
+}
+
+const DOC_ORDER_SELECT =
+  "order_number, created_at, notes, customer_snapshot, subtotal, vat_total, total, currency, " +
+  "order_items (id, product_name_snapshot, package_unit_snapshot, package_quantity_snapshot, quantity, unit_price_snapshot, line_subtotal, created_at)";
+
+function localizedFrom(value: unknown): { ar: string; he: string; en: string } {
+  const v = (value ?? {}) as { ar?: string; he?: string; en?: string };
+  return { ar: v.ar ?? "", he: v.he ?? "", en: v.en ?? "" };
+}
+
+export async function sbGetOrderDocumentSource(
+  orderId: string,
+): Promise<OrderDocumentSource | undefined> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return undefined;
+  const { data, error } = await client
+    .from("orders")
+    .select(DOC_ORDER_SELECT)
+    .eq("tenant_id", tenantId)
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) fail("getOrderDocumentSource", error.message);
+  if (!data) return undefined; // RLS-denied (rep, non-member) or unknown id.
+
+  const row = data as unknown as DocOrderData;
+  const supplier = await sbGetSupplier();
+
+  const snap = (row.customer_snapshot ?? null) as {
+    name?: string;
+    city?: { ar?: string; he?: string; en?: string };
+    phone?: string;
+    contact_name?: string;
+  } | null;
+
+  const items = [...row.order_items]
+    .sort(
+      (a, b) =>
+        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+    )
+    .map((it) => ({
+      name: localizedFrom(it.product_name_snapshot),
+      packageUnit: it.package_unit_snapshot,
+      packageQuantity: it.package_quantity_snapshot,
+      quantity: it.quantity,
+      unitPrice: it.unit_price_snapshot,
+      // EXCL-VAT line total (= quantity × unit price). NOT order_items.line_total,
+      // which is VAT-INCLUSIVE (line_subtotal + line_vat) — the document lays
+      // out excl-VAT lines + a separate VAT row (matches the mock path).
+      lineTotal: it.line_subtotal,
+    }));
+
+  return {
+    supplier,
+    orderNumber: row.order_number,
+    orderDate: row.created_at,
+    notes: row.notes ?? undefined,
+    customer: snap
+      ? {
+          name: snap.name ?? "—",
+          city: localizedFrom(snap.city),
+          phone: snap.phone ?? "",
+          contactName: snap.contact_name ?? "",
+        }
+      : null,
+    items,
+    totals: {
+      subtotal: row.subtotal,
+      vatTotal: row.vat_total,
+      total: row.total,
+      currency: row.currency,
+    },
+  };
 }
 
 export async function sbGetSupplier(): Promise<Supplier> {

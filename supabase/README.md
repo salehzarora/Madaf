@@ -51,6 +51,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260708100000_sales_rep_scope_owner_transfer.sql` | M4D: `can_access_customer()` + rep-scoped customers SELECT policy + `create_order_request` sales_rep gate; `promote_tenant_owner` / `demote_tenant_owner` (last-owner-protected); global per-purpose token rate-limit counter |
 | `migrations/20260708110000_sales_rep_order_read_scope.sql` | M4D.1: `can_access_order()` re-scopes the orders / order_items / order_status_history / documents SELECT policies (a sales_rep reads only assigned-customer orders) |
 | `migrations/20260708120000_restrict_customer_link_reads.sql` | M4D.2: swap the `customer_access_links` SELECT policy from member-wide (`is_tenant_member`) to owner/admin-only (`has_tenant_role(['owner','admin'])`) — a sales_rep can no longer read private-link metadata, even for an assigned customer |
+| `migrations/20260709100000_document_generation.sql` | M5A: `create_order_document()` — the ONLY document write path (documents stay table-level read-only). SECURITY DEFINER, authorize_tenant + can_access_order gated; idempotent per (order, type); internal `DOC-####-x` number; invoice_draft forced `draft` with a guaranteed legal_notice (never a legal tax invoice) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -129,12 +130,17 @@ documents stay renderable after catalog or customer changes.
   validation (name/description length caps, image_url sanity, SKU
   uniqueness, cross-tenant guards) with a direct write, insert or delete.
 - `documents`, `order_status_history` and `audit_events` are
-  **read-only for every client**: no write policies AND no write grants
-  (grants mirror the policy matrix as defense in depth). History comes
-  from the status trigger; documents/audit rows come from seed/service
-  role only — no client can forge an invoice draft, flip a document to
-  `generated` (also blocked by CHECK, even for the service role), or
-  plant audit entries.
+  **read-only at the table level for every client**: no write policies AND
+  no write grants (grants mirror the policy matrix as defense in depth).
+  History comes from the status trigger; audit rows from seed/service role.
+  Since **M5A**, `documents` rows are written EXCLUSIVELY through the
+  SECURITY DEFINER `create_order_document()` RPC (order request / delivery
+  note / invoice draft) — authorize_tenant + `can_access_order` gated,
+  idempotent per (order, type). No client can forge an invoice draft, flip a
+  document to `generated` (blocked by CHECK even for the service role), strip
+  the legal notice, or plant audit entries. The RPC always writes `draft`
+  with a guaranteed non-blank `legal_notice`; the number is an internal
+  `DOC-####-x`, never a legal tax sequence.
 - `customer_access_links` (private shop links, M4A) is anon-inaccessible
   and **owner/admin read-only** (M4D.2): `anon` has NO grants;
   `authenticated` has a **column-scoped SELECT that omits `token_hash`**,
