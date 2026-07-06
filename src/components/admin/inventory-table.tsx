@@ -71,43 +71,48 @@ export function InventoryTable({
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-3 text-start font-medium">{t.colProduct}</th>
-                <th className="px-4 py-3 text-end font-medium">{t.colStock}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colLocation}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colExpiry}</th>
+              <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                <th className="px-4 py-3 text-start">{t.colProduct}</th>
+                <th className="px-4 py-3 text-end">{t.colStock}</th>
+                <th className="px-4 py-3 text-start">{t.colLocation}</th>
+                <th className="px-4 py-3 text-start">{t.colExpiry}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ item, product, low, expiringSoon }) => (
                 <tr
                   key={item.productId}
-                  className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                  className={cn(
+                    "border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm",
+                    low && "bg-accent-wash",
+                  )}
                 >
                   <td className="px-4 py-3.5">
                     <p className="font-medium text-ink">
                       {productName(product, locale)}
                     </p>
-                    <p className="text-xs text-ink-muted" dir="ltr">
+                    <p className="mt-0.5 font-mono text-[13px] text-ink-soft" dir="ltr">
                       {product.sku}
                     </p>
                   </td>
                   <td className="px-4 py-3.5 text-end">
                     <span
                       className={cn(
-                        "font-semibold tabular-nums",
+                        "font-mono text-[13px] font-semibold tabular-nums",
                         item.stockPackages === 0
                           ? "text-danger"
                           : low
                             ? "text-warning"
                             : "text-ink",
                       )}
+                      dir="ltr"
                     >
                       {formatNumber(item.stockPackages, locale)}
                     </span>
                     {low ? (
                       <Badge
                         tone={item.stockPackages === 0 ? "danger" : "warning"}
+                        dot
                         className="ms-2"
                       >
                         {item.stockPackages === 0
@@ -116,24 +121,36 @@ export function InventoryTable({
                       </Badge>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3.5 text-ink-soft" dir="ltr">
-                    {item.location}
+                  <td className="px-4 py-3.5">
+                    <span
+                      className="inline-flex items-center rounded-badge border border-line bg-surface-sunken px-2 py-0.5 font-mono text-xs text-ink-soft"
+                      dir="ltr"
+                    >
+                      {item.location}
+                    </span>
                   </td>
                   <td className="px-4 py-3.5">
                     {item.nearestExpiry ? (
-                      <span className="inline-flex items-center gap-2">
+                      expiringSoon ? (
+                        <span className="inline-flex items-center gap-2 rounded-field border border-dashed border-warning/45 bg-accent-wash px-2 py-1">
+                          <span
+                            className="font-mono text-[13px] font-semibold tabular-nums text-warning"
+                            dir="ltr"
+                          >
+                            {formatDate(item.nearestExpiry, locale)}
+                          </span>
+                          <Badge tone="warning" dashed dot>
+                            {t.expiringSoon}
+                          </Badge>
+                        </span>
+                      ) : (
                         <span
-                          className={cn(
-                            "tabular-nums",
-                            expiringSoon ? "font-semibold text-warning" : "text-ink-soft",
-                          )}
+                          className="font-mono text-[13px] tabular-nums text-ink-soft"
+                          dir="ltr"
                         >
                           {formatDate(item.nearestExpiry, locale)}
                         </span>
-                        {expiringSoon ? (
-                          <Badge tone="warning">{t.expiringSoon}</Badge>
-                        ) : null}
-                      </span>
+                      )
                     ) : (
                       <span className="text-ink-muted">{t.noExpiry}</span>
                     )}

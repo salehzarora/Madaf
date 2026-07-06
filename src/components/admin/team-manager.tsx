@@ -3,16 +3,20 @@
 import {
   Check,
   Copy,
+  Mail,
   ShieldMinus,
   ShieldPlus,
   Trash2,
   UserPlus,
+  Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import type { TenantRole } from "@/lib/auth/session";
@@ -26,6 +30,7 @@ import {
 } from "@/lib/actions/team";
 import type { InviteStatus, TenantInvite, TenantMember } from "@/lib/data/team";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const INVITE_ROLES = ["admin", "sales_rep"] as const;
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
@@ -175,53 +180,78 @@ export function TeamManager({
         </p>
       ) : null}
 
-      {/* Invite form (owner + admin) */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <div className="flex-1">
-          <Label htmlFor="invite-email">{t.inviteEmail}</Label>
-          <Input
-            id="invite-email"
-            type="email"
-            dir="ltr"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={t.inviteEmailPlaceholder}
-            maxLength={254}
-          />
-        </div>
-        <div className="sm:w-40">
-          <Label htmlFor="invite-role">{t.inviteRole}</Label>
-          <Select
-            id="invite-role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as (typeof INVITE_ROLES)[number])}
+      {/* Invite panel (owner + admin) — band surface, amber submit. */}
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-4 bg-band p-5 sm:flex-row sm:items-end sm:p-6">
+          <div className="flex-1">
+            <label
+              htmlFor="invite-email"
+              className="mb-1.5 block text-[13px] font-semibold text-band-muted"
+            >
+              {t.inviteEmail}
+            </label>
+            <input
+              id="invite-email"
+              type="email"
+              dir="ltr"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t.inviteEmailPlaceholder}
+              maxLength={254}
+              className="h-11 w-full rounded-field border border-band-muted/35 bg-band-ink/[.07] px-3.5 font-mono text-[13px] text-band-ink placeholder:text-band-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+            />
+          </div>
+          <div className="sm:w-40">
+            <label
+              htmlFor="invite-role"
+              className="mb-1.5 block text-[13px] font-semibold text-band-muted"
+            >
+              {t.inviteRole}
+            </label>
+            <select
+              id="invite-role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as (typeof INVITE_ROLES)[number])}
+              className="h-11 w-full rounded-field border border-band-muted/35 bg-band-ink/[.07] px-3.5 text-sm text-band-ink transition-colors focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+            >
+              {INVITE_ROLES.map((r) => (
+                <option key={r} value={r} className="text-ink">
+                  {roleLabels[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:w-40">
+            <label
+              htmlFor="invite-expiry"
+              className="mb-1.5 block text-[13px] font-semibold text-band-muted"
+            >
+              {t.expiry}
+            </label>
+            <select
+              id="invite-expiry"
+              value={expiryDays}
+              onChange={(e) => setExpiryDays(Number(e.target.value))}
+              className="h-11 w-full rounded-field border border-band-muted/35 bg-band-ink/[.07] px-3.5 text-sm text-band-ink transition-colors focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+            >
+              {EXPIRY_CHOICES.map((d) => (
+                <option key={d} value={d} className="text-ink">
+                  {expiryOptionLabel(d)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={onInvite}
+            disabled={pending}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-field bg-accent px-4 text-sm font-extrabold text-band transition-colors hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
           >
-            {INVITE_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {roleLabels[r]}
-              </option>
-            ))}
-          </Select>
+            <UserPlus className="size-4" aria-hidden />
+            {pending ? t.sending : t.sendInvite}
+          </button>
         </div>
-        <div className="sm:w-40">
-          <Label htmlFor="invite-expiry">{t.expiry}</Label>
-          <Select
-            id="invite-expiry"
-            value={expiryDays}
-            onChange={(e) => setExpiryDays(Number(e.target.value))}
-          >
-            {EXPIRY_CHOICES.map((d) => (
-              <option key={d} value={d}>
-                {expiryOptionLabel(d)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Button onClick={onInvite} disabled={pending} className="sm:w-auto">
-          <UserPlus className="size-4" aria-hidden />
-          {pending ? t.sending : t.sendInvite}
-        </Button>
-      </div>
+      </Card>
 
       {/* Copy-once invite banner */}
       {createdUrl ? (
@@ -231,7 +261,7 @@ export function TeamManager({
           <div className="mt-3 flex items-center gap-2">
             <code
               dir="ltr"
-              className="min-w-0 flex-1 truncate rounded-field border border-line bg-surface px-3 py-2 text-xs text-ink"
+              className="min-w-0 flex-1 truncate rounded-field border border-line bg-surface px-3 py-2 font-mono text-xs text-ink"
             >
               {createdUrl}
             </code>
@@ -248,21 +278,23 @@ export function TeamManager({
       ) : null}
 
       {/* Members */}
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-ink">{t.membersTitle}</h2>
+      <Card className="overflow-hidden">
+        <CardHeader variant="strip">
+          <CardTitle>{t.membersTitle}</CardTitle>
+        </CardHeader>
         {initialMembers.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-            {t.noMembers}
-          </p>
+          <div className="p-5 sm:p-6">
+            <EmptyState icon={<Users />} title={t.noMembers} />
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead>
-                <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colEmail}</th>
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colRole}</th>
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colJoined}</th>
-                  <th className="px-3 py-2.5 text-end font-medium">{dict.common.actions}</th>
+                <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                  <th className="px-4 py-3 text-start">{t.colEmail}</th>
+                  <th className="px-4 py-3 text-start">{t.colRole}</th>
+                  <th className="px-4 py-3 text-start">{t.colJoined}</th>
+                  <th className="px-4 py-3 text-end">{dict.common.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,17 +302,37 @@ export function TeamManager({
                   const isSelf = m.userId === currentUserId;
                   const isOwner = m.role === "owner";
                   const editable = canManageMembers && !isSelf && !isOwner;
+                  const initial = m.email.trim().charAt(0).toUpperCase() || "?";
                   return (
-                    <tr key={m.userId} className="border-b border-line/60 last:border-0">
-                      <td className="px-3 py-3 font-medium text-ink" dir="ltr">
-                        <span className="flex items-center gap-2">
-                          {m.email}
+                    <tr
+                      key={m.userId}
+                      className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
+                    >
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "flex size-8 shrink-0 items-center justify-center rounded-field text-[13px] font-extrabold",
+                              isOwner
+                                ? "bg-band text-accent"
+                                : "bg-surface-sunken text-ink-soft",
+                            )}
+                          >
+                            {initial}
+                          </span>
+                          <span
+                            className="font-mono text-[13px] font-medium text-ink"
+                            dir="ltr"
+                          >
+                            {m.email}
+                          </span>
                           {isSelf ? (
                             <Badge tone="brand" dir="auto">{t.you}</Badge>
                           ) : null}
-                        </span>
+                        </div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-3.5">
                         {editable ? (
                           <Select
                             aria-label={t.changeRole}
@@ -296,15 +348,15 @@ export function TeamManager({
                             ))}
                           </Select>
                         ) : (
-                          <Badge tone={isOwner ? "brand" : "neutral"}>
+                          <Badge tone={isOwner ? "brand" : "neutral"} dot>
                             {roleLabels[m.role]}
                           </Badge>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-ink-muted">
+                      <td className="px-4 py-3.5 text-ink-muted">
                         {formatDate(m.createdAt, locale)}
                       </td>
-                      <td className="px-3 py-3 text-end">
+                      <td className="px-4 py-3.5 text-end">
                         {canManageMembers ? (
                           <div className="flex items-center justify-end gap-1.5">
                             {isOwner ? (
@@ -313,7 +365,7 @@ export function TeamManager({
                                 onClick={() => onDemoteOwner(m.userId)}
                                 disabled={pending || ownerCount <= 1}
                                 title={ownerCount <= 1 ? t.lastOwnerNote : t.demoteOwner}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-40"
+                                className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-40"
                               >
                                 <ShieldMinus className="size-3.5" aria-hidden />
                                 {t.demoteOwner}
@@ -325,7 +377,7 @@ export function TeamManager({
                                   onClick={() => onPromoteOwner(m.userId)}
                                   disabled={pending}
                                   title={t.promoteOwner}
-                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50"
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
                                 >
                                   <ShieldPlus className="size-3.5" aria-hidden />
                                   {t.promoteOwner}
@@ -334,7 +386,7 @@ export function TeamManager({
                                   type="button"
                                   onClick={() => onRemove(m.userId)}
                                   disabled={pending}
-                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger disabled:opacity-50"
                                 >
                                   <Trash2 className="size-3.5" aria-hidden />
                                   {t.remove}
@@ -354,53 +406,75 @@ export function TeamManager({
           </div>
         )}
         {canManageMembers ? (
-          <p className="mt-2 text-xs text-ink-muted">{t.lastOwnerNote}</p>
+          <p className="border-t border-line bg-surface-warm px-5 py-3 text-xs text-ink-soft">
+            {t.lastOwnerNote}
+          </p>
         ) : null}
-      </section>
+      </Card>
 
       {/* Invitations */}
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-ink">{t.invitesTitle}</h2>
+      <Card className="overflow-hidden">
+        <CardHeader variant="strip">
+          <CardTitle>{t.invitesTitle}</CardTitle>
+        </CardHeader>
         {initialInvites.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-            {t.noInvites}
-          </p>
+          <div className="p-5 sm:p-6">
+            <EmptyState icon={<Mail />} title={t.noInvites} />
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead>
-                <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colEmail}</th>
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colRole}</th>
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colStatus}</th>
-                  <th className="px-3 py-2.5 text-start font-medium">{t.colExpires}</th>
-                  <th className="px-3 py-2.5 text-end font-medium">{dict.common.actions}</th>
+                <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                  <th className="px-4 py-3 text-start">{t.colEmail}</th>
+                  <th className="px-4 py-3 text-start">{t.colRole}</th>
+                  <th className="px-4 py-3 text-start">{t.colStatus}</th>
+                  <th className="px-4 py-3 text-start">{t.colExpires}</th>
+                  <th className="px-4 py-3 text-end">{dict.common.actions}</th>
                 </tr>
               </thead>
               <tbody>
-                {initialInvites.map((inv) => (
-                  <tr key={inv.id} className="border-b border-line/60 last:border-0">
-                    <td className="px-3 py-3 font-medium text-ink" dir="ltr">
-                      {inv.email}
+                {initialInvites.map((inv) => {
+                  const initial = inv.email.trim().charAt(0).toUpperCase() || "?";
+                  return (
+                  <tr
+                    key={inv.id}
+                    className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
+                  >
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          aria-hidden
+                          className="flex size-8 shrink-0 items-center justify-center rounded-field bg-surface-sunken text-[13px] font-extrabold text-ink-soft"
+                        >
+                          {initial}
+                        </span>
+                        <span
+                          className="font-mono text-[13px] font-medium text-ink"
+                          dir="ltr"
+                        >
+                          {inv.email}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-3 py-3">
-                      <Badge tone="neutral">{roleLabels[inv.role]}</Badge>
+                    <td className="px-4 py-3.5">
+                      <Badge tone="neutral" dot>{roleLabels[inv.role]}</Badge>
                     </td>
-                    <td className="px-3 py-3">
-                      <Badge tone={statusTone[inv.status]}>
+                    <td className="px-4 py-3.5">
+                      <Badge tone={statusTone[inv.status]} dot>
                         {statusLabel[inv.status]}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 text-ink-muted">
+                    <td className="px-4 py-3.5 text-ink-muted">
                       {inv.expiresAt ? formatDate(inv.expiresAt, locale) : t.never}
                     </td>
-                    <td className="px-3 py-3 text-end">
+                    <td className="px-4 py-3.5 text-end">
                       {inv.status === "pending" ? (
                         <button
                           type="button"
                           onClick={() => onRevoke(inv.id)}
                           disabled={pending}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger disabled:opacity-50"
                         >
                           <Trash2 className="size-3.5" aria-hidden />
                           {t.revoke}
@@ -410,12 +484,13 @@ export function TeamManager({
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </Card>
     </div>
   );
 }

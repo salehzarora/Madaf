@@ -179,10 +179,10 @@ export function ProductForm({
 
       {/* Names & translations */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionTranslations}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4">
+        <CardContent className="grid gap-4">
           <div>
             <Label htmlFor="np-he">{t.nameHe}</Label>
             <Input id="np-he" name="nameHe" dir="rtl" lang="he" required
@@ -203,10 +203,10 @@ export function ProductForm({
 
       {/* Basics */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionBasics}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="np-cat">{t.category}</Label>
             <Select id="np-cat" name="categoryId" required
@@ -235,21 +235,21 @@ export function ProductForm({
           </div>
           <div>
             <Label htmlFor="np-sku">{t.sku}</Label>
-            <Input id="np-sku" name="sku" dir="ltr" defaultValue={product?.sku} />
+            <Input id="np-sku" name="sku" mono dir="ltr" defaultValue={product?.sku} />
           </div>
           <div>
             <Label htmlFor="np-barcode">{t.barcode}</Label>
-            <Input id="np-barcode" name="barcode" dir="ltr" />
+            <Input id="np-barcode" name="barcode" mono dir="ltr" />
           </div>
         </CardContent>
       </Card>
 
       {/* Packaging */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionPackaging}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="np-ptype">{t.packageType}</Label>
             <Select id="np-ptype" name="packageUnit"
@@ -264,7 +264,8 @@ export function ProductForm({
           <div>
             <Label htmlFor="np-upp">{t.unitsPerPackage}</Label>
             <Input id="np-upp" name="packageQuantity" type="number" min={1}
-              defaultValue={product?.unitsPerPackage ?? 24} dir="ltr" />
+              defaultValue={product?.unitsPerPackage ?? 24} dir="ltr"
+              className="tabular-nums" />
           </div>
           <div>
             <Label htmlFor="np-unit">{t.baseUnit}</Label>
@@ -281,34 +282,35 @@ export function ProductForm({
             <Label htmlFor="np-size">{t.unitSize}</Label>
             <Input id="np-size" name="unitSize" dir="ltr"
               defaultValue={product?.unitSize} />
-            <p className="mt-1 text-xs text-ink-muted">{t.unitSizeHint}</p>
+            <p className="mt-1 text-xs text-ink-soft">{t.unitSizeHint}</p>
           </div>
         </CardContent>
       </Card>
 
       {/* Pricing */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionPricing}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="np-price">{t.wholesalePrice}</Label>
             <Input id="np-price" name="wholesalePrice" type="number" min={0}
-              step="0.1" required dir="ltr"
+              step="0.1" required dir="ltr" className="tabular-nums"
               defaultValue={product?.wholesalePrice} />
           </div>
           <div>
             <Label htmlFor="np-vat">{t.vatRate}</Label>
             <Input id="np-vat" name="vatRate" type="number" min={0} max={0.99}
-              step="0.01" dir="ltr" defaultValue={product?.vatRate ?? 0.18} />
+              step="0.01" dir="ltr" className="tabular-nums"
+              defaultValue={product?.vatRate ?? 0.18} />
           </div>
           <label className="flex items-start gap-3 rounded-field border border-line p-3">
             <input type="checkbox" name="trackExpiry" className="mt-1 size-4 accent-brand-600"
               defaultChecked={product?.trackExpiry ?? false} />
             <span>
               <span className="block text-sm font-medium text-ink">{t.trackExpiry}</span>
-              <span className="block text-xs text-ink-muted">{t.trackExpiryHint}</span>
+              <span className="block text-xs text-ink-soft">{t.trackExpiryHint}</span>
             </span>
           </label>
           <label className="flex items-start gap-3 rounded-field border border-line p-3">
@@ -316,7 +318,7 @@ export function ProductForm({
               defaultChecked={product?.isActive ?? true} />
             <span>
               <span className="block text-sm font-medium text-ink">{t.active}</span>
-              <span className="block text-xs text-ink-muted">{t.activeHint}</span>
+              <span className="block text-xs text-ink-soft">{t.activeHint}</span>
             </span>
           </label>
         </CardContent>
@@ -324,10 +326,10 @@ export function ProductForm({
 
       {/* Image */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionImage}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4">
+        <CardContent className="grid gap-4">
           <div className="flex items-center gap-4">
             <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-field border border-line bg-surface-sunken">
               {preview ? (
@@ -344,7 +346,7 @@ export function ProductForm({
                   setImageUrl(e.target.value);
                   setPreview(e.target.value || undefined);
                 }} />
-              <p className="mt-1 text-xs text-ink-muted">{t.imageUrlHint}</p>
+              <p className="mt-1 text-xs text-ink-soft">{t.imageUrlHint}</p>
             </div>
           </div>
 
@@ -370,7 +372,7 @@ export function ProductForm({
               {imageUrl ? (
                 <button type="button"
                   onClick={() => { setImageUrl(""); setPreview(undefined); }}
-                  className="ms-3 text-sm text-ink-muted underline transition-colors hover:text-danger">
+                  className="ms-3 rounded-field text-sm text-ink-soft underline transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
                   {t.removeImage}
                 </button>
               ) : null}
@@ -386,19 +388,21 @@ export function ProductForm({
 
       {/* Inventory */}
       <Card>
-        <CardHeader>
+        <CardHeader variant="strip">
           <CardTitle>{t.sectionInventory}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="np-qty">{t.stockQuantity}</Label>
             <Input id="np-qty" name="quantityAvailable" type="number" min={0}
-              dir="ltr" defaultValue={inventory?.stockPackages ?? 0} />
+              dir="ltr" className="tabular-nums"
+              defaultValue={inventory?.stockPackages ?? 0} />
           </div>
           <div>
             <Label htmlFor="np-thr">{t.lowStockThreshold}</Label>
             <Input id="np-thr" name="lowStockThreshold" type="number" min={0}
-              dir="ltr" defaultValue={inventory?.lowStockThreshold ?? 10} />
+              dir="ltr" className="tabular-nums"
+              defaultValue={inventory?.lowStockThreshold ?? 10} />
           </div>
           <div>
             <Label htmlFor="np-loc">{t.warehouseLocation}</Label>
@@ -424,7 +428,7 @@ export function ProductForm({
           {saving ? t.saving : t.save}
         </Button>
         <Link href={`/${locale}/admin/products`}
-          className="inline-flex h-12 items-center rounded-field px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken">
+          className="inline-flex h-12 items-center rounded-field px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
           {dict.common.cancel}
         </Link>
       </div>

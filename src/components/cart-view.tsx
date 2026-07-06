@@ -8,6 +8,7 @@ import { ProductImage } from "@/components/product-image";
 import { QuantityStepper } from "@/components/quantity-stepper";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label, Textarea } from "@/components/ui/input";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
@@ -38,9 +39,15 @@ export function CartView({
   if (items.length === 0) {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-        <h1 className="mb-6 text-2xl font-bold tracking-tight text-ink">
-          {dict.cart.title}
-        </h1>
+        <div className="mb-6">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+            {dict.nav.cart}
+          </p>
+          <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+            {dict.cart.title}
+          </h1>
+          <ShelfRule className="mt-4" />
+        </div>
         <EmptyState
           icon={<ShoppingCart />}
           title={dict.cart.empty}
@@ -48,7 +55,7 @@ export function CartView({
           action={
             <Link
               href={`/${locale}/catalog`}
-              className="inline-flex h-11 items-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+              className="inline-flex h-11 items-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
               {dict.cart.browseCatalog}
             </Link>
@@ -60,19 +67,25 @@ export function CartView({
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-tight text-ink">
-        {dict.cart.title}
-      </h1>
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.cart}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+          {dict.cart.title}
+        </h1>
+        <ShelfRule className="mt-4" />
+      </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Items */}
-        <div className="flex flex-col gap-3">
+        {/* Items — ledger line rows */}
+        <Card className="divide-y divide-line-hair">
           {items.map((item) => {
             const product = productById.get(item.productId);
             if (!product) return null;
             const category = categoryById.get(product.categoryId)!;
             return (
-              <Card key={item.productId} className="flex items-center gap-4 p-4">
+              <div key={item.productId} className="flex items-center gap-4 p-4">
                 <ProductImage
                   product={product}
                   category={category}
@@ -82,14 +95,14 @@ export function CartView({
                 <div className="min-w-0 flex-1">
                   <Link
                     href={`/${locale}/product/${product.id}`}
-                    className="line-clamp-2 text-sm font-semibold text-ink hover:text-brand-700"
+                    className="line-clamp-2 text-sm font-semibold text-ink transition-colors hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                   >
                     {productName(product, locale)}
                   </Link>
-                  <p className="mt-0.5 text-xs text-ink-muted">
+                  <p className="mt-0.5 text-xs text-ink-soft">
                     {packageLabel(product, dict)}
                   </p>
-                  <p className="mt-1 text-sm font-bold text-ink">
+                  <p className="mt-1 text-sm font-bold tabular-nums text-ink">
                     {formatCurrency(product.wholesalePrice * item.quantity, locale)}
                     <span className="ms-1.5 text-xs font-normal text-ink-muted">
                       ({formatCurrency(product.wholesalePrice, locale)} ×{" "}
@@ -106,23 +119,23 @@ export function CartView({
                   <button
                     type="button"
                     onClick={() => removeItem(item.productId)}
-                    className="inline-flex items-center gap-1 text-xs text-ink-muted transition-colors hover:text-danger"
+                    className="inline-flex items-center gap-1 rounded-field text-xs text-ink-soft transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                   >
                     <Trash2 className="size-3.5" aria-hidden />
                     {dict.common.remove}
                   </button>
                 </div>
-              </Card>
+              </div>
             );
           })}
-        </div>
+        </Card>
 
         {/* Side column: shop, notes, summary */}
         <div className="flex flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle>{dict.cart.shopSection}</CardTitle>
-              <p className="text-xs text-ink-muted">{dict.cart.shopHint}</p>
+              <p className="text-xs text-ink-soft">{dict.cart.shopHint}</p>
             </CardHeader>
             <CardContent className="pt-3">
               <CustomerPicker locale={locale} dict={dict} className="w-full" />
@@ -166,14 +179,14 @@ export function CartView({
               </p>
               <Link
                 href={`/${locale}/checkout`}
-                className="mt-2 inline-flex h-12 items-center justify-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+                className="mt-2 inline-flex h-12 items-center justify-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 {dict.cart.proceedCheckout}
                 <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden />
               </Link>
               <Link
                 href={`/${locale}/catalog`}
-                className="inline-flex h-11 items-center justify-center rounded-field text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
+                className="inline-flex h-11 items-center justify-center rounded-field text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 {dict.cart.continueShopping}
               </Link>

@@ -43,6 +43,7 @@ export function CustomerPicker({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "flex h-11 w-full items-center gap-2 rounded-field border px-3 text-sm transition-colors sm:w-auto",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
           selected
             ? "border-brand-300 bg-brand-50 text-brand-900"
             : "border-line-strong bg-surface text-ink-soft hover:border-brand-300",
@@ -70,7 +71,7 @@ export function CustomerPicker({
                     setCustomer(customer.id);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-sunken"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-warm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
                     <Store className="size-4" aria-hidden />
@@ -79,7 +80,7 @@ export function CustomerPicker({
                     <span className="block truncate text-sm font-medium text-ink">
                       {customer.name}
                     </span>
-                    <span className="block truncate text-xs text-ink-muted">
+                    <span className="block truncate text-xs text-ink-soft">
                       {dict.admin.customers.types[customer.type]} ·{" "}
                       {customer.city[locale]}
                     </span>
@@ -98,7 +99,7 @@ export function CustomerPicker({
                 setCustomer(null);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-2 border-t border-line px-4 py-2.5 text-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-danger"
+              className="flex w-full items-center gap-2 border-t border-line-hair px-4 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-warm hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
             >
               <X className="size-4" aria-hidden />
               {dict.common.clear}

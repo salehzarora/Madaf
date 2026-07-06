@@ -4,9 +4,12 @@ import { notFound } from "next/navigation";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { ProductDetailActions } from "@/components/product-detail-actions";
 import { ProductImage } from "@/components/product-image";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { packageLabel, productName } from "@/lib/catalog-helpers";
+import { categoryDot } from "@/lib/category-style";
 import {
   getCategory,
   getManufacturer,
@@ -59,7 +62,12 @@ export default async function ProductPage({
       dict.product.pricePerUnit,
       formatCurrency(product.wholesalePrice / product.unitsPerPackage, locale),
     ],
-    [dict.product.sku, <span key="sku" dir="ltr">{product.sku}</span>],
+    [
+      dict.product.sku,
+      <span key="sku" dir="ltr" className="font-mono">
+        {product.sku}
+      </span>,
+    ],
   ];
 
   return (
@@ -82,15 +90,24 @@ export default async function ProductPage({
 
         <div className="flex flex-col gap-4">
           <div>
-            {manufacturer ? (
-              <p className="text-sm font-medium text-ink-muted">
-                {manufacturer.name[locale]}
-              </p>
-            ) : null}
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">
+            <div className="flex items-center justify-between gap-2">
+              {manufacturer ? (
+                <p className="truncate text-[11px] font-bold uppercase tracking-[0.06em] text-brand-700">
+                  {manufacturer.name[locale]}
+                </p>
+              ) : (
+                <span />
+              )}
+              <span
+                className="size-2.5 shrink-0 rounded-[3px]"
+                style={{ backgroundColor: categoryDot(category.id) }}
+                aria-hidden
+              />
+            </div>
+            <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
               {productName(product, locale)}
             </h1>
-            <p className="mt-2 text-sm text-ink-soft">
+            <p className="mt-1 text-sm text-ink-soft">
               {packageLabel(product, dict)}
             </p>
           </div>
@@ -101,20 +118,20 @@ export default async function ProductPage({
               dict={dict.availability}
             />
             {product.trackExpiry ? (
-              <span className="rounded-full bg-surface-sunken px-2.5 py-0.5 text-xs font-medium text-ink-soft">
+              <Badge tone="warning" dashed dot>
                 {dict.catalog.expiryTracked}
-              </span>
+              </Badge>
             ) : null}
           </div>
 
-          <div className="rounded-card border border-line bg-surface p-5 shadow-card">
-            <p className="text-3xl font-bold tracking-tight text-ink">
+          <Card className="p-5">
+            <p className="text-3xl font-extrabold tabular-nums tracking-tight text-ink">
               {formatCurrency(product.wholesalePrice, locale)}
               <span className="ms-2 text-sm font-normal text-ink-muted">
                 / {dict.packaging[product.packageType]}
               </span>
             </p>
-            <p className="mt-1 text-sm text-ink-muted">
+            <p className="mt-1 text-sm text-ink-soft">
               {formatCurrency(
                 product.wholesalePrice / product.unitsPerPackage,
                 locale,
@@ -128,15 +145,15 @@ export default async function ProductPage({
                 dict={dict}
               />
             </div>
-          </div>
+          </Card>
 
-          <dl className="divide-y divide-line rounded-card border border-line bg-surface text-sm shadow-card">
+          <dl className="divide-y divide-line-hair rounded-card border border-line bg-surface text-sm shadow-card">
             {specs.map(([label, value]) => (
               <div
                 key={label}
                 className="flex items-center justify-between gap-4 px-5 py-3"
               >
-                <dt className="text-ink-muted">{label}</dt>
+                <dt className="text-ink-soft">{label}</dt>
                 <dd className="font-medium text-ink">{value}</dd>
               </div>
             ))}

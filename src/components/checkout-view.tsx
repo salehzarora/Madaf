@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
@@ -92,9 +93,15 @@ export function CheckoutView({
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-tight text-ink">
-        {dict.checkout.title}
-      </h1>
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.cart}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+          {dict.checkout.title}
+        </h1>
+        <ShelfRule className="mt-4" />
+      </div>
 
       <form onSubmit={submit} className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="flex flex-col gap-4">
@@ -151,10 +158,10 @@ export function CheckoutView({
                   type="button"
                   onClick={() => setDelivery(option)}
                   className={cn(
-                    "flex h-12 flex-1 items-center justify-center rounded-field border text-sm font-medium transition-colors",
+                    "flex h-12 flex-1 items-center justify-center rounded-field border text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
                     delivery === option
-                      ? "border-brand-600 bg-brand-50 text-brand-800"
-                      : "border-line-strong bg-surface text-ink-soft hover:border-brand-300",
+                      ? "border-brand-600 bg-brand-50 text-brand-800 shadow-[inset_0_0_0_1px_var(--color-brand-600)]"
+                      : "border-line-strong bg-surface text-ink-soft hover:border-ink",
                   )}
                 >
                   {dict.checkout[option === "asap" ? "asap" : "scheduled"]}

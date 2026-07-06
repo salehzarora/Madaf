@@ -19,6 +19,7 @@
   --color-surface: #ffffff;
   --color-surface-warm: #fbf9f3; /* card header strips, table heads, wells */
   --color-surface-sunken: #eae5d9;
+  --color-surface-parchment: #f7f4ec; /* warm auth/letterhead card on the band */
   --color-ink: #191612;
   --color-ink-soft: #4e4941;
   --color-ink-muted: #837b6d;

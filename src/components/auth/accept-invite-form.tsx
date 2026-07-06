@@ -88,7 +88,7 @@ export function AcceptInviteForm({
       {reason === "wrongEmail" || reason === "alreadyMember" ? (
         <Link
           href={`/${locale}/admin`}
-          className="text-center text-sm font-medium text-brand-700 hover:underline"
+          className="rounded-sm text-center text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           {t.goToAdmin}
         </Link>

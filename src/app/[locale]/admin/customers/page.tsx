@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { listCustomers, listOrders } from "@/lib/data";
@@ -40,25 +41,27 @@ export default async function AdminCustomersPage({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.admin}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
           {t.title}
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{t.subtitle}</p>
+        <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+        <ShelfRule className="mt-4" />
       </div>
 
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
-            <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-              <th className="px-4 py-3 text-start font-medium">{t.colShop}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colType}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colCity}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colPhone}</th>
-              <th className="px-4 py-3 text-end font-medium">{t.colOrders}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colLastOrder}</th>
-              <th className="px-4 py-3 text-end font-medium">
-                {dict.common.actions}
-              </th>
+            <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+              <th className="px-4 py-3 text-start">{t.colShop}</th>
+              <th className="px-4 py-3 text-start">{t.colType}</th>
+              <th className="px-4 py-3 text-start">{t.colCity}</th>
+              <th className="px-4 py-3 text-start">{t.colPhone}</th>
+              <th className="px-4 py-3 text-end">{t.colOrders}</th>
+              <th className="px-4 py-3 text-start">{t.colLastOrder}</th>
+              <th className="px-4 py-3 text-end">{dict.common.actions}</th>
             </tr>
           </thead>
           <tbody>
@@ -67,7 +70,7 @@ export default async function AdminCustomersPage({
               return (
                 <tr
                   key={customer.id}
-                  className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                  className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                 >
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
@@ -85,12 +88,17 @@ export default async function AdminCustomersPage({
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <Badge tone="neutral">{t.types[customer.type]}</Badge>
+                    <Badge tone="neutral" dot>
+                      {t.types[customer.type]}
+                    </Badge>
                   </td>
                   <td className="px-4 py-3.5 text-ink-soft">
                     {customer.city[locale]}
                   </td>
-                  <td className="px-4 py-3.5 text-ink-soft" dir="ltr">
+                  <td
+                    className="px-4 py-3.5 font-mono text-[13px] text-ink-soft"
+                    dir="ltr"
+                  >
                     {customer.phone}
                   </td>
                   <td className="px-4 py-3.5 text-end tabular-nums text-ink">
@@ -103,14 +111,14 @@ export default async function AdminCustomersPage({
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={`/${locale}/admin/customers/${customer.id}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                       >
                         <Link2 className="size-3.5" aria-hidden />
                         {dict.access.links.manage}
                       </Link>
                       <Link
                         href={`/${locale}/catalog?customer=${customer.id}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-field bg-brand-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                       >
                         <ShoppingBag className="size-3.5" aria-hidden />
                         {t.startOrder}

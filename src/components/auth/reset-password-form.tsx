@@ -89,7 +89,7 @@ export function ResetPasswordForm({
         <p className="mt-1 text-sm text-ink-soft">{t.sentBody}</p>
         <Link
           href={`/${locale}/login`}
-          className="mt-5 inline-block text-sm font-medium text-brand-700 hover:underline"
+          className="mt-5 inline-block rounded-sm text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           {t.backToLogin}
         </Link>
@@ -105,7 +105,7 @@ export function ResetPasswordForm({
         <p className="mt-1 text-sm text-ink-soft">{t.updatedBody}</p>
         <Link
           href={`/${locale}/login`}
-          className="mt-5 inline-block text-sm font-medium text-brand-700 hover:underline"
+          className="mt-5 inline-block rounded-sm text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           {t.backToLogin}
         </Link>
@@ -157,6 +157,7 @@ export function ResetPasswordForm({
           name="email"
           type="email"
           autoComplete="email"
+          mono
           dir="ltr"
           required
         />
@@ -167,7 +168,7 @@ export function ResetPasswordForm({
       </Button>
       <Link
         href={`/${locale}/login`}
-        className="text-center text-sm font-medium text-brand-700 hover:underline"
+        className="rounded-sm text-center text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
       >
         {t.backToLogin}
       </Link>

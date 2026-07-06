@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
+import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
 import { setProductActiveAction } from "@/lib/actions/products";
 import { packageLabel, productName } from "@/lib/catalog-helpers";
@@ -121,18 +122,24 @@ export function ProductsTable({
           hint={dict.catalog.noResultsHint}
         />
       ) : (
-        <Card className={"overflow-x-auto" + (pending ? " opacity-70" : "")}>
+        <>
+          <p className="font-mono text-[13px] tabular-nums text-ink-soft">
+            {interpolate(dict.catalog.resultsCount, {
+              count: filtered.length,
+            })}
+          </p>
+          <Card className={"overflow-x-auto" + (pending ? " opacity-70" : "")}>
           <table className="w-full min-w-[760px] text-sm">
             <thead>
-              <tr className="border-b border-line text-start text-xs uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-3 text-start font-medium">{t.colProduct}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colCategory}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colManufacturer}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colPackage}</th>
-                <th className="px-4 py-3 text-end font-medium">{t.colPrice}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colAvailability}</th>
+              <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                <th className="px-4 py-3 text-start">{t.colProduct}</th>
+                <th className="px-4 py-3 text-start">{t.colCategory}</th>
+                <th className="px-4 py-3 text-start">{t.colManufacturer}</th>
+                <th className="px-4 py-3 text-start">{t.colPackage}</th>
+                <th className="px-4 py-3 text-end">{t.colPrice}</th>
+                <th className="px-4 py-3 text-start">{t.colAvailability}</th>
                 {live ? (
-                  <th className="px-4 py-3 text-end font-medium">{t.colActions}</th>
+                  <th className="px-4 py-3 text-end">{t.colActions}</th>
                 ) : null}
               </tr>
             </thead>
@@ -146,7 +153,7 @@ export function ProductsTable({
                 return (
                   <tr
                     key={product.id}
-                    className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                    className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -154,7 +161,8 @@ export function ProductsTable({
                           product={product}
                           category={category}
                           className="size-10 shrink-0 rounded-field"
-                          iconClassName="text-base"
+                          iconClassName="size-5"
+                          showSizeTag={false}
                         />
                         <div className="min-w-0">
                           <p className="flex items-center gap-2 truncate font-medium text-ink">
@@ -163,7 +171,10 @@ export function ProductsTable({
                               <Badge tone="neutral">{t.inactiveBadge}</Badge>
                             ) : null}
                           </p>
-                          <p className="text-xs text-ink-muted" dir="ltr">
+                          <p
+                            className="font-mono text-[13px] text-ink-soft"
+                            dir="ltr"
+                          >
                             {product.sku}
                           </p>
                         </div>
@@ -192,7 +203,7 @@ export function ProductsTable({
                         <div className="flex items-center justify-end gap-1">
                           <Link
                             href={`/${locale}/admin/products/${product.id}/edit`}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-2.5 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-2.5 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                           >
                             <Pencil className="size-3.5" aria-hidden />
                             {t.edit}
@@ -201,7 +212,7 @@ export function ProductsTable({
                             type="button"
                             disabled={pending}
                             onClick={() => toggleActive(product)}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:border-brand-300 hover:bg-surface-sunken"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:border-brand-300 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                           >
                             {inactive ? (
                               <Power className="size-3.5" aria-hidden />
@@ -218,7 +229,8 @@ export function ProductsTable({
               })}
             </tbody>
           </table>
-        </Card>
+          </Card>
+        </>
       )}
     </div>
   );

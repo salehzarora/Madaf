@@ -68,6 +68,7 @@ export function LoginForm({
           name="email"
           type="email"
           autoComplete="email"
+          mono
           dir="ltr"
           required
         />
@@ -78,7 +79,7 @@ export function LoginForm({
           {!isSignup ? (
             <Link
               href={`/${locale}/reset-password`}
-              className="mb-1.5 text-xs font-medium text-brand-700 hover:underline"
+              className="mb-1.5 rounded-sm text-xs font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
               {t.forgotPassword}
             </Link>
@@ -122,7 +123,7 @@ export function LoginForm({
           setMode(isSignup ? "signin" : "signup");
           setFailed(false);
         }}
-        className="text-center text-sm font-medium text-brand-700 hover:underline"
+        className="rounded-sm text-center text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
       >
         {isSignup ? t.haveAccount : t.noAccount}
       </button>

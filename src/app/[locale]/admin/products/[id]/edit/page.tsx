@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { ProductForm } from "@/components/admin/product-form";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getDataMode, getInventoryForProduct, getProduct } from "@/lib/data";
@@ -29,10 +30,14 @@ export default async function EditProductPage({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.admin}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
           {t.editTitle}
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{t.editSubtitle}</p>
+        <p className="mt-0.5 text-sm text-ink-muted">{t.editSubtitle}</p>
+        <ShelfRule className="mt-4" />
       </div>
       <ProductForm
         locale={locale}

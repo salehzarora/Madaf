@@ -13,7 +13,6 @@ import { notFound } from "next/navigation";
 import { MiniCatalogPreview } from "@/components/mini-catalog-preview";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { categoryStyle } from "@/lib/category-style";
 import { listCategories, listProducts } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
@@ -75,14 +74,14 @@ export default async function LandingPage({
             <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href={`/${locale}/catalog`}
-                className="inline-flex h-13 items-center justify-center gap-2 rounded-field bg-brand-600 px-8 text-base font-bold text-white shadow-sm transition-colors hover:bg-brand-700"
+                className="inline-flex h-13 items-center justify-center gap-2 rounded-field bg-brand-600 px-8 text-base font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 {dict.landing.ctaCatalog}
                 <ArrowRight className="size-5 rtl:-scale-x-100" aria-hidden />
               </Link>
               <Link
                 href={`/${locale}/admin`}
-                className="inline-flex h-13 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface px-8 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                className="inline-flex h-13 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface px-8 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 {dict.landing.ctaAdmin}
               </Link>
@@ -103,14 +102,13 @@ export default async function LandingPage({
           </h2>
           <Link
             href={`/${locale}/catalog`}
-            className="text-sm font-semibold text-brand-700 hover:underline"
+            className="rounded-field text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
           >
             {dict.common.viewAll}
           </Link>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {categories.map((category) => {
-            const style = categoryStyle(category.id);
             const count = products.filter(
               (p) => p.categoryId === category.id,
             ).length;
@@ -118,18 +116,15 @@ export default async function LandingPage({
               <Link
                 key={category.id}
                 href={`/${locale}/catalog`}
-                className={cn(
-                  "flex flex-col items-center gap-1.5 rounded-card border px-3 py-5 text-center transition-all hover:-translate-y-0.5 hover:shadow-card",
-                  style.tile,
-                )}
+                className="flex flex-col items-center gap-1.5 rounded-card border border-line bg-surface px-3 py-5 text-center shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-float focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 <span className="text-3xl" aria-hidden>
                   {category.icon}
                 </span>
-                <span className={cn("text-sm font-bold", style.text)}>
+                <span className="text-sm font-bold text-ink">
                   {category.name[locale]}
                 </span>
-                <span className="text-xs text-ink-muted">
+                <span className="text-xs text-ink-soft">
                   {count} {dict.nav.products}
                 </span>
               </Link>
@@ -151,7 +146,7 @@ export default async function LandingPage({
                 <Link
                   key={role.title}
                   href={role.href}
-                  className="group flex flex-col gap-3 rounded-card border border-line bg-background p-6 transition-all hover:-translate-y-0.5 hover:border-brand-100 hover:shadow-float"
+                  className="group flex flex-col gap-3 rounded-card border border-line bg-background p-6 transition-all hover:-translate-y-0.5 hover:border-brand-100 hover:shadow-float focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                 >
                   <span
                     className={cn(
@@ -196,7 +191,7 @@ export default async function LandingPage({
                   <Icon className="size-5 text-brand-700" aria-hidden />
                 </span>
                 <h3 className="text-sm font-bold text-ink">{feature.title}</h3>
-                <p className="text-sm leading-relaxed text-ink-muted">
+                <p className="text-sm leading-relaxed text-ink-soft">
                   {feature.desc}
                 </p>
               </div>

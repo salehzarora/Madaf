@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { listCustomers, listDocuments, listOrders } from "@/lib/data";
@@ -38,14 +39,18 @@ export default async function AdminDocumentsPage({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.admin}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
           {t.title}
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{t.subtitle}</p>
+        <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+        <ShelfRule className="mt-4" />
       </div>
 
       {/* Legal banner — always visible on the documents index */}
-      <div className="flex items-start gap-3 rounded-field border border-warning/40 bg-warning-soft px-4 py-3 text-sm text-warning">
+      <div className="flex items-start gap-3 rounded-field border border-dashed border-warning/45 bg-accent-wash px-4 py-3 text-sm text-accent-deep">
         <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p>{t.legalBanner}</p>
       </div>
@@ -53,12 +58,12 @@ export default async function AdminDocumentsPage({
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-sm">
           <thead>
-            <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-              <th className="px-4 py-3 text-start font-medium">{t.colDoc}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colType}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colOrder}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colShop}</th>
-              <th className="px-4 py-3 text-start font-medium">{t.colDate}</th>
+            <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+              <th className="px-4 py-3 text-start">{t.colDoc}</th>
+              <th className="px-4 py-3 text-start">{t.colType}</th>
+              <th className="px-4 py-3 text-start">{t.colOrder}</th>
+              <th className="px-4 py-3 text-start">{t.colShop}</th>
+              <th className="px-4 py-3 text-start">{t.colDate}</th>
             </tr>
           </thead>
           <tbody>
@@ -70,26 +75,38 @@ export default async function AdminDocumentsPage({
               return (
                 <tr
                   key={doc.id}
-                  className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                  className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                 >
                   <td className="px-4 py-3.5">
                     <Link
                       href={`/${locale}/admin/documents/${doc.id}`}
-                      className="inline-flex items-center gap-2 font-semibold text-brand-700 hover:underline"
+                      className="inline-flex items-center gap-2 text-brand-700 hover:underline"
                     >
-                      <FileText className="size-4" aria-hidden />
-                      <span dir="ltr">{doc.number}</span>
+                      <FileText className="size-4 shrink-0" aria-hidden />
+                      <span
+                        dir="ltr"
+                        className="font-mono text-[13px] font-semibold"
+                      >
+                        {doc.number}
+                      </span>
                     </Link>
                   </td>
                   <td className="px-4 py-3.5">
-                    <Badge tone={typeTone[doc.type]}>
+                    <Badge
+                      tone={typeTone[doc.type]}
+                      dot
+                      dashed={doc.type === "invoiceDraft"}
+                    >
                       {dict.docs.types[doc.type]}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3.5 text-ink-soft" dir="ltr">
+                  <td
+                    className="px-4 py-3.5 font-mono text-[13px] text-ink-soft"
+                    dir="ltr"
+                  >
                     {order?.number ?? "—"}
                   </td>
-                  <td className="px-4 py-3.5 text-ink">
+                  <td className="px-4 py-3.5 font-medium text-ink">
                     {customer?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3.5 text-ink-muted">

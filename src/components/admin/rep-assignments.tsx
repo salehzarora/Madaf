@@ -3,8 +3,9 @@
 import { Store, UserCog, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
@@ -87,14 +88,15 @@ export function RepAssignments({
   }
 
   return (
-    <Card className="p-5 sm:p-6">
-      <div className="mb-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+    <Card>
+      <CardHeader variant="strip">
+        <CardTitle className="flex items-center gap-2">
           <UserCog className="size-5 text-ink-muted" aria-hidden />
           {t.assignmentsTitle}
-        </h2>
-        <p className="mt-0.5 text-sm text-ink-muted">{t.assignmentsSubtitle}</p>
-      </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+      <p className="mb-4 text-sm text-ink-soft">{t.assignmentsSubtitle}</p>
 
       {error ? (
         <p
@@ -106,9 +108,7 @@ export function RepAssignments({
       ) : null}
 
       {reps.length === 0 ? (
-        <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-          {t.noReps}
-        </p>
+        <EmptyState icon={<UserCog />} title={t.noReps} />
       ) : (
         <div className="flex flex-col gap-4">
           {reps.map((rep) => {
@@ -121,10 +121,13 @@ export function RepAssignments({
                 className="rounded-card border border-line p-3 sm:p-4"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-semibold text-ink" dir="ltr">
+                  <p
+                    className="truncate font-mono text-[13px] font-semibold text-ink"
+                    dir="ltr"
+                  >
                     {rep.email}
                   </p>
-                  <span className="shrink-0 text-xs text-ink-muted">
+                  <span className="shrink-0 text-xs text-ink-soft">
                     {t.assignedCount.replace("{count}", String(assigned.length))}
                   </span>
                 </div>
@@ -134,7 +137,7 @@ export function RepAssignments({
                     {assigned.map((cid) => (
                       <span
                         key={cid}
-                        className="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2.5 py-1 text-xs text-ink-soft"
+                        className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-warm px-2.5 py-1 text-xs text-ink-soft"
                       >
                         <Store className="size-3" aria-hidden />
                         {customerName.get(cid) ?? cid}
@@ -144,7 +147,7 @@ export function RepAssignments({
                           disabled={pending}
                           aria-label={t.unassign}
                           title={t.unassign}
-                          className="ms-0.5 rounded-full text-ink-muted transition-colors hover:text-danger disabled:opacity-50"
+                          className="ms-0.5 rounded-full text-ink-muted transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
                         >
                           <X className="size-3" aria-hidden />
                         </button>
@@ -187,6 +190,7 @@ export function RepAssignments({
           })}
         </div>
       )}
+      </CardContent>
     </Card>
   );
 }

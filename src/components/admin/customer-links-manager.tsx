@@ -3,6 +3,7 @@
 import { Check, Copy, Link2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -158,7 +159,7 @@ export function CustomerLinksManager({
           <div className="mt-3 flex items-center gap-2">
             <code
               dir="ltr"
-              className="min-w-0 flex-1 truncate rounded-field border border-line bg-surface px-3 py-2 text-xs text-ink"
+              className="min-w-0 flex-1 truncate rounded-field border border-line bg-surface px-3 py-2 font-mono text-xs text-ink"
             >
               {createdUrl}
             </code>
@@ -176,32 +177,18 @@ export function CustomerLinksManager({
 
       {/* List */}
       {initialLinks.length === 0 ? (
-        <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-          {t.empty}
-        </p>
+        <EmptyState icon={<Link2 />} title={t.empty} />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                <th className="px-3 py-2.5 text-start font-medium">
-                  {t.colLabel}
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  {t.colStatus}
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  {t.colToken}
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  {t.colExpires}
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  {t.colLastUsed}
-                </th>
-                <th className="px-3 py-2.5 text-end font-medium">
-                  {dict.common.actions}
-                </th>
+              <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                <th className="px-3 py-2.5 text-start">{t.colLabel}</th>
+                <th className="px-3 py-2.5 text-start">{t.colStatus}</th>
+                <th className="px-3 py-2.5 text-start">{t.colToken}</th>
+                <th className="px-3 py-2.5 text-start">{t.colExpires}</th>
+                <th className="px-3 py-2.5 text-start">{t.colLastUsed}</th>
+                <th className="px-3 py-2.5 text-end">{dict.common.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -210,17 +197,20 @@ export function CustomerLinksManager({
                 return (
                   <tr
                     key={link.id}
-                    className="border-b border-line/60 last:border-0"
+                    className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                   >
                     <td className="px-3 py-3 font-medium text-ink">
                       {link.label || t.none}
                     </td>
                     <td className="px-3 py-3">
-                      <Badge tone={statusTone[status]}>
+                      <Badge tone={statusTone[status]} dot>
                         {statusLabel[status]}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 text-ink-soft" dir="ltr">
+                    <td
+                      className="px-3 py-3 font-mono text-[13px] text-ink-soft"
+                      dir="ltr"
+                    >
                       {link.tokenPreview ? `…${link.tokenPreview}` : t.none}
                     </td>
                     <td className="px-3 py-3 text-ink-muted">
@@ -239,7 +229,7 @@ export function CustomerLinksManager({
                           type="button"
                           onClick={() => onRevoke(link.id)}
                           disabled={pending}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
                         >
                           <Trash2 className="size-3.5" aria-hidden />
                           {t.revoke}

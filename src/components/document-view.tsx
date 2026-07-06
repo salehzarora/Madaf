@@ -4,7 +4,9 @@ import { ArrowRight, Printer, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { LogoMark } from "@/components/logo";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import {
   defaultDocumentLocale,
   dirFor,
@@ -96,7 +98,7 @@ export function DocumentView({
 
       {/* Not-legal notice for invoice drafts — also printed, on purpose */}
       {isInvoiceDraft ? (
-        <div className="flex items-start gap-3 rounded-field border border-warning/40 bg-warning-soft px-4 py-3 text-sm text-warning">
+        <div className="flex items-start gap-3 rounded-field border border-dashed border-warning/50 bg-accent-wash px-4 py-3 text-[13px] font-medium text-accent-deep">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>{uiDict.docs.notLegalNotice}</p>
         </div>
@@ -114,45 +116,60 @@ export function DocumentView({
             aria-hidden
             className="pointer-events-none absolute inset-0 flex items-center justify-center"
           >
-            <span className="-rotate-30 select-none text-7xl font-black tracking-widest text-danger/10 sm:text-8xl">
+            <span className="-rotate-30 select-none rounded-2xl border-[6px] border-danger/[.07] px-10 py-2 text-6xl font-black tracking-[0.12em] text-danger/[.07] sm:text-[100px]">
               {t.draftWatermark}
             </span>
           </div>
         ) : null}
 
         {/* Header */}
-        <header className="relative flex items-start justify-between gap-6 border-b-2 border-brand-700 pb-6">
+        <header className="relative flex items-start justify-between gap-6 pb-6">
           <div className="flex items-center gap-3">
-            <LogoMark className="size-12" />
+            <LogoMark className="size-[52px]" />
             <div>
-              <p className="text-xl font-bold text-brand-800">
+              <p className="text-[22px] font-extrabold text-brand-950">
                 {supplier.name[docLocale]}
               </p>
-              <p className="text-xs text-ink-muted">{supplier.legalName}</p>
-              <p className="text-xs text-ink-muted">
-                {t.supplierIdLabel}: <span dir="ltr">{supplier.companyId}</span>
+              <p className="text-xs text-ink-soft">{supplier.legalName}</p>
+              <p className="text-xs text-ink-soft">
+                {t.supplierIdLabel}:{" "}
+                <span dir="ltr" className="font-mono">
+                  {supplier.companyId}
+                </span>
               </p>
             </div>
           </div>
-          <div className="text-end">
+          <div className="flex flex-col items-end text-end">
+            {isInvoiceDraft ? (
+              <Badge tone="warning" dashed dot className="mb-1.5">
+                {t.draftWatermark}
+              </Badge>
+            ) : null}
             <h1 className="text-2xl font-bold text-ink">
               {t.types[document.type]}
             </h1>
             <p className="mt-1 text-sm text-ink-soft">
-              {t.docNumber}: <span dir="ltr">{document.number}</span>
+              {t.docNumber}:{" "}
+              <span dir="ltr" className="font-mono font-semibold ps-1">
+                {document.number}
+              </span>
             </p>
             <p className="text-sm text-ink-soft">
-              {t.orderRef}: <span dir="ltr">{order.number}</span>
+              {t.orderRef}:{" "}
+              <span dir="ltr" className="font-mono font-semibold ps-1">
+                {order.number}
+              </span>
             </p>
             <p className="text-sm text-ink-soft">
               {t.docDate}: {formatDateLong(document.date, docLocale)}
             </p>
           </div>
         </header>
+        <ShelfRule className="relative" />
 
         {/* Parties */}
         <section className="relative mt-6 grid grid-cols-2 gap-6 text-sm">
-          <div>
+          <div className="border-s-[3px] border-line ps-3.5">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               {t.supplier}
             </p>
@@ -162,7 +179,7 @@ export function DocumentView({
               {supplier.phone}
             </p>
           </div>
-          <div>
+          <div className="border-s-[3px] border-brand-600 ps-3.5">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               {t.billTo}
             </p>
@@ -183,18 +200,16 @@ export function DocumentView({
         <section className="relative mt-8">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line-strong text-xs uppercase tracking-wide text-ink-muted">
-                <th className="py-2 text-start font-semibold">{t.colItem}</th>
-                <th className="w-16 py-2 text-center font-semibold">{t.colQty}</th>
-                <th className="w-32 py-2 text-start font-semibold">{t.colUnit}</th>
+              <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                <th className="px-3 py-2.5 text-start">{t.colItem}</th>
+                <th className="w-16 px-3 py-2.5 text-center">{t.colQty}</th>
+                <th className="w-32 px-3 py-2.5 text-start">{t.colUnit}</th>
                 {showPrices ? (
                   <>
-                    <th className="w-24 py-2 text-end font-semibold">
+                    <th className="w-24 px-3 py-2.5 text-end">
                       {t.colUnitPrice}
                     </th>
-                    <th className="w-28 py-2 text-end font-semibold">
-                      {t.colTotal}
-                    </th>
+                    <th className="w-28 px-3 py-2.5 text-end">{t.colTotal}</th>
                   </>
                 ) : null}
               </tr>
@@ -205,27 +220,32 @@ export function DocumentView({
                 if (!product) return null;
                 const dictForDoc = getDictionary(docLocale);
                 return (
-                  <tr key={item.productId} className="border-b border-line/70">
-                    <td className="py-2.5 text-ink">
-                      {productName(product, docLocale)}
-                      <span className="ms-2 text-xs text-ink-muted" dir="ltr">
-                        {product.sku}
+                  <tr
+                    key={item.productId}
+                    className="border-b border-line-hair last:border-0"
+                  >
+                    <td className="px-3 py-2.5 text-ink">
+                      <span className="inline-flex flex-wrap items-baseline gap-2">
+                        <span>{productName(product, docLocale)}</span>
+                        <span className="font-mono text-xs text-ink-muted" dir="ltr">
+                          {product.sku}
+                        </span>
                       </span>
                     </td>
-                    <td className="py-2.5 text-center tabular-nums text-ink">
+                    <td className="px-3 py-2.5 text-center font-mono font-semibold text-ink">
                       {item.quantity}
                     </td>
-                    <td className="py-2.5 text-ink-soft">
+                    <td className="px-3 py-2.5 text-ink-soft">
                       {dictForDoc.packaging[product.packageType]} ·{" "}
                       {product.unitsPerPackage}{" "}
                       {dictForDoc.units[product.baseUnit]}
                     </td>
                     {showPrices ? (
                       <>
-                        <td className="py-2.5 text-end tabular-nums text-ink-soft">
+                        <td className="px-3 py-2.5 text-end tabular-nums text-ink-soft">
                           {formatCurrency(item.unitPrice, docLocale)}
                         </td>
-                        <td className="py-2.5 text-end font-medium tabular-nums text-ink">
+                        <td className="px-3 py-2.5 text-end font-medium tabular-nums text-ink">
                           {formatCurrency(
                             item.unitPrice * item.quantity,
                             docLocale,
@@ -243,7 +263,8 @@ export function DocumentView({
         {/* Totals (order + invoice draft) */}
         {showPrices ? (
           <section className="relative mt-6 flex justify-end">
-            <div className="w-64 text-sm">
+            <div className="w-[280px] text-sm">
+              <ShelfRule className="mb-2" />
               <div className="flex justify-between py-1.5 text-ink-soft">
                 <span>{t.subtotal}</span>
                 <span className="tabular-nums">
@@ -292,7 +313,7 @@ export function DocumentView({
 
         {/* Footer note on invoice drafts, inside the printed sheet */}
         {isInvoiceDraft ? (
-          <footer className="relative mt-10 border-t border-line pt-4 text-xs leading-relaxed text-ink-muted">
+          <footer className="relative mt-10 border-t border-line-hair pt-4 text-xs leading-relaxed text-ink-soft">
             {t.notLegalNotice}
           </footer>
         ) : null}

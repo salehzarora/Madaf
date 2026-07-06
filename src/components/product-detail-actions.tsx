@@ -32,7 +32,7 @@ export function ProductDetailActions({
         />
         <Link
           href={`/${locale}/cart`}
-          className="inline-flex h-12 items-center gap-2 rounded-field bg-brand-600 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+          className="inline-flex h-12 items-center gap-2 rounded-field bg-brand-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           <ShoppingCart className="size-4" aria-hidden />
           {dict.catalog.viewCart}
