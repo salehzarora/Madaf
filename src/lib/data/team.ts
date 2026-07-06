@@ -45,8 +45,10 @@ function inviteStatus(
 
 /** Roster with emails — via the owner/admin-gated SECURITY DEFINER RPC. */
 export async function listTenantMembers(): Promise<TenantMember[]> {
-  const { client } = await getDataContext();
-  const { data, error } = await client.rpc("list_tenant_members");
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("list_tenant_members", {
+    p_tenant_id: tenantId,
+  });
   if (error || !data) return [];
   return data.map((r) => ({
     userId: r.user_id,
@@ -56,14 +58,17 @@ export async function listTenantMembers(): Promise<TenantMember[]> {
   }));
 }
 
-/** Tenant invitations (owner/admin, RLS-scoped) — token_hash is never read. */
+/** Tenant invitations for the SELECTED tenant (owner/admin, RLS-scoped). */
 export async function listTenantInvites(): Promise<TenantInvite[]> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .from("tenant_invitations")
     .select(
       "id, email, role, token_preview, expires_at, accepted_at, revoked_at, created_at",
     )
+    // Owner/admin of MULTIPLE tenants (M4C) would otherwise see all their
+    // tenants' invites via RLS — scope to the current tenant explicitly.
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -86,8 +91,9 @@ export async function insertTenantInvite(input: {
   tokenPreview: string;
   expiresAt?: string;
 }): Promise<string> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("create_tenant_invite", {
+    p_tenant_id: tenantId,
     p_email: input.email,
     p_role: input.role,
     p_token_hash: input.tokenHash,
@@ -103,8 +109,9 @@ export async function insertTenantInvite(input: {
 }
 
 export async function revokeTenantInvite(inviteId: string): Promise<void> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { error } = await client.rpc("revoke_tenant_invite", {
+    p_tenant_id: tenantId,
     p_invite_id: inviteId,
   });
   if (error) {
@@ -116,8 +123,9 @@ export async function updateMemberRole(input: {
   userId: string;
   role: "admin" | "sales_rep";
 }): Promise<void> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { error } = await client.rpc("update_tenant_member_role", {
+    p_tenant_id: tenantId,
     p_user_id: input.userId,
     p_new_role: input.role,
   });
@@ -127,8 +135,9 @@ export async function updateMemberRole(input: {
 }
 
 export async function removeMember(userId: string): Promise<void> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { error } = await client.rpc("remove_tenant_member", {
+    p_tenant_id: tenantId,
     p_user_id: userId,
   });
   if (error) {

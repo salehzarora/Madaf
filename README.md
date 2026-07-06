@@ -5,20 +5,20 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M4B — team & access hardening.** The UI is the polished
-> trilingual M0 design (no payments, and **no legal tax invoices** —
-> drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on
-> **M4A** auth (supplier sign-in at `/login`, `/admin` needs a session +
-> membership, cookie-bound **authenticated** clients under RLS, write RPCs
-> gated by `authorize_tenant`, customers order with no login via tokenized
-> `/shop/<token>` links), **M4B** adds tenant **team management**: manage
-> members at `/admin/team` via tokenized, email-verified invitations
-> (`/invite/<token>`, hash-only), with membership RPCs enforcing last-owner
-> protection and no self-promotion. Direct `tenant_users` writes are now
-> RPC-only. Roles: owner (all, incl. role changes/removal), admin (catalog
-> + orders + status + links + invite/revoke), sales_rep (orders only).
-> **Mock stays the zero-config default** — no auth, open demo admin.
-> Documents/invoices are M5/M6; multi-tenant switching is M4C. See
+> **Phase M4C — multi-tenant switching & hardening.** The UI is the
+> polished trilingual M0 design (no payments, and **no legal tax invoices**
+> — drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on
+> **M4A** auth + **M4B** team management, **M4C** makes membership
+> **multi-tenant**: a user can belong to several suppliers and switch
+> between them from the admin top bar via a **membership-verified**
+> `madaf_tenant` cookie (`authorize_tenant` verifies the *named* tenant;
+> every tenant-scoped RPC takes an explicit `p_tenant_id`). It also adds a
+> `sales_rep_customers` assignment **foundation** (RPCs only; enforcement is
+> M4D), a minimal **anonymous-token rate limiter** (per-fingerprint; the raw
+> token is never stored), and **sign-up + password reset**. Customers still
+> order with no login via tokenized `/shop/<token>` links; direct table
+> writes stay RPC-only. **Mock stays the zero-config default** — no auth,
+> open demo admin. Documents/invoices are M5/M6. See
 > [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 
 ## Quick start

@@ -34,12 +34,16 @@ function deriveStatus(
 export async function listCustomerLinks(
   customerId: string,
 ): Promise<CustomerLink[]> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .from("customer_access_links")
     .select(
       "id, label, token_preview, expires_at, revoked_at, last_used_at, created_at",
     )
+    // Scope to the SELECTED tenant (M4C): a multi-tenant owner is RLS-allowed
+    // to read every member tenant's links, so filter explicitly — matching
+    // listTenantInvites and every sb* read.
+    .eq("tenant_id", tenantId)
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
@@ -62,8 +66,9 @@ export async function insertCustomerLink(input: {
   label?: string;
   expiresAt?: string;
 }): Promise<string> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { data, error } = await client.rpc("insert_customer_access_link", {
+    p_tenant_id: tenantId,
     p_customer_id: input.customerId,
     p_token_hash: input.tokenHash,
     p_token_preview: input.tokenPreview,
@@ -79,8 +84,9 @@ export async function insertCustomerLink(input: {
 }
 
 export async function revokeCustomerLink(linkId: string): Promise<void> {
-  const { client } = await getDataContext();
+  const { client, tenantId } = await getDataContext();
   const { error } = await client.rpc("revoke_customer_access_link", {
+    p_tenant_id: tenantId,
     p_link_id: linkId,
   });
   if (error) {

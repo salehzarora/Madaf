@@ -16,6 +16,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { TenantSwitcher } from "@/components/auth/tenant-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { LogoMark, LogoWordmark } from "@/components/logo";
 import type { Locale } from "@/i18n/config";
@@ -28,6 +29,9 @@ export interface AdminSession {
   /** Membership role — keyed into `dict.access.session.roles` for display. */
   role: keyof Dictionary["access"]["session"]["roles"];
   tenantName: string;
+  /** Currently-selected tenant id + all memberships (for the switcher). */
+  currentTenantId: string;
+  tenants: { id: string; name: string }[];
 }
 
 /**
@@ -131,9 +135,21 @@ export function AdminShell({
             />
           </Link>
           {session ? (
-            <span className="hidden max-w-40 truncate rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 sm:inline-block">
-              {session.tenantName}
-            </span>
+            session.tenants.length > 1 ? (
+              <div className="hidden sm:block">
+                <TenantSwitcher
+                  locale={locale}
+                  currentTenantId={session.currentTenantId}
+                  currentName={session.tenantName}
+                  tenants={session.tenants}
+                  label={dict.access.tenant.switch}
+                />
+              </div>
+            ) : (
+              <span className="hidden max-w-40 truncate rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 sm:inline-block">
+                {session.tenantName}
+              </span>
+            )
           ) : (
             <span className="rounded-full bg-accent-100 px-2.5 py-1 text-xs font-semibold text-accent-800">
               {dict.common.demoBadge}

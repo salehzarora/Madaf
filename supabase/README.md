@@ -46,6 +46,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705170000_auth_and_private_links.sql` | M4A: `authorize_tenant()` + `current_membership()` + `create_tenant_with_owner()`; write RPCs re-gated for authenticated owner/admin/sales_rep; `customer_access_links` table + tokenized shop RPCs (`get_token_catalog`, `create_order_request_from_token`) |
 | `migrations/20260706100000_lock_customer_access_links_grants.sql` | M4A.1: strip default-ACL TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from anon/authenticated on `customer_access_links`; re-grant only the column-scoped member SELECT (no `token_hash`) |
 | `migrations/20260706110000_tenant_team_and_invites.sql` | M4B: lock `tenant_users` direct writes (RPC-only); `tenant_invitations` table (grant-locked like `customer_access_links`) + team RPCs (`create/revoke/accept_tenant_invite`, `update_tenant_member_role`, `remove_tenant_member`, `list_tenant_members`) with owner/admin gates + last-owner protection |
+| `migrations/20260707100000_multi_tenant_and_hardening.sql` | M4C: drop `unique(user_id)` (multi-tenant); `authorize_tenant` verifies the named tenant; team/link RPCs take `p_tenant_id`; `list_memberships()`; `sales_rep_customers` + assign/unassign/list RPCs (grant-locked); `token_access_attempts` + fingerprint rate limiter wired into the anon shop-token endpoints |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -144,6 +145,14 @@ documents stay renderable after catalog or customer changes.
   `customer_access_links` (anon nothing; owner/admin column-scoped SELECT
   without `token_hash`; no dangerous privileges) and read-gated to
   owner/admin.
+- **Multi-tenant (M4C):** a user may belong to several tenants
+  (`tenant_users` keeps only `unique(tenant_id, user_id)`).
+  `authorize_tenant` now verifies the caller-named tenant against
+  membership; the app tracks the selected tenant in a membership-verified
+  `madaf_tenant` cookie. `sales_rep_customers` (assignment foundation) and
+  `token_access_attempts` (anon-token rate limiter — raw token never stored,
+  no anon/authenticated access) are grant-locked exactly like the other M4
+  tables.
 - Admins cannot touch owner memberships or grant the owner role — only
   owners manage owners (and never via a direct write).
 - Tenant onboarding is live in M4A: a signed-in, membership-less user
