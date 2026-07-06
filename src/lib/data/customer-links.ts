@@ -2,7 +2,8 @@ import "server-only";
 
 /**
  * Private shop-link management (M4A) — SERVER ONLY, authenticated
- * owner/admin. Reads run under RLS (members read their tenant's links);
+ * owner/admin. Reads run under RLS: since M4D.2 the customer_access_links
+ * SELECT policy is owner/admin-only, so a sales_rep sees no link rows;
  * create/revoke go through the SECURITY DEFINER RPCs. The raw token is
  * generated in the Server Action and only its hash reaches this layer.
  */
