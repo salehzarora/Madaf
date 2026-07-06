@@ -1,13 +1,14 @@
 "use client";
 
-import { LogIn } from "lucide-react";
+import { LogIn, UserPlus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { signInAction } from "@/lib/actions/auth";
+import { signInAction, signUpAction } from "@/lib/actions/auth";
 
 export function LoginForm({
   locale,
@@ -21,6 +22,7 @@ export function LoginForm({
 }) {
   const t = dict.access.login;
   const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -28,16 +30,25 @@ export function LoginForm({
     event.preventDefault();
     setFailed(false);
     const fd = new FormData(event.currentTarget);
+    const email = String(fd.get("email") ?? "");
+    const password = String(fd.get("password") ?? "");
     setPending(true);
     try {
-      const result = await signInAction({
-        email: String(fd.get("email") ?? ""),
-        password: String(fd.get("password") ?? ""),
-      });
-      if (result.ok) {
-        router.replace(next ?? `/${locale}/admin`);
-        router.refresh();
-        return;
+      if (mode === "signup") {
+        const result = await signUpAction({ email, password });
+        if (result.ok) {
+          // A fresh account has no membership → onboarding.
+          router.replace(`/${locale}/onboarding`);
+          router.refresh();
+          return;
+        }
+      } else {
+        const result = await signInAction({ email, password });
+        if (result.ok) {
+          router.replace(next ?? `/${locale}/admin`);
+          router.refresh();
+          return;
+        }
       }
     } catch {
       // fall through
@@ -45,6 +56,8 @@ export function LoginForm({
     setPending(false);
     setFailed(true);
   }
+
+  const isSignup = mode === "signup";
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -60,13 +73,24 @@ export function LoginForm({
         />
       </div>
       <div>
-        <Label htmlFor="login-password">{t.password}</Label>
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="login-password">{t.password}</Label>
+          {!isSignup ? (
+            <Link
+              href={`/${locale}/reset-password`}
+              className="mb-1.5 text-xs font-medium text-brand-700 hover:underline"
+            >
+              {t.forgotPassword}
+            </Link>
+          ) : null}
+        </div>
         <Input
           id="login-password"
           name="password"
           type="password"
-          autoComplete="current-password"
+          autoComplete={isSignup ? "new-password" : "current-password"}
           dir="ltr"
+          minLength={isSignup ? 8 : undefined}
           required
         />
       </div>
@@ -75,13 +99,33 @@ export function LoginForm({
           role="alert"
           className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
         >
-          {t.error}
+          {isSignup ? t.signUpError : t.error}
         </p>
       ) : null}
       <Button type="submit" size="lg" disabled={pending} className="mt-1 w-full">
-        <LogIn className="size-4 rtl:-scale-x-100" aria-hidden />
-        {pending ? t.signingIn : t.signIn}
+        {isSignup ? (
+          <UserPlus className="size-4 rtl:-scale-x-100" aria-hidden />
+        ) : (
+          <LogIn className="size-4 rtl:-scale-x-100" aria-hidden />
+        )}
+        {isSignup
+          ? pending
+            ? t.signingUp
+            : t.signUp
+          : pending
+            ? t.signingIn
+            : t.signIn}
       </Button>
+      <button
+        type="button"
+        onClick={() => {
+          setMode(isSignup ? "signin" : "signup");
+          setFailed(false);
+        }}
+        className="text-center text-sm font-medium text-brand-700 hover:underline"
+      >
+        {isSignup ? t.haveAccount : t.noAccount}
+      </button>
     </form>
   );
 }

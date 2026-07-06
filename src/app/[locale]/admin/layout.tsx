@@ -4,14 +4,15 @@ import { AdminShell, type AdminSession } from "@/components/admin-shell";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, getSupplier } from "@/lib/data";
+import { getDataMode } from "@/lib/data";
 
 /**
  * Admin chrome — sidebar dashboard layout for all /admin pages.
  *
  * In Supabase mode this is the auth gate: an authenticated tenant member is
- * required. No session → login; session but no membership → onboarding. In
- * mock mode the demo admin stays open (no auth).
+ * required. No session → login; session but no membership → onboarding. The
+ * shell shows the current tenant + a switcher when the user belongs to more
+ * than one. In mock mode the demo admin stays open (no auth).
  */
 export default async function AdminLayout({
   children,
@@ -26,15 +27,16 @@ export default async function AdminLayout({
 
   let session: AdminSession | undefined;
   if (getDataMode() === "supabase") {
-    const { userId, email, membership } = await getSessionContext();
+    const { userId, email, membership, memberships } = await getSessionContext();
     if (!userId) redirect(`/${locale}/login`);
     if (!membership) redirect(`/${locale}/onboarding`);
 
-    const supplier = await getSupplier();
     session = {
       email,
       role: membership.role,
-      tenantName: supplier.name[locale],
+      tenantName: membership.name[locale],
+      currentTenantId: membership.tenantId,
+      tenants: memberships.map((m) => ({ id: m.tenantId, name: m.name[locale] })),
     };
   }
 

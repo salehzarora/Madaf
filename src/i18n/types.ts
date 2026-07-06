@@ -392,6 +392,32 @@ export interface Dictionary {
       signIn: string;
       signingIn: string;
       error: string;
+      signUp: string;
+      signingUp: string;
+      signUpError: string;
+      forgotPassword: string;
+      noAccount: string;
+      haveAccount: string;
+    };
+    tenant: {
+      switch: string;
+    };
+    reset: {
+      requestTitle: string;
+      requestSubtitle: string;
+      email: string;
+      sendLink: string;
+      sending: string;
+      sentTitle: string;
+      sentBody: string;
+      newSubtitle: string;
+      newPassword: string;
+      update: string;
+      updating: string;
+      updatedTitle: string;
+      updatedBody: string;
+      backToLogin: string;
+      error: string;
     };
     session: {
       signedInAs: string;

@@ -1,4 +1,4 @@
-# Auth & Access Model (M4A · M4A.1 · M4B)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C)
 
 How Madaf decides **who** may see or change **what**, once real
 authentication is switched on. Read `MVP_SCOPE.md` and
@@ -11,9 +11,14 @@ picture of the auth/authorization/tenancy layer.
 > `customer_access_links` grants. **M4B** adds tenant **team management**:
 > tokenized team invitations, membership RPCs (invite / accept / change
 > role / remove) with last-owner protection and no self-promotion, and a
-> hard lockdown of direct `tenant_users` writes. Still **local Supabase
-> only**, still **no payments, no legal invoices, no hosted project**.
-> Mock stays the zero-config default.
+> hard lockdown of direct `tenant_users` writes. **M4C** makes membership
+> **multi-tenant**: a user may belong to several tenants and switch between
+> them (verified selected-tenant cookie), `authorize_tenant` now verifies
+> the *named* tenant against membership, plus a `sales_rep_customers`
+> assignment foundation, a minimal anonymous-token rate limiter, and
+> signup / password-reset. Still **local Supabase only**, still **no
+> payments, no legal invoices, no hosted project**. Mock stays the
+> zero-config default.
 
 ---
 
@@ -56,20 +61,31 @@ storefront shows sample data. Everything below describes **supabase mode**.
 
 `src/lib/auth/session.ts` is the single source of truth for the
 authenticated path. `getSessionContext()` (wrapped in React `cache` for
-per-request dedupe) returns `{ client, userId, email, membership }`:
+per-request dedupe) returns `{ client, userId, email, memberships,
+membership }`:
 
 - `client` — the cookie-bound Supabase client (RLS applies).
-- `membership` — the caller's single `{ tenantId, role }` resolved from
-  `tenant_users` via the `current_membership()` RPC, or `null`.
+- `memberships` — **every** tenant the user belongs to
+  (`{ tenantId, role, name }`), from `list_memberships()` — feeds the
+  switcher.
+- `membership` — the **currently-selected** membership: the one named by
+  the `madaf_tenant` cookie **if it is one of the user's real
+  memberships**, else the first (deterministic) membership, else `null`.
 
 Derived helpers:
 
-- `getDataContext()` → `{ client, tenantId }`. `tenantId` is the
+- `getDataContext()` → `{ client, tenantId }`. `tenantId` is the selected
   membership tenant, or the `NO_TENANT` sentinel
   (`00000000-…-000000000000`) for anonymous / not-yet-onboarded callers.
 - `getCurrentUser()`, `getCurrentMembership()`.
 
-**M4A assumes one membership per user.** Multi-tenant switching is M4B.
+**Multi-tenant (M4C):** a user may belong to several tenants. The selected
+tenant lives in an httpOnly cookie set only by `selectTenantAction` **after
+verifying membership**, and `getSessionContext` re-verifies it every
+request — a tampered/stale cookie just falls back to the first membership
+and can never select a tenant the user isn't in. `tenant_users` keeps
+`unique(tenant_id, user_id)` (no duplicate in one tenant); the M4A single
+`unique(user_id)` constraint was dropped.
 
 ## 4. Authorization: `authorize_tenant`
 
@@ -79,19 +95,23 @@ Every tenant-owned write RPC begins with:
 p_tenant_id := public.authorize_tenant(p_tenant_id, array['owner','admin']::public.tenant_role[]);
 ```
 
-`authorize_tenant(p_tenant_id, p_roles[])`:
+`authorize_tenant(p_tenant_id, p_roles[])` (M4C, multi-tenant):
 
 1. **service_role** → returns `p_tenant_id` unchanged (bootstrap/seed only).
-2. **authenticated** → derives the tenant from the caller's
-   `tenant_users` membership. If the client passed a `p_tenant_id` that
-   isn't theirs → **`42501`**. If their role isn't in `p_roles` →
-   **`42501`**.
+2. **authenticated** → `p_tenant_id` is **required** and is **verified**
+   against the caller's memberships: the caller must have a `tenant_users`
+   row for *that* tenant with a role in `p_roles`, else **`42501`**. There
+   is no derive-the-single-tenant fallback anymore.
 3. Anyone else → `42501`.
 
-The **client-submitted `tenant_id` is never trusted** — it is only
-accepted if it equals the caller's real membership tenant, and the
-server always substitutes the derived value. This is the one checkpoint
-that makes cross-tenant writes impossible regardless of what the UI sends.
+The **client-submitted `tenant_id` is never trusted** — it is accepted
+ONLY when it matches one of the caller's own memberships (with an allowed
+role). The tenant-scoped team/link RPCs (`create_tenant_invite`,
+`list_tenant_members`, `insert_customer_access_link`, …) take an explicit
+`p_tenant_id` (the app's verified selected tenant) and pass it straight in;
+the catalog/order RPCs already did. This one checkpoint makes cross-tenant
+writes impossible for a user who belongs to several tenants, regardless of
+what the UI sends.
 
 ### Role matrix (M4A + M4B)
 
@@ -157,11 +177,12 @@ A signed-in user with **no** membership is redirected to `/onboarding`,
 which calls `create_tenant_with_owner(name_ar, name_he, name_en,
 default_locale)` — a SECURITY DEFINER RPC that atomically creates the
 `tenants` row and the caller's `owner` `tenant_users` row. Callable only
-by an authenticated user who is not yet a member of any tenant. The
-single-membership invariant is enforced at the schema level by a
-`unique (user_id)` constraint on `tenant_users` (also the race backstop
-for the RPC's check-then-insert); M4B, which adds multi-tenant
-membership, will drop it deliberately.
+by an authenticated user who is not yet a member of any tenant.
+(A user who already belongs to a tenant grows into more tenants by
+accepting invites, not through onboarding.) `signUpAction` (M4C) creates a
+fresh account, which lands here. Since M4C, `tenant_users` enforces only
+`unique (tenant_id, user_id)` — the M4A single-`unique(user_id)` constraint
+was dropped to allow multi-tenant membership.
 
 ## 8. Private customer links (tokenized shop)
 
@@ -239,9 +260,49 @@ state errors use the Madaf SQLSTATE class `MDF0x` (catchable by
 `WHEN OTHERS`, unlike the built-in `P0004 = assert_failure`); the accept
 page maps them to localized messages (wrong-email / already-a-member /
 invalid). Accepting an invite while already a member of another tenant is
-rejected (`MDF07`) — multi-tenant membership is M4C. Routes:
+rejected (`MDF07` — you're already in this tenant). Accepting an invite to
+a **different** tenant now succeeds (multi-tenant, M4C). Routes:
 `/[locale]/admin/team` (owner/admin) and `/[locale]/invite/<token>`
 (login-first; `/login?next=` returns the user to the invite).
+
+## 8c. Multi-tenant switching · rate limiting · auth polish (M4C)
+
+**Tenant switching.** The admin top bar shows the current tenant, and — when
+the user belongs to more than one — a switcher (`TenantSwitcher` →
+`selectTenantAction`). The action verifies membership, then sets the
+httpOnly `madaf_tenant` cookie; `getSessionContext` re-verifies it every
+request (see §3). All reads filter by the selected tenant and all write RPCs
+re-check membership for it, so a stale/tampered cookie cannot leak another
+tenant's data. Team/invite pages, the roster, and permissions are all scoped
+to the selected tenant.
+
+**sales_rep customer scoping (foundation).** `sales_rep_customers`
+(`tenant_id, user_id, customer_id`) records which shops a rep is assigned
+to. Grant-locked like the other M4 tables (anon nothing; owner/admin + the
+rep itself get a column SELECT; no direct writes; no dangerous privileges).
+Owner/admin manage it via `assign_customer_to_rep` /
+`unassign_customer_from_rep` / `list_rep_assignments` (verify the target is
+a `sales_rep` of the tenant and the customer belongs to it). **M4C ships the
+table + RPCs only** — read/order-path ENFORCEMENT (a rep seeing/ordering for
+only assigned customers) is **M4D**, so the current order flow is untouched.
+
+**Anonymous-token rate limiting.** `token_access_attempts` counts FAILED
+resolutions per `(purpose, SHA-256 token fingerprint)` in a rolling 15-min
+window (limit 20). The **raw token is never stored** (only its fingerprint),
+and **no IP is stored**. `get_token_catalog` / `create_order_request_from_
+token` deny (return null) once a fingerprint is over the limit; a valid token
+never accumulates failures (different fingerprint), so normal shop flow is
+never blocked. The counter must persist across a failed call, so those RPCs
+**return null instead of raising** on a bad token (a raise would roll the
+counter write back). Invite acceptance is authenticated (attributable), so
+it is not rate-limited here. Global/IP limiting is M4D.
+
+**Auth polish.** The login form has a **sign-up** mode (`signUpAction`; local
+dev auto-confirms, so a new account lands on `/onboarding`). Password reset
+lives at `/[locale]/reset-password` and runs **client-side** (the recovery
+token arrives in the URL fragment, which only the browser can read): request
+a link, or — after following it — set a new password via the browser client.
+`?next=` redirects stay same-locale (open-redirect guarded).
 
 ## 9. Route guards
 
@@ -249,9 +310,9 @@ rejected (`MDF07`) — multi-tenant membership is M4C. Routes:
   `/login`; session but no membership → `/onboarding`; otherwise renders
   with the member's tenant/role/email in the top bar + logout. Mock mode:
   open demo admin, unchanged.
-- `/login`, `/onboarding` — `notFound()` in mock mode; in supabase mode
-  they bounce an already-resolved user onward (to `/admin` or
-  `/onboarding`).
+- `/login`, `/onboarding`, `/reset-password` — `notFound()` in mock mode;
+  in supabase mode `/login` bounces an already-resolved user onward (to
+  `?next=` or `/admin`, or `/onboarding`) and offers sign-up + a reset link.
 - `/shop/<token>` — `notFound()` in mock mode; anonymous token path in
   supabase mode.
 - `/admin/team` — `notFound()` in mock mode; owner/admin only in supabase
@@ -303,17 +364,27 @@ invites end-to-end you need a **second** local auth user whose email you
 control (create one in Studio → Authentication, sign in as owner, invite
 that email, then open `/he/invite/<token>` while signed in as it).
 
-## 12. Deferred to M4C / later
+## 12. Delivered in M4C
 
-- **Multi-tenant membership / tenant switching** — M4A/M4B assume one
-  membership per user (`unique(user_id)` on `tenant_users`); accepting a
-  second invite is rejected until this lands. A tenant selector + a
-  membership-verified "current tenant" cookie would replace the constraint.
-- **Per-customer / per-rep scoping** for `sales_rep` (a
-  `sales_rep_customers` assignment table).
-- **Owner transfer** and broader admin member-management (M4B keeps role
-  change / removal owner-only, and never grants the owner role via RPC).
-- **Signup / password-reset / email-verification** flows (M4B is
-  login-first; invited users must already have an auth account).
-- **Rate-limiting / abuse controls** and `usage_count` / `last_used_ip`
-  on the anonymous token + invite endpoints.
+- **Multi-tenant membership + tenant switcher** (verified `madaf_tenant`
+  cookie; `authorize_tenant` verifies the named tenant).
+- **`sales_rep_customers` foundation** — table + owner/admin RPCs (grant
+  locked); enforcement is M4D.
+- **Anonymous-token rate limiter** — per-fingerprint failed-attempt cap.
+- **Auth polish** — sign-up mode + client-side password reset.
+
+## 13. Deferred to M4D / later
+
+- **sales_rep scoping ENFORCEMENT** — a rep sees/orders only for assigned
+  customers (filter `customers` reads + gate `create_order_request` /
+  token-less order flow on `sales_rep_customers`); owner/admin see all. The
+  table + management RPCs already exist.
+- **Owner transfer** and broader admin member-management (role change /
+  removal stay owner-only; the owner role is never granted via RPC).
+- **Email-verification / production email** — local dev has
+  `enable_confirmations = false`; hosted deployments must configure SMTP and
+  the reset/confirm redirect URLs.
+- **Global / IP-based rate limiting**, `usage_count` / `last_used_ip`, and
+  rate-limiting the (authenticated) invite-accept endpoint.
+- **"Create additional tenant" from an existing account** (onboarding is
+  membership-less only today).

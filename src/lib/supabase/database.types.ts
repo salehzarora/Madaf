@@ -655,6 +655,38 @@ export type Database = {
           },
         ]
       }
+      sales_rep_customers: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          customer_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          customer_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          customer_id?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_rep_customers_tenant_id_customer_id_fkey"
+            columns: ["tenant_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       tenant_invitations: {
         Row: {
           accepted_at: string | null
@@ -797,6 +829,36 @@ export type Database = {
         }
         Relationships: []
       }
+      token_access_attempts: {
+        Row: {
+          attempts: number
+          created_at: string
+          fingerprint: string
+          id: number
+          purpose: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          fingerprint: string
+          id?: never
+          purpose: string
+          updated_at?: string
+          window_start?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          fingerprint?: string
+          id?: never
+          purpose?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -815,6 +877,10 @@ export type Database = {
           order_number: string
         }[]
       }
+      _record_token_failure: {
+        Args: { p_fingerprint: string; p_purpose: string }
+        Returns: undefined
+      }
       _resolve_token: {
         Args: { p_raw_token: string }
         Returns: {
@@ -823,8 +889,16 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      _token_rate_exceeded: {
+        Args: { p_fingerprint: string; p_purpose: string }
+        Returns: boolean
+      }
       accept_tenant_invite: { Args: { p_token: string }; Returns: string }
       assert_service_role: { Args: { p_fn: string }; Returns: undefined }
+      assign_customer_to_rep: {
+        Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }
+        Returns: undefined
+      }
       authorize_tenant: {
         Args: {
           p_roles: Database["public"]["Enums"]["tenant_role"][]
@@ -871,6 +945,7 @@ export type Database = {
           p_email: string
           p_expires_at?: string
           p_role: Database["public"]["Enums"]["tenant_role"]
+          p_tenant_id: string
           p_token_hash: string
           p_token_preview?: string
         }
@@ -905,14 +980,33 @@ export type Database = {
           p_customer_id: string
           p_expires_at?: string
           p_label?: string
+          p_tenant_id: string
           p_token_hash: string
           p_token_preview?: string
         }
         Returns: string
       }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
-      list_tenant_members: {
+      list_memberships: {
         Args: never
+        Returns: {
+          name_ar: string
+          name_en: string
+          name_he: string
+          role: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+        }[]
+      }
+      list_rep_assignments: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          created_at: string
+          customer_id: string
+          user_id: string
+        }[]
+      }
+      list_tenant_members: {
+        Args: { p_tenant_id: string }
         Returns: {
           created_at: string
           email: string
@@ -921,12 +1015,18 @@ export type Database = {
         }[]
       }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
-      remove_tenant_member: { Args: { p_user_id: string }; Returns: undefined }
+      remove_tenant_member: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: undefined
+      }
       revoke_customer_access_link: {
-        Args: { p_link_id: string }
+        Args: { p_link_id: string; p_tenant_id: string }
         Returns: string
       }
-      revoke_tenant_invite: { Args: { p_invite_id: string }; Returns: string }
+      revoke_tenant_invite: {
+        Args: { p_invite_id: string; p_tenant_id: string }
+        Returns: string
+      }
       set_product_active: {
         Args: {
           p_is_active: boolean
@@ -934,6 +1034,10 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      unassign_customer_from_rep: {
+        Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }
+        Returns: undefined
       }
       update_manufacturer: {
         Args: {
@@ -971,6 +1075,7 @@ export type Database = {
       update_tenant_member_role: {
         Args: {
           p_new_role: Database["public"]["Enums"]["tenant_role"]
+          p_tenant_id: string
           p_user_id: string
         }
         Returns: undefined

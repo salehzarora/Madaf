@@ -4,10 +4,24 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M4B shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
-> reads; M3A/M3A.1 order writes + lockdown; M3B/M3B.1 catalog writes +
-> lockdown; M4A auth/private links; M4A.1 customer_access_links grant
-> lockdown). **M4B adds tenant TEAM management**: tokenized, email-verified
+> **STATUS — M4C shipped** (M1–M4B as below). **M4C adds multi-tenant
+> membership + switching**: the M4A `unique(user_id)` on `tenant_users` is
+> dropped (only `unique(tenant_id, user_id)` remains), `authorize_tenant`
+> now VERIFIES the caller-named tenant against membership (no single-tenant
+> derive), the tenant-scoped team/link RPCs take an explicit `p_tenant_id`,
+> and `accept_tenant_invite` lets a user join several tenants. The app
+> resolves all memberships via `list_memberships()` and remembers the
+> selected one in a membership-verified `madaf_tenant` httpOnly cookie
+> (`selectTenantAction`), surfaced by a switcher in the admin top bar. Also:
+> `sales_rep_customers` (assignment table + owner/admin RPCs
+> `assign/unassign/list_rep_assignments` — grant-locked; ENFORCEMENT is
+> M4D), a fingerprint-based `token_access_attempts` rate limiter on the anon
+> shop-token endpoints (raw token never stored; the endpoints return null
+> instead of raising so the counter persists), and sign-up (`signUpAction`)
+> + client-side password reset (`/reset-password`). All M4A/M4B guarantees
+> intact (verified by grant audit + direct-write regression). Earlier
+> summary follows. **M4B added tenant TEAM management**: tokenized,
+> email-verified
 > invitations (`tenant_invitations`, hash-only, grant-locked like
 > `customer_access_links`) and membership RPCs — `create_tenant_invite`,
 > `revoke_tenant_invite`, `accept_tenant_invite`, `update_tenant_member_
