@@ -44,6 +44,8 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705150000_product_crud_rpcs.sql` | M3B: product / manufacturer / inventory CRUD RPCs — service-role-only, tenant-validated |
 | `migrations/20260705160000_lock_catalog_writes.sql` | M3B.1: master-data tables READ-ONLY for authenticated — writes only via the RPCs |
 | `migrations/20260705170000_auth_and_private_links.sql` | M4A: `authorize_tenant()` + `current_membership()` + `create_tenant_with_owner()`; write RPCs re-gated for authenticated owner/admin/sales_rep; `customer_access_links` table + tokenized shop RPCs (`get_token_catalog`, `create_order_request_from_token`) |
+| `migrations/20260706100000_lock_customer_access_links_grants.sql` | M4A.1: strip default-ACL TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from anon/authenticated on `customer_access_links`; re-grant only the column-scoped member SELECT (no `token_hash`) |
+| `migrations/20260706110000_tenant_team_and_invites.sql` | M4B: lock `tenant_users` direct writes (RPC-only); `tenant_invitations` table (grant-locked like `customer_access_links`) + team RPCs (`create/revoke/accept_tenant_invite`, `update_tenant_member_role`, `remove_tenant_member`, `list_tenant_members`) with owner/admin gates + last-owner protection |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -96,8 +98,10 @@ documents stay renderable after catalog or customer changes.
 - Role tiers: **any member** (incl. `sales_rep`) reads everything in
   their tenant. Master-data and order tables are all **read-only at the
   table level for every authenticated client** — writes flow only
-  through validated, service-role-only RPCs (see below). A member can
-  never change a price, name, stock level, order or customer directly.
+  through validated RPCs, now `EXECUTE`-granted to `authenticated` and
+  gated by `authorize_tenant` (M4A: owner/admin for catalog/status,
+  owner/admin/sales_rep for order creation). A member can never change a
+  price, name, stock level, order or customer directly.
 - `orders` and `order_items` are read-only for authenticated (M3A.1):
   no write policies, no write grants — including TRUNCATE/REFERENCES/
   TRIGGER/MAINTAIN, which Supabase's default ACL would otherwise leave
@@ -122,8 +126,26 @@ documents stay renderable after catalog or customer changes.
   role only — no client can forge an invoice draft, flip a document to
   `generated` (also blocked by CHECK, even for the service role), or
   plant audit entries.
+- `customer_access_links` (private shop links, M4A) is anon-inaccessible
+  and member read-only: `anon` has NO grants; `authenticated` has a
+  **column-scoped SELECT that omits `token_hash`** plus the RLS
+  members-read policy — no INSERT/UPDATE/DELETE, and no
+  TRUNCATE/REFERENCES/TRIGGER/MAINTAIN either (locked in M4A.1, since the
+  M3A.1 blanket strip predated the table). Links are created/revoked only
+  via `insert_customer_access_link` / `revoke_customer_access_link`; anon
+  resolves/reads/orders only through the SECURITY DEFINER token functions.
+- `tenant_users` is **RPC-only for writes since M4B**: the M1.1 direct
+  owner/admin insert/update/delete policies were dropped and the grants
+  revoked, so no member can self-promote or orphan the tenant via a raw
+  write. Memberships change ONLY through `create_tenant_with_owner`
+  (onboarding), `accept_tenant_invite`, `update_tenant_member_role` and
+  `remove_tenant_member` — the last two owner-only, with last-owner
+  protection. `tenant_invitations` (M4B) is grant-locked exactly like
+  `customer_access_links` (anon nothing; owner/admin column-scoped SELECT
+  without `token_hash`; no dangerous privileges) and read-gated to
+  owner/admin.
 - Admins cannot touch owner memberships or grant the owner role — only
-  owners manage owners.
+  owners manage owners (and never via a direct write).
 - Tenant onboarding is live in M4A: a signed-in, membership-less user
   creates their tenant + first `owner` `tenant_users` row atomically via
   `create_tenant_with_owner()` (authenticated, membership-less only).
@@ -149,8 +171,9 @@ paths to short-lived **signed URLs** (the bucket stays private); external
 ### Catalog writes (M3B)
 
 Admin product/manufacturer/inventory edits flow client → Server Action
-(`src/lib/actions/products.ts`) → data layer → service-role-only RPCs
-(`20260705150000_product_crud_rpcs.sql`):
+(`src/lib/actions/products.ts`) → data layer → tenant-validated RPCs
+(`20260705150000_product_crud_rpcs.sql`; since M4A they run on the
+authenticated client and are gated by `authorize_tenant`, owner/admin):
 
 - `create_product` / `update_product` (jsonb payload; validates tenant,
   category/manufacturer ownership, ranges, lengths, SKU uniqueness;
@@ -161,9 +184,10 @@ Admin product/manufacturer/inventory edits flow client → Server Action
   negative stock).
 - `create_manufacturer` / `update_manufacturer` (+ `logo_url`).
 
-All `revoke execute` from anon/authenticated — service-role only until
-M4. Cross-tenant attachment is rejected by both the RPC checks and the
-composite FKs. `availability` stays DERIVED from inventory (never stored).
+Since M4A these RPCs are `EXECUTE`-granted to `authenticated` and gated by
+`authorize_tenant` (owner/admin) — `anon` still has none. Cross-tenant
+attachment is rejected by both the RPC checks and the composite FKs.
+`availability` stays DERIVED from inventory (never stored).
 Since M3B.1 these RPCs are the ONLY catalog write paths: direct
 authenticated writes on products/inventory_items/manufacturers/
 categories/customers are blocked at both the policy and grant level
@@ -229,7 +253,8 @@ and non-local URLs; the app no longer uses it. Full model:
 
 **Order writes (M3A):** in supabase mode, checkout and admin status
 changes are REAL. They flow client → Server Action
-(`src/lib/actions/orders.ts`) → data layer → service-role-only DB RPCs:
+(`src/lib/actions/orders.ts`) → data layer → tenant-validated DB RPCs
+(authenticated + `authorize_tenant` since M4A — see below):
 
 - `create_order_request(tenant, items, customer?, notes?, source)` —
   atomic: validates tenant/customer/products (active, same tenant),
@@ -251,7 +276,10 @@ private link place orders through the anon `create_order_request_from_token`
 RPC (`source='remote_customer'`), which reuses the same server-side money
 logic.
 
-The temporary service-role context additionally refuses any NON-LOCAL
-Supabase URL (only `127.0.0.1`/`localhost`/`::1`), on top of refusing
-production builds — a dev server pointed at a hosted project cannot run
-this mode.
+Since M4A the app's data path runs on the authenticated cookie client
+(`src/lib/auth/session.ts`), not the service role. The old service-role
+context (`src/lib/data/supabase-context.ts`) and the reserved factory in
+`src/lib/supabase/server.ts` remain only for local bootstrap/scripts, and
+both still FAIL CLOSED: they refuse production and any NON-LOCAL Supabase
+URL (only `127.0.0.1`/`localhost`/`::1`) — a dev server pointed at a
+hosted project cannot use them.

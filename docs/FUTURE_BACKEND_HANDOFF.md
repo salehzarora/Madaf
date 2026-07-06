@@ -4,9 +4,20 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M4A shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
-> reads; M3A order writes; M3A.1 order-write lockdown; M3B catalog
-> writes; M3B.1 catalog-write lockdown). **M4A adds real Supabase Auth**:
+> **STATUS — M4B shipped** (M1 schema/RLS/seed; M1.1 RLS hardening; M2
+> reads; M3A/M3A.1 order writes + lockdown; M3B/M3B.1 catalog writes +
+> lockdown; M4A auth/private links; M4A.1 customer_access_links grant
+> lockdown). **M4B adds tenant TEAM management**: tokenized, email-verified
+> invitations (`tenant_invitations`, hash-only, grant-locked like
+> `customer_access_links`) and membership RPCs — `create_tenant_invite`,
+> `revoke_tenant_invite`, `accept_tenant_invite`, `update_tenant_member_
+> role`, `remove_tenant_member`, `list_tenant_members` — enforcing
+> owner/admin gates, roles limited to admin/sales_rep, no self-promotion,
+> and last-owner protection. Direct `tenant_users` writes are now LOCKED
+> (RPC-only; the M1.1 owner/admin write policies were dropped). UI:
+> `/admin/team` (owner/admin) + `/invite/<token>` (login-first). Multi-
+> tenant membership stays blocked by `unique(user_id)` — that's M4C.
+> Earlier M4A summary follows. **M4A added real Supabase Auth**:
 > supplier users sign in (`/login`); the admin requires a session +
 > tenant membership (onboarding at `/onboarding` for membership-less
 > users); the whole data path moved off the service role onto

@@ -5,19 +5,20 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M4A — auth & access.** The UI is the polished trilingual M0
-> design (no payments, and **no legal tax invoices** — drafts only; see
-> [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). In the opt-in local-dev
-> Supabase mode there is now **real Supabase Auth**: supplier users sign
-> in at `/login`, `/admin` needs a session + tenant membership (with
-> `/onboarding` for new tenants), and the whole data path runs on
-> cookie-bound **authenticated** clients under RLS — roles are owner/admin
-> (catalog + orders + status + links) and sales_rep (orders only).
-> Customers order with **no login** through private tokenized links
-> (`/shop/<token>`; hash-only storage, revocable). This sits on the M3A
-> checkout/order-status writes and M3B catalog writes, all still through
-> tenant-validated RPCs. **Mock stays the zero-config default** — no auth,
-> open demo admin, original behavior. Documents/invoices are M5/M6. See
+> **Phase M4B — team & access hardening.** The UI is the polished
+> trilingual M0 design (no payments, and **no legal tax invoices** —
+> drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on
+> **M4A** auth (supplier sign-in at `/login`, `/admin` needs a session +
+> membership, cookie-bound **authenticated** clients under RLS, write RPCs
+> gated by `authorize_tenant`, customers order with no login via tokenized
+> `/shop/<token>` links), **M4B** adds tenant **team management**: manage
+> members at `/admin/team` via tokenized, email-verified invitations
+> (`/invite/<token>`, hash-only), with membership RPCs enforcing last-owner
+> protection and no self-promotion. Direct `tenant_users` writes are now
+> RPC-only. Roles: owner (all, incl. role changes/removal), admin (catalog
+> + orders + status + links + invite/revoke), sales_rep (orders only).
+> **Mock stays the zero-config default** — no auth, open demo admin.
+> Documents/invoices are M5/M6; multi-tenant switching is M4C. See
 > [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 
 ## Quick start

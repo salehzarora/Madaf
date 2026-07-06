@@ -12,9 +12,12 @@ import { signInAction } from "@/lib/actions/auth";
 export function LoginForm({
   locale,
   dict,
+  next,
 }: {
   locale: Locale;
   dict: Dictionary;
+  /** Safe (server-validated) same-locale path to return to after sign-in. */
+  next?: string;
 }) {
   const t = dict.access.login;
   const router = useRouter();
@@ -32,7 +35,7 @@ export function LoginForm({
         password: String(fd.get("password") ?? ""),
       });
       if (result.ok) {
-        router.replace(`/${locale}/admin`);
+        router.replace(next ?? `/${locale}/admin`);
         router.refresh();
         return;
       }
