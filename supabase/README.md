@@ -52,7 +52,8 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260708110000_sales_rep_order_read_scope.sql` | M4D.1: `can_access_order()` re-scopes the orders / order_items / order_status_history / documents SELECT policies (a sales_rep reads only assigned-customer orders) |
 | `migrations/20260708120000_restrict_customer_link_reads.sql` | M4D.2: swap the `customer_access_links` SELECT policy from member-wide (`is_tenant_member`) to owner/admin-only (`has_tenant_role(['owner','admin'])`) — a sales_rep can no longer read private-link metadata, even for an assigned customer |
 | `migrations/20260709100000_document_generation.sql` | M5A: `create_order_document()` — the ONLY document write path (documents stay table-level read-only). SECURITY DEFINER, authorize_tenant + can_access_order gated; idempotent per (order, type); internal `DOC-####-x` number; invoice_draft forced `draft` with a guaranteed legal_notice (never a legal tax invoice) |
-| `migrations/20260710100000_document_storage.sql` | M5B: PRIVATE `documents` storage bucket + `storage.objects` policies gated by `can_access_order` on the path's tenant + order segments (SELECT/INSERT/UPDATE; no public/anon, no DELETE); storage-metadata columns on `documents` (`storage_path`/`generated_at`/`file_size_bytes`/`checksum`); `set_document_storage()` RPC (the only writer of those columns) |
+| `migrations/20260710100000_document_storage.sql` | M5B: PRIVATE `documents` storage bucket + storage-metadata columns on `documents` (`storage_path`/`generated_at`/`file_size_bytes`/`checksum`); `set_document_storage()` RPC (the only writer of those columns) |
+| `migrations/20260711100000_lock_document_uploads.sql` | M5B.1: DROP the authenticated `documents`-bucket `storage.objects` policies (uploads/reads now go ONLY through the trusted server-only service-role client; normal users cannot upload/overwrite/read directly, closing a forgery vector); harden `set_document_storage` to validate the EXACT DB-derived path (rejects mismatched tenant/order/type/id/locale, traversal, non-.pdf, blank) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -216,17 +217,23 @@ paths to short-lived **signed URLs** (the bucket stays private); external
 
 Bucket `documents` (**M5B**, private, 10 MiB, `application/pdf` only). Path
 convention: `<tenant_id>/documents/<order_id>/<document_type>/<document_id>_
-<locale>.pdf` — no token_hash/secret in the path. Unlike product-images, its
-`storage.objects` policies key on BOTH the tenant (segment 1) AND the order
-(segment 3) via **`can_access_order`**, so a `sales_rep` can only
-sign/upload documents for assigned-customer orders (owner/admin any tenant
-order; walk-in orders owner/admin only; cross-tenant + anon blocked; no
-public/DELETE policy). The download route (`/admin/orders/[id]/documents/
-[type]`) reads the order under RLS, records via `create_order_document`,
-uploads on the authenticated client, records the path via
-`set_document_storage`, and 302-redirects to a ~60s **signed URL** (reused
-unless `?regenerate=1`). Mock mode streams the bytes (no storage). PDFs are
-never public and never exposed to tokenized customers.
+<locale>.pdf` — no token_hash/secret in the path. **M5B.1: this bucket has NO
+`storage.objects` policies** — RLS therefore denies every anon/authenticated
+read/insert/update/delete on it. Uploads + signing run ONLY through the
+server-only, fail-closed **service-role** client (`getServiceContext`), used
+from `src/lib/data/document-storage.ts` AFTER the route authorizes the
+request; normal users can never upload/overwrite/read documents objects
+directly (this closes a forgery vector where a user with `can_access_order`
+could plant a fake PDF at the deterministic path). The download route
+(`/admin/orders/[id]/documents/[type]`) reads the order under RLS
+(`can_access_order` → 404 for rep-unassigned/non-member), records via
+`create_order_document`, records the path via `set_document_storage` (which
+validates the EXACT DB-derived path) on the authenticated client, then the
+trusted service client uploads + creates a ~60s **signed URL** and the route
+302-redirects to it (reused only when `storage_path` equals the exact
+expected path, unless `?regenerate=1`). Mock mode streams the bytes (no
+storage). PDFs are never public and never exposed to tokenized customers.
+product-images policies are unchanged.
 
 ### Catalog writes (M3B)
 

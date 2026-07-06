@@ -5,13 +5,15 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M5B — stored PDFs & signed URLs.** Generated document PDFs are now
-> stored in a **private** Supabase Storage bucket and served via short-lived,
-> access-checked **signed URLs** (no public URLs). The admin order-detail page
-> lists per-type document history (status · number · date) with **download**
-> and **regenerate**. Access is gated a third time at the storage layer
-> (`can_access_order` on the object path): owner/admin any order, a sales_rep
-> only assigned-customer orders, cross-tenant/anon blocked. Hebrew/Arabic PDF
+> **Phase M5B — stored PDFs & signed URLs** (hardened in **M5B.1**).
+> Generated document PDFs are now stored in a **private** Supabase Storage
+> bucket and served via short-lived, access-checked **signed URLs** (no public
+> URLs). The admin order-detail page lists per-type document history (status ·
+> number · date) with **download** and **regenerate**. Access is verified by
+> the server route (RLS `can_access_order` + validated RPCs): owner/admin any
+> order, a sales_rep only assigned-customer orders, cross-tenant/anon blocked.
+> M5B.1 locks uploads/overwrites to a **trusted server-only path** — normal
+> users cannot write to the documents bucket directly. Hebrew/Arabic PDF
 > spacing is much improved. **Still drafts only — no legal tax invoices, no
 > tax-authority integration, no legal numbering, no payments.** Built on:
 >
