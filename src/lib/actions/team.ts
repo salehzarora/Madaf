@@ -16,7 +16,9 @@ import { revalidatePath } from "next/cache";
 
 import {
   acceptInvite,
+  demoteOwner,
   insertTenantInvite,
+  promoteOwner,
   removeMember,
   revokeTenantInvite,
   updateMemberRole,
@@ -139,6 +141,39 @@ export async function removeMemberAction(input: {
     return { ok: true };
   } catch (error) {
     console.error("[madaf/actions] removeMemberAction failed:", error);
+    return { ok: false };
+  }
+}
+
+export async function promoteOwnerAction(input: {
+  userId: string;
+  locale: string;
+}): Promise<{ ok: boolean }> {
+  try {
+    if (!isUserId(input.userId)) return { ok: false };
+    await promoteOwner(input.userId);
+    revalidatePath(`/${safeLocale(input.locale)}/admin/team`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[madaf/actions] promoteOwnerAction failed:", error);
+    return { ok: false };
+  }
+}
+
+export async function demoteOwnerAction(input: {
+  userId: string;
+  role: string;
+  locale: string;
+}): Promise<{ ok: boolean }> {
+  try {
+    if (!isUserId(input.userId) || !isInviteRole(input.role)) {
+      return { ok: false };
+    }
+    await demoteOwner({ userId: input.userId, role: input.role });
+    revalidatePath(`/${safeLocale(input.locale)}/admin/team`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[madaf/actions] demoteOwnerAction failed:", error);
     return { ok: false };
   }
 }

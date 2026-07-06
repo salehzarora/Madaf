@@ -1,4 +1,4 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D)
 
 How Madaf decides **who** may see or change **what**, once real
 authentication is switched on. Read `MVP_SCOPE.md` and
@@ -117,23 +117,45 @@ what the UI sends.
 
 | Capability | owner | admin | sales_rep |
 |---|:---:|:---:|:---:|
-| Read own tenant (catalog, orders, customers…) | ✓ | ✓ | ✓ |
+| Read catalog / orders (own tenant) | ✓ | ✓ | ✓ |
+| Read customers | ✓ (all) | ✓ (all) | assigned only |
+| Read orders / items / status / documents | ✓ (all) | ✓ (all) | assigned-customer orders only |
 | Create / update products, inventory, manufacturers | ✓ | ✓ | — |
-| Create order requests | ✓ | ✓ | ✓ |
+| Create order requests | ✓ (any customer) | ✓ (any customer) | assigned customer only |
 | Change order status | ✓ | ✓ | — |
 | Create / revoke customer links | ✓ | ✓ | — |
-| View team roster (with emails) | ✓ | ✓ | — |
+| View team roster · manage sales_rep assignments | ✓ | ✓ | — |
 | Invite / revoke team invitations (admin, sales_rep) | ✓ | ✓ | — |
 | Change a member's role · remove a member | ✓ | — | — |
+| Promote to owner · demote an owner | ✓ | — | — |
 | Create a tenant (onboarding) | membership-less user only | | |
 
-Team rules the RPCs enforce: no **owner** invites or promotions (owner is
-set only at onboarding); no self-role-change; **last-owner protection** (a
-tenant can never drop to zero owners); admin can invite/revoke but cannot
-change roles or remove members. `sales_rep` is still **tenant-wide** (sees
-and orders for the whole tenant); the `sales_rep_customers` assignment
-foundation landed in M4C, but read/order **enforcement** (a rep limited to
-assigned customers) is deferred to **M4D**.
+Team rules the RPCs enforce: no self-role-change; **last-owner protection**
+(a tenant can never drop to zero owners); admin can invite/revoke but cannot
+change roles, remove members, or transfer ownership. Owner transfer goes
+through `promote_tenant_owner` / `demote_tenant_owner` (owner-only,
+last-owner-protected; self-demotion allowed only while another owner
+remains) — no one else can grant the owner role, and there are still no
+owner invites.
+
+**sales_rep customer scoping (ENFORCED):** a `sales_rep` sees ONLY the
+customers assigned to them (`sales_rep_customers`) and can create orders ONLY
+for an assigned customer — enforced at the DB level via
+`can_access_customer(tenant, customer)` in the `customers` SELECT policy and
+in `create_order_request` (a rep order with no/unassigned customer →
+`42501`; no fall-back to "all customers").
+
+**sales_rep order-read scoping (ENFORCED in M4D.1):** reads of `orders`,
+`order_items`, `order_status_history` and `documents` are scoped by
+`can_access_order(tenant, order)` — owner/admin read all tenant rows; a
+`sales_rep` reads only rows tied to an order whose customer is assigned to
+them (a null-customer walk-in order is owner/admin only). So a rep can no
+longer list unassigned-customer orders or read their names via an order /
+document `customer_snapshot`. owner/admin still see and order for every
+customer in the tenant. Assignments are managed by owner/admin
+(`assign_customer_to_rep` / `unassign_customer_from_rep`); the tokenized shop
+flow (SECURITY DEFINER, `source='remote_customer'`) and order creation are
+unaffected — those RPCs run past RLS and validate scope themselves.
 
 ## 5. Reads — RLS, and the anon short-circuit
 
@@ -295,8 +317,13 @@ token` deny (return null) once a fingerprint is over the limit; a valid token
 never accumulates failures (different fingerprint), so normal shop flow is
 never blocked. The counter must persist across a failed call, so those RPCs
 **return null instead of raising** on a bad token (a raise would roll the
-counter write back). Invite acceptance is authenticated (attributable), so
-it is not rate-limited here. Global/IP limiting is M4D.
+counter write back). **M4D** adds a **global per-purpose** failure counter
+(sentinel fingerprint `*`, limit 100/15 min) that tightens blocking under
+aggregate abuse — but it only ever blocks a fingerprint that has *itself*
+already failed, so a valid token (which records no failures) is still never
+blocked. Invite acceptance is authenticated (attributable), so it is not
+rate-limited here. Edge/IP-based limiting (to stop a flood of all-unique
+tokens, each of which still gets one attempt) is production infra work.
 
 **Auth polish.** The login form has a **sign-up** mode (`signUpAction`; local
 dev auto-confirms, so a new account lands on `/onboarding`). Password reset
@@ -365,27 +392,34 @@ invites end-to-end you need a **second** local auth user whose email you
 control (create one in Studio → Authentication, sign in as owner, invite
 that email, then open `/he/invite/<token>` while signed in as it).
 
-## 12. Delivered in M4C
+## 12. Delivered in M4C · M4D
 
-- **Multi-tenant membership + tenant switcher** (verified `madaf_tenant`
-  cookie; `authorize_tenant` verifies the named tenant).
-- **`sales_rep_customers` foundation** — table + owner/admin RPCs (grant
-  locked); enforcement is M4D.
-- **Anonymous-token rate limiter** — per-fingerprint failed-attempt cap.
-- **Auth polish** — sign-up mode + client-side password reset.
+- **M4C — Multi-tenant membership + tenant switcher** (verified `madaf_tenant`
+  cookie; `authorize_tenant` verifies the named tenant), the
+  `sales_rep_customers` foundation, a per-fingerprint token rate limiter, and
+  sign-up + client-side password reset.
+- **M4D — sales_rep scoping ENFORCED** (`can_access_customer` in the
+  customers policy + `create_order_request`), **owner transfer**
+  (`promote_tenant_owner` / `demote_tenant_owner`, last-owner-protected), and
+  a **stronger rate limiter** (global per-purpose failure counter that never
+  blocks valid tokens). Team page gains sales_rep customer assignment +
+  promote/demote controls.
+- **M4D.1 — sales_rep ORDER-READ scoping ENFORCED** (`can_access_order` on the
+  `orders` / `order_items` / `order_status_history` / `documents` SELECT
+  policies) — a rep can no longer read unassigned-customer orders or their
+  names via order/document snapshots. sales_rep scoping is now enforced for
+  customer reads, order creation, AND order reads.
 
-## 13. Deferred to M4D / later
+## 13. Deferred to M5 / infra
 
-- **sales_rep scoping ENFORCEMENT** — a rep sees/orders only for assigned
-  customers (filter `customers` reads + gate `create_order_request` /
-  token-less order flow on `sales_rep_customers`); owner/admin see all. The
-  table + management RPCs already exist.
-- **Owner transfer** and broader admin member-management (role change /
-  removal stay owner-only; the owner role is never granted via RPC).
+- **Edge / IP-based rate limiting** (the DB limiter caps repeat offenders and
+  aggregate abuse but gives each unique bad token one attempt; a flood of
+  all-unique tokens needs IP/edge limiting), plus `usage_count`, and
+  rate-limiting the (authenticated, attributable) invite-accept endpoint.
 - **Email-verification / production email** — local dev has
   `enable_confirmations = false`; hosted deployments must configure SMTP and
   the reset/confirm redirect URLs.
-- **Global / IP-based rate limiting**, `usage_count` / `last_used_ip`, and
-  rate-limiting the (authenticated) invite-accept endpoint.
 - **"Create additional tenant" from an existing account** (onboarding is
   membership-less only today).
+- **Owner invites by email** (M4D keeps owner grants to promote/demote only —
+  no owner invitations).

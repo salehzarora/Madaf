@@ -48,6 +48,8 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260706110000_tenant_team_and_invites.sql` | M4B: lock `tenant_users` direct writes (RPC-only); `tenant_invitations` table (grant-locked like `customer_access_links`) + team RPCs (`create/revoke/accept_tenant_invite`, `update_tenant_member_role`, `remove_tenant_member`, `list_tenant_members`) with owner/admin gates + last-owner protection |
 | `migrations/20260707100000_multi_tenant_and_hardening.sql` | M4C: drop `unique(user_id)` (multi-tenant); `authorize_tenant` verifies the named tenant; team/link RPCs take `p_tenant_id`; `list_memberships()`; `sales_rep_customers` + assign/unassign/list RPCs (grant-locked); `token_access_attempts` + fingerprint rate limiter wired into the anon shop-token endpoints |
 | `migrations/20260707110000_deprecate_current_membership.sql` | M4C.1: deprecate the legacy single-membership `current_membership()` (revoke EXECUTE from authenticated + legacy comment; use `list_memberships()`) |
+| `migrations/20260708100000_sales_rep_scope_owner_transfer.sql` | M4D: `can_access_customer()` + rep-scoped customers SELECT policy + `create_order_request` sales_rep gate; `promote_tenant_owner` / `demote_tenant_owner` (last-owner-protected); global per-purpose token rate-limit counter |
+| `migrations/20260708110000_sales_rep_order_read_scope.sql` | M4D.1: `can_access_order()` re-scopes the orders / order_items / order_status_history / documents SELECT policies (a sales_rep reads only assigned-customer orders) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -150,10 +152,23 @@ documents stay renderable after catalog or customer changes.
   (`tenant_users` keeps only `unique(tenant_id, user_id)`).
   `authorize_tenant` now verifies the caller-named tenant against
   membership; the app tracks the selected tenant in a membership-verified
-  `madaf_tenant` cookie. `sales_rep_customers` (assignment foundation) and
-  `token_access_attempts` (anon-token rate limiter — raw token never stored,
-  no anon/authenticated access) are grant-locked exactly like the other M4
-  tables.
+  `madaf_tenant` cookie. `sales_rep_customers` and `token_access_attempts`
+  (anon-token rate limiter — raw token never stored, no anon/authenticated
+  access) are grant-locked exactly like the other M4 tables.
+- **sales_rep scoping (M4D · M4D.1):** `can_access_customer(tenant,
+  customer)` gives owner/admin every customer in the tenant and a sales_rep
+  only their assigned ones — it backs the `customers` SELECT policy and
+  `create_order_request` (a rep may order only for an assigned customer, no
+  fall-back). `can_access_order(tenant, order)` (M4D.1) likewise re-scopes
+  the `orders` / `order_items` / `order_status_history` / `documents` SELECT
+  policies so a rep READS only orders tied to an assigned customer (a
+  null-customer walk-in order is owner/admin only) — no unassigned-customer
+  data via order/document snapshots. Assignments are managed by owner/admin
+  via `assign_customer_to_rep` / `unassign_customer_from_rep`.
+- **Owner transfer (M4D):** `promote_tenant_owner` / `demote_tenant_owner`
+  (owner-only, tenant-scoped, last-owner-protected; self-demotion only while
+  another owner remains). The owner role is granted ONLY here — never by
+  invite. `update_tenant_member_role` still handles admin↔sales_rep only.
 - Admins cannot touch owner memberships or grant the owner role — only
   owners manage owners (and never via a direct write).
 - Tenant onboarding is live in M4A: a signed-in, membership-less user

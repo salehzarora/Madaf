@@ -893,6 +893,10 @@ export type Database = {
         Args: { p_fingerprint: string; p_purpose: string }
         Returns: boolean
       }
+      _touch_token_attempt: {
+        Args: { p_fingerprint: string; p_purpose: string }
+        Returns: undefined
+      }
       accept_tenant_invite: { Args: { p_token: string }; Returns: string }
       assert_service_role: { Args: { p_fn: string }; Returns: undefined }
       assign_customer_to_rep: {
@@ -905,6 +909,14 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      can_access_customer: {
+        Args: { p_customer_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      can_access_order: {
+        Args: { p_order_id: string; p_tenant_id: string }
+        Returns: boolean
       }
       create_manufacturer: {
         Args: {
@@ -967,6 +979,14 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      demote_tenant_owner: {
+        Args: {
+          p_new_role: Database["public"]["Enums"]["tenant_role"]
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       get_token_catalog: { Args: { p_token: string }; Returns: Json }
       has_tenant_role: {
         Args: {
@@ -1015,6 +1035,10 @@ export type Database = {
         }[]
       }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      promote_tenant_owner: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: undefined
+      }
       remove_tenant_member: {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined

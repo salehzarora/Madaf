@@ -5,20 +5,21 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M4C — multi-tenant switching & hardening.** The UI is the
-> polished trilingual M0 design (no payments, and **no legal tax invoices**
-> — drafts only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on
-> **M4A** auth + **M4B** team management, **M4C** makes membership
-> **multi-tenant**: a user can belong to several suppliers and switch
-> between them from the admin top bar via a **membership-verified**
-> `madaf_tenant` cookie (`authorize_tenant` verifies the *named* tenant;
-> every tenant-scoped RPC takes an explicit `p_tenant_id`). It also adds a
-> `sales_rep_customers` assignment **foundation** (RPCs only; enforcement is
-> M4D), a minimal **anonymous-token rate limiter** (per-fingerprint; the raw
-> token is never stored), and **sign-up + password reset**. Customers still
-> order with no login via tokenized `/shop/<token>` links; direct table
-> writes stay RPC-only. **Mock stays the zero-config default** — no auth,
-> open demo admin. Documents/invoices are M5/M6. See
+> **Phase M4D — access-control enforcement.** The UI is the polished
+> trilingual M0 design (no payments, and **no legal tax invoices** — drafts
+> only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on **M4C**
+> multi-tenant switching, **M4D** ENFORCES **sales_rep customer scoping**: a
+> sales rep sees only the customers assigned to them and can create orders
+> only for an assigned customer (owner/admin see and order for all) —
+> enforced at the DB via `can_access_customer` in the customers RLS policy
+> and `create_order_request`. It also adds **owner transfer**
+> (`promote_tenant_owner` / `demote_tenant_owner`, last-owner-protected) and
+> a **stronger anonymous-token rate limiter** (a global per-purpose counter
+> that never blocks valid tokens; the raw token is never stored). Owner/admin
+> manage rep assignments + ownership on `/admin/team`. Customers still order
+> with no login via tokenized `/shop/<token>` links; direct table writes stay
+> RPC-only. **Mock stays the zero-config default** — no auth, open demo
+> admin. Documents/invoices are M5/M6. See
 > [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 
 ## Quick start

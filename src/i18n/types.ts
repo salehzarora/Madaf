@@ -532,6 +532,20 @@ export interface Dictionary {
       roleError: string;
       removeError: string;
       confirmRemove: string;
+      promoteOwner: string;
+      demoteOwner: string;
+      confirmPromote: string;
+      confirmDemote: string;
+      ownerError: string;
+      assignmentsTitle: string;
+      assignmentsSubtitle: string;
+      assignError: string;
+      noReps: string;
+      assignedCount: string;
+      noAssignments: string;
+      assignCustomer: string;
+      assign: string;
+      unassign: string;
     };
     invite: {
       title: string;
