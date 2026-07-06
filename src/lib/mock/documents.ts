@@ -22,6 +22,7 @@ function docFor(orderId: string, type: DocumentType): OrderDocument {
     orderId,
     number: `DOC-${serial}-${TYPE_SUFFIX[type]}`,
     date: order.createdAt,
+    status: "draft",
   };
 }
 

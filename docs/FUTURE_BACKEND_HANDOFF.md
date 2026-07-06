@@ -4,7 +4,27 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M5A shipped** (M1–M4D.2 as below). **M5A adds the documents /
+> **STATUS — M5B shipped** (M1–M5A as below). **M5B stores the generated
+> PDFs** in a PRIVATE Supabase Storage `documents` bucket and serves them via
+> SHORT-LIVED, access-checked SIGNED URLs. The download route
+> (`/[locale]/admin/orders/[id]/documents/[type]?lang=…&regenerate=1`) reads
+> the order under RLS, records via `create_order_document`, then uploads +
+> signs on the authenticated client — gated a third time by the
+> `storage.objects` policies, which re-check `can_access_order` on the path's
+> tenant + order segments (path `<tenant>/documents/<order>/<type>/<doc>_<loc>
+> .pdf`, no secrets). owner/admin any order, sales_rep only assigned-customer
+> orders, walk-in orders owner/admin only, cross-tenant blocked, anon nothing;
+> the public object URL is dead. Storage metadata (storage_path / generated_at
+> / file_size_bytes / checksum) is added to `documents` and written ONLY by
+> the SECURITY DEFINER `set_document_storage` RPC (documents stay read-only).
+> A download reuses the stored object unless `?regenerate=1`. Admin order
+> detail now lists per-type document history (status/number/date) with
+> download + regenerate. RTL PDF polish: a wordSpacing fix restores
+> Hebrew/Arabic inter-word spacing (digits stay correct). Still NO legal tax
+> invoices, numbering, provider integration, or payments; invoice_draft stays
+> `draft`; mock mode streams (no storage). All M4/M5A guarantees intact (grant
+> audit + 15-table direct-write regression + storage-policy matrix). Earlier
+> summary follows. **M5A added the documents /
 > PDF foundation**: server-side PDF generation for the three SAFE document
 > types — order request, delivery note, and invoice **DRAFT** — from order
 > snapshots, downloadable at `GET /[locale]/admin/orders/[id]/documents/

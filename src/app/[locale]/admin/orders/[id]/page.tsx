@@ -1,8 +1,9 @@
-import { ArrowRight, Download, FileText } from "lucide-react";
+import { ArrowRight, Download, FileText, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OrderStatusControl } from "@/components/order-status-control";
 import { ProductImage } from "@/components/product-image";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
@@ -43,6 +44,8 @@ export default async function AdminOrderDetailPage({
   ]);
   const productById = new Map(products.map((p) => [p.id, p]));
   const categoryById = new Map(categories.map((c) => [c.id, c]));
+  // Latest document record per type, for the documents history/generate card.
+  const docsByType = new Map(orderDocs.map((doc) => [doc.type, doc]));
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -169,57 +172,90 @@ export default async function AdminOrderDetailPage({
             </CardContent>
           </Card>
 
-          {/* Documents */}
+          {/* Documents — history + generate/download/regenerate (M5B).
+              Access is enforced server-side: this page only renders for
+              orders the member can access, and the download route re-checks
+              (RLS + can_access_order) before generating/signing. */}
           <Card>
             <CardHeader>
               <CardTitle>{t.previewDoc}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2 pt-3">
-              {/* Preview (HTML sheet) for documents already on record */}
-              {orderDocs.map((doc) => (
-                <Link
-                  key={doc.id}
-                  href={`/${locale}/admin/documents/${doc.id}`}
-                  className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
-                >
-                  <FileText className="size-4 text-brand-600" aria-hidden />
-                  {dict.docs.types[doc.type]}
-                  <span className="ms-auto text-xs text-ink-muted" dir="ltr">
-                    {doc.number}
-                  </span>
-                </Link>
-              ))}
-
-              {/* Server-generated PDF downloads (M5A). A plain anchor: the
-                  route returns an application/pdf attachment. Access is
-                  enforced server-side (this page only renders for orders the
-                  member can access; the route re-checks). */}
-              <div
-                className={
-                  orderDocs.length
-                    ? "mt-1 flex flex-col gap-2 border-t border-line pt-3"
-                    : "flex flex-col gap-2"
-                }
-              >
-                {(["order", "delivery", "invoiceDraft"] as const).map(
-                  (docType) => (
-                    <a
+            <CardContent className="flex flex-col gap-3 pt-3">
+              {(["order", "delivery", "invoiceDraft"] as const).map(
+                (docType) => {
+                  const existing = docsByType.get(docType);
+                  const base = `/${locale}/admin/orders/${order.id}/documents/${docType}`;
+                  return (
+                    <div
                       key={docType}
-                      href={`/${locale}/admin/orders/${order.id}/documents/${docType}`}
-                      className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
+                      className="rounded-field border border-line p-3"
                     >
-                      <Download className="size-4 text-brand-600" aria-hidden />
-                      {dict.docs.types[docType]}
-                      <span className="ms-auto text-xs font-medium text-brand-700">
-                        {dict.docs.downloadPdf}
-                      </span>
-                    </a>
-                  ),
-                )}
-              </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FileText
+                          className="size-4 text-brand-600"
+                          aria-hidden
+                        />
+                        <span className="text-sm font-medium text-ink">
+                          {dict.docs.types[docType]}
+                        </span>
+                        {existing?.status ? (
+                          <Badge
+                            tone={
+                              docType === "invoiceDraft" ? "warning" : "neutral"
+                            }
+                          >
+                            {dict.docs.status[existing.status]}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-ink-muted">
+                        {existing ? (
+                          <>
+                            <span dir="ltr">{existing.number}</span>
+                            {" · "}
+                            {dict.docs.docDate}:{" "}
+                            {formatDate(
+                              existing.generatedAt ?? existing.date,
+                              locale,
+                            )}
+                          </>
+                        ) : (
+                          dict.docs.notGenerated
+                        )}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <a
+                          href={base}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-field bg-brand-600 px-3 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+                        >
+                          <Download className="size-4" aria-hidden />
+                          {dict.docs.downloadPdf}
+                        </a>
+                        {existing ? (
+                          <a
+                            href={`${base}?regenerate=1`}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line px-3 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
+                          >
+                            <RefreshCw className="size-4" aria-hidden />
+                            {dict.docs.regenerate}
+                          </a>
+                        ) : null}
+                        {existing ? (
+                          <Link
+                            href={`/${locale}/admin/documents/${existing.id}`}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
+                          >
+                            {dict.docs.preview}
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                },
+              )}
 
               {/* Permanent legal notice: drafts are previews, not tax invoices. */}
-              <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+              <p className="text-xs leading-relaxed text-ink-muted">
                 {dict.admin.documents.legalBanner}
               </p>
             </CardContent>
