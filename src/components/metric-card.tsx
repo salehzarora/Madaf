@@ -15,27 +15,39 @@ export function MetricCard({
   tone?: "default" | "warning" | "brand";
 }) {
   return (
-    <Card className="flex items-center gap-4 p-5">
-      {icon ? (
-        <div
+    <Card
+      className={cn(
+        "p-4.5",
+        tone === "warning" && "border-warning/35 bg-accent-wash",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p
           className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-field [&>svg]:size-5",
-            tone === "warning"
-              ? "bg-warning-soft text-warning"
-              : tone === "brand"
-                ? "bg-brand-50 text-brand-700"
-                : "bg-surface-sunken text-ink-soft",
+            "text-[11px] font-bold uppercase tracking-[0.08em]",
+            tone === "warning" ? "text-warning" : "text-ink-muted",
           )}
         >
-          {icon}
-        </div>
-      ) : null}
-      <div className="min-w-0">
-        <p className="truncate text-sm text-ink-muted">{label}</p>
-        <p className="text-2xl font-semibold tracking-tight text-ink">
-          {value}
+          {label}
         </p>
+        {icon ? (
+          <div
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-lg [&>svg]:size-4",
+              tone === "warning"
+                ? "bg-warning-soft text-warning"
+                : tone === "brand"
+                  ? "bg-brand-50 text-brand-700"
+                  : "bg-surface-sunken text-ink-soft",
+            )}
+          >
+            {icon}
+          </div>
+        ) : null}
       </div>
+      <p className="mt-2 text-[32px] font-extrabold tabular-nums tracking-[-0.02em] text-ink">
+        {value}
+      </p>
     </Card>
   );
 }

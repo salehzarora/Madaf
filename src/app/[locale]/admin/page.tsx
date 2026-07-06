@@ -1,36 +1,39 @@
-import {
-  AlertTriangle,
-  Boxes,
-  Inbox,
-  Package,
-  PlusCircle,
-  ShoppingBag,
-  Store,
-  Wallet,
-} from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MetricCard } from "@/components/metric-card";
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import { StatusDonut } from "@/components/dashboard/status-donut";
+import { TrendChart, type TrendDay } from "@/components/dashboard/trend-chart";
 import { OrderStatusBadge } from "@/components/order-status-badge";
-import { ProductImage } from "@/components/product-image";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
+import { isLowStock, orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
-  isLowStock,
-  orderSubtotal,
-  productName,
-} from "@/lib/catalog-helpers";
-import {
-  listCategories,
   listCustomers,
   listInventory,
   listOrders,
   listProducts,
 } from "@/lib/data";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import type { Locale } from "@/lib/types";
 
-/** Admin dashboard — metrics, recent orders, low stock, quick actions. */
+const STATUS_COLOR = {
+  new: "#3B62B8",
+  confirmed: "#17694F",
+  preparing: "#E8A33D",
+  delivered: "#8FC7AB",
+  cancelled: "#CBC3B0",
+} as const;
+
+/** Compact money label for chart bars: 2900 → "2.9K". */
+function compact(n: number, locale: Locale): string {
+  if (n >= 1000) return `${formatNumber(Math.round(n / 100) / 10, locale)}K`;
+  return formatNumber(Math.round(n), locale);
+}
+
+/** Admin dashboard v2 — KPIs, trend + status, widgets, recent activity. */
 export default async function AdminDashboardPage({
   params,
 }: {
@@ -40,217 +43,421 @@ export default async function AdminDashboardPage({
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin;
+  const d = dict.admin.dashboard;
 
-  const [orders, customers, inventory, products, categories] =
-    await Promise.all([
-      listOrders(),
-      listCustomers(),
-      listInventory(),
-      listProducts(),
-      listCategories(),
-    ]);
+  const [orders, customers, inventory, products] = await Promise.all([
+    listOrders(),
+    listCustomers(),
+    listInventory(),
+    listProducts(),
+  ]);
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [p.id, p]));
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
+  const live = orders.filter((o) => o.status !== "cancelled");
   const newOrders = orders.filter((o) => o.status === "new");
-  const openOrders = orders.filter((o) =>
+  const open = orders.filter((o) =>
     ["new", "confirmed", "preparing"].includes(o.status),
   );
-  const monthOrders = orders.filter(
-    (o) => o.createdAt.startsWith("2026-07") && o.status !== "cancelled",
-  );
-  const monthTotal = monthOrders.reduce(
-    (sum, order) => sum + orderSubtotal(order),
-    0,
-  );
+  const monthOrders = live.filter((o) => o.createdAt.startsWith("2026-07"));
+  const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
   const lowStockItems = inventory.filter(isLowStock);
-  const recentOrders = [...orders]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
+
+  // Open-orders segmented mini-bar shares.
+  const openBy = {
+    new: open.filter((o) => o.status === "new").length,
+    confirmed: open.filter((o) => o.status === "confirmed").length,
+    preparing: open.filter((o) => o.status === "preparing").length,
+  };
+
+  // Daily totals (non-cancelled), last 14 days present in the data.
+  const byDay = new Map<string, number>();
+  for (const o of live) {
+    const day = o.createdAt.slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + orderSubtotal(o));
+  }
+  const dayKeys = [...byDay.keys()].sort().slice(-14);
+  const trendDays: TrendDay[] = dayKeys.map((k, i) => {
+    const value = byDay.get(k) ?? 0;
+    const [, mm, dd] = k.split("-");
+    return {
+      dayLabel: `${Number(dd)}/${Number(mm)}`,
+      value,
+      compact: compact(value, locale),
+      full: formatCurrency(value, locale),
+      isToday: i === dayKeys.length - 1,
+    };
+  });
+
+  // Sparkline points (month daily totals) over a 0..84 × 0..30 viewBox.
+  const spark = trendDays.map((x) => x.value);
+  const sparkMax = Math.max(1, ...spark);
+  const sparkPts = spark
+    .map((v, i) => {
+      const x = spark.length > 1 ? (i / (spark.length - 1)) * 84 : 42;
+      const y = 28 - (v / sparkMax) * 26;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  // Status donut segments.
+  const statuses = ["new", "confirmed", "preparing", "delivered", "cancelled"] as const;
+  const segments = statuses.map((s) => ({
+    label: dict.status[s],
+    count: orders.filter((o) => o.status === s).length,
+    color: STATUS_COLOR[s],
+  }));
+
+  // Top products by summed line revenue (non-cancelled).
+  const prodRev = new Map<string, number>();
+  for (const o of live) {
+    for (const it of o.items) {
+      prodRev.set(
+        it.productId,
+        (prodRev.get(it.productId) ?? 0) + it.quantity * it.unitPrice,
+      );
+    }
+  }
+  const topProducts = [...prodRev.entries()]
+    .map(([id, rev]) => ({ product: productById.get(id), rev }))
+    .filter((x) => x.product)
+    .sort((a, b) => b.rev - a.rev)
     .slice(0, 5);
+  const topProdMax = Math.max(1, ...topProducts.map((x) => x.rev));
+
+  // Top shops by summed subtotal (non-cancelled).
+  const shopTotals = new Map<string, { total: number; count: number }>();
+  for (const o of live) {
+    const cur = shopTotals.get(o.customerId) ?? { total: 0, count: 0 };
+    shopTotals.set(o.customerId, {
+      total: cur.total + orderSubtotal(o),
+      count: cur.count + 1,
+    });
+  }
+  const topShops = [...shopTotals.entries()]
+    .map(([id, v]) => ({ customer: customerById.get(id), ...v }))
+    .filter((x) => x.customer)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 4);
+
+  const recent = [...orders]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 6);
+
+  const actionLink =
+    "inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-sm font-semibold transition-colors";
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">
-          {t.overviewTitle}
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted">{t.overviewSubtitle}</p>
+    <div className="mx-auto flex w-full max-w-[1096px] flex-col gap-4">
+      {/* Header row */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+            {t.overviewTitle}
+          </h1>
+          <p className="mt-1 text-sm text-ink-soft">{t.overviewSubtitle}</p>
+          <ShelfRule className="mt-3 w-40" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/${locale}/admin/products/new`}
+            className={`${actionLink} bg-brand-600 text-white hover:bg-brand-700`}
+          >
+            <PlusCircle className="size-4" aria-hidden />
+            {t.actionNewProduct}
+          </Link>
+          <Link
+            href={`/${locale}/admin/orders`}
+            className={`${actionLink} border border-line-strong bg-surface text-ink-soft hover:bg-background`}
+          >
+            {t.actionViewOrders}
+          </Link>
+          <Link
+            href={`/${locale}/catalog`}
+            className={`${actionLink} text-ink-soft hover:bg-surface-sunken hover:text-ink`}
+          >
+            {t.actionOpenCatalog}
+          </Link>
+        </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-        <MetricCard
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard
           label={t.metrics.newOrders}
           value={formatNumber(newOrders.length, locale)}
-          icon={<Inbox />}
-          tone="brand"
-        />
-        <MetricCard
+        >
+          <div className="flex items-center gap-2">
+            <span className="rounded-badge bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
+              {d.today}
+            </span>
+            <span className="text-[11px] text-ink-muted">
+              {t.metrics.openOrders}: {formatNumber(open.length, locale)}
+            </span>
+          </div>
+        </KpiCard>
+
+        <KpiCard
           label={t.metrics.openOrders}
-          value={formatNumber(openOrders.length, locale)}
-          icon={<ShoppingBag />}
-        />
-        <MetricCard
+          value={formatNumber(open.length, locale)}
+        >
+          <div className="flex h-1.5 overflow-hidden rounded-[3px] bg-line-hair">
+            {(["new", "confirmed", "preparing"] as const).map((s) =>
+              openBy[s] > 0 ? (
+                <span
+                  key={s}
+                  style={{
+                    width: `${(openBy[s] / Math.max(1, open.length)) * 100}%`,
+                    backgroundColor: STATUS_COLOR[s],
+                  }}
+                />
+              ) : null,
+            )}
+          </div>
+        </KpiCard>
+
+        <KpiCard
           label={t.metrics.monthRevenue}
           value={formatCurrency(monthTotal, locale)}
-          icon={<Wallet />}
-        />
-        <MetricCard
-          label={t.metrics.activeProducts}
-          value={formatNumber(products.length, locale)}
-          icon={<Package />}
-        />
-        <MetricCard
+        >
+          <div className="flex items-center justify-between gap-2">
+            <svg viewBox="0 0 84 30" className="h-[30px] w-[84px]" aria-hidden>
+              <polyline
+                points={sparkPts}
+                fill="none"
+                className="stroke-brand-600"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {spark.length ? (
+                <circle
+                  cx="84"
+                  cy={28 - (spark[spark.length - 1] / sparkMax) * 26}
+                  r="2.6"
+                  className="fill-accent"
+                />
+              ) : null}
+            </svg>
+            <span className="text-[11px] text-ink-muted">
+              {interpolate(d.ordersCount, { count: monthOrders.length })}
+            </span>
+          </div>
+        </KpiCard>
+
+        <KpiCard
           label={t.metrics.lowStock}
           value={formatNumber(lowStockItems.length, locale)}
-          icon={<AlertTriangle />}
           tone="warning"
-        />
-        <MetricCard
-          label={t.metrics.activeShops}
-          value={formatNumber(customers.length, locale)}
-          icon={<Store />}
-        />
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="rounded-badge bg-danger-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-danger"
+              dir="ltr"
+            >
+              {d.emptyLabel} · {outCount}
+            </span>
+            <span className="text-[11px] text-warning/90">{d.lowSub}</span>
+          </div>
+        </KpiCard>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        {/* Recent orders */}
+      {/* Trend + status */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.8fr_1fr]">
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>{t.recentOrders}</CardTitle>
+          <CardHeader variant="strip">
+            <div>
+              <CardTitle>{d.trend}</CardTitle>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+                {d.trendSub}
+              </p>
+            </div>
+            <span
+              className="font-mono text-sm font-semibold text-brand-700"
+              dir="ltr"
+            >
+              {formatCurrency(monthTotal, locale)}
+            </span>
+          </CardHeader>
+          <div className="p-4">
+            <TrendChart days={trendDays} />
+          </div>
+        </Card>
+        <Card>
+          <CardHeader variant="strip">
+            <CardTitle>{d.statusMix}</CardTitle>
+          </CardHeader>
+          <div className="p-5">
+            <StatusDonut
+              segments={segments}
+              total={orders.length}
+              totalLabel={dict.nav.orders}
+            />
+          </div>
+        </Card>
+      </div>
+
+      {/* Widgets */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Top products */}
+        <Card>
+          <CardHeader variant="strip">
+            <CardTitle>{d.topProducts}</CardTitle>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+              {d.byRevenue}
+            </span>
+          </CardHeader>
+          <ul className="flex flex-col gap-3 p-4">
+            {topProducts.map(({ product, rev }, i) => (
+              <li key={product!.id}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-[13px] font-semibold text-ink">
+                    {productName(product!, locale)}
+                  </span>
+                  <span className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink-soft">
+                    {formatCurrency(rev, locale)}
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-[3px] bg-line-hair">
+                  <span
+                    className={i === 0 ? "block h-full bg-brand-600" : "block h-full bg-brand-300"}
+                    style={{ width: `${(rev / topProdMax) * 100}%` }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        {/* Top shops */}
+        <Card>
+          <CardHeader variant="strip">
+            <CardTitle>{d.topCustomers}</CardTitle>
+          </CardHeader>
+          <ul className="divide-y divide-line-hair px-4">
+            {topShops.map(({ customer, total, count }, i) => (
+              <li key={customer!.id} className="flex items-center gap-3 py-3">
+                <span
+                  className={
+                    "flex size-[22px] shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold " +
+                    (i === 0 ? "bg-band text-accent" : "bg-background text-ink-soft")
+                  }
+                  dir="ltr"
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-ink">
+                    {customer!.name}
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
+                    {interpolate(d.ordersCount, { count })}
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+                  {formatCurrency(total, locale)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        {/* Low stock */}
+        <Card className="border-warning/35 bg-accent-wash">
+          <CardHeader variant="strip" className="bg-accent-wash">
+            <CardTitle>{t.lowStockTitle}</CardTitle>
             <Link
-              href={`/${locale}/admin/orders`}
-              className="text-sm font-medium text-brand-700 hover:underline"
+              href={`/${locale}/admin/inventory`}
+              className="text-[13px] font-semibold text-brand-700 hover:underline"
             >
               {dict.common.viewAll}
             </Link>
           </CardHeader>
-          <CardContent className="pt-4">
-            <ul className="divide-y divide-line/70">
-              {recentOrders.map((order) => {
-                const customer = customerById.get(order.customerId);
-                return (
-                  <li key={order.id}>
-                    <Link
-                      href={`/${locale}/admin/orders/${order.id}`}
-                      className="-mx-2 flex items-center gap-3 rounded-field px-2 py-3 transition-colors hover:bg-surface-sunken/60"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">
-                          {customer?.name ?? "—"}
-                        </p>
-                        <p className="text-xs text-ink-muted">
-                          <span dir="ltr">{order.number}</span> ·{" "}
-                          {formatDate(order.createdAt, locale)} ·{" "}
-                          {interpolate(dict.admin.orders.detail.itemsCount, {
-                            count: order.items.length,
-                          })}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-                        {formatCurrency(orderSubtotal(order), locale)}
-                      </span>
-                      <OrderStatusBadge status={order.status} dict={dict.status} />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col gap-4">
-          {/* Low stock */}
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle>{t.lowStockTitle}</CardTitle>
-              <Link
-                href={`/${locale}/admin/inventory`}
-                className="text-sm font-medium text-brand-700 hover:underline"
-              >
-                {dict.common.viewAll}
-              </Link>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <ul className="flex flex-col gap-2.5">
-                {lowStockItems.slice(0, 5).map((item) => {
-                  const product = productById.get(item.productId)!;
-                  const category = categoryById.get(product.categoryId)!;
-                  const empty = item.stockPackages === 0;
-                  return (
-                    <li
-                      key={item.productId}
-                      className={
-                        "flex items-center gap-3 rounded-field border p-2 " +
-                        (empty
-                          ? "border-danger/30 bg-danger-soft"
-                          : "border-warning/30 bg-warning-soft")
-                      }
-                    >
-                      <ProductImage
-                        product={product}
-                        category={category}
-                        className="size-10 shrink-0 rounded-md"
-                        iconClassName="text-base"
-                        showSizeTag={false}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">
-                          {productName(product, locale)}
-                        </p>
-                        <p className="text-xs text-ink-muted" dir="ltr">
-                          {item.location}
-                        </p>
-                      </div>
+          <ul className="flex flex-col gap-2.5 p-4">
+            {lowStockItems.slice(0, 4).map((item) => {
+              const product = productById.get(item.productId)!;
+              const empty = item.stockPackages === 0;
+              return (
+                <li key={item.productId} className="flex items-center gap-2.5">
+                  <span
+                    className="shrink-0 rounded-[5px] bg-ink/[.07] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ink-soft"
+                    dir="ltr"
+                  >
+                    {item.location}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-ink">
+                      {productName(product, locale)}
+                    </p>
+                    <div className="mt-1 h-[5px] overflow-hidden rounded-full bg-ink/[.06]">
                       <span
-                        className={
-                          "shrink-0 rounded-md px-2 py-1 text-sm font-extrabold tabular-nums " +
-                          (empty
-                            ? "bg-danger text-white"
-                            : "bg-warning text-white")
-                        }
-                      >
-                        {formatNumber(item.stockPackages, locale)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </CardContent>
-          </Card>
-
-          {/* Quick actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.quickActions}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 pt-4">
-              <Link
-                href={`/${locale}/admin/products/new`}
-                className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
-              >
-                <PlusCircle className="size-4 text-brand-600" aria-hidden />
-                {t.actionNewProduct}
-              </Link>
-              <Link
-                href={`/${locale}/admin/orders`}
-                className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
-              >
-                <Inbox className="size-4 text-brand-600" aria-hidden />
-                {t.actionViewOrders}
-              </Link>
-              <Link
-                href={`/${locale}/catalog`}
-                className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
-              >
-                <Boxes className="size-4 text-brand-600" aria-hidden />
-                {t.actionOpenCatalog}
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
+                        className={empty ? "block h-full bg-danger" : "block h-full bg-accent"}
+                        style={{
+                          width: `${Math.max((item.stockPackages / 10) * 100, 3)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span
+                    className="shrink-0 font-mono text-[13px] font-bold tabular-nums text-ink"
+                    dir="ltr"
+                  >
+                    {item.stockPackages} / 10
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       </div>
+
+      {/* Recent activity */}
+      <Card>
+        <CardHeader variant="strip">
+          <CardTitle>{t.recentOrders}</CardTitle>
+          <Link
+            href={`/${locale}/admin/orders`}
+            className="text-[13px] font-semibold text-brand-700 hover:underline"
+          >
+            {dict.common.viewAll}
+          </Link>
+        </CardHeader>
+        <div className="divide-y divide-line-hair">
+          {recent.map((order) => {
+            const customer = customerById.get(order.customerId);
+            return (
+              <Link
+                key={order.id}
+                href={`/${locale}/admin/orders/${order.id}`}
+                className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-brand-50/60"
+              >
+                <span
+                  className="w-[110px] shrink-0 font-mono text-[13px] font-semibold text-brand-700"
+                  dir="ltr"
+                >
+                  {order.number}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+                  {customer?.name ?? "—"}
+                </span>
+                <span className="hidden text-xs text-ink-muted sm:block">
+                  {formatDate(order.createdAt, locale)} ·{" "}
+                  {interpolate(dict.admin.orders.detail.itemsCount, {
+                    count: order.items.length,
+                  })}
+                </span>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+                  {formatCurrency(orderSubtotal(order), locale)}
+                </span>
+                <span className="hidden w-[130px] justify-end sm:flex">
+                  <OrderStatusBadge status={order.status} dict={dict.status} />
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </Card>
     </div>
   );
 }

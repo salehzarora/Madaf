@@ -16,8 +16,7 @@ export function AvailabilityBadge({
   dict: Dictionary["availability"];
 }) {
   return (
-    <Badge tone={toneFor[availability]}>
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+    <Badge tone={toneFor[availability]} dot>
       {dict[availability]}
     </Badge>
   );

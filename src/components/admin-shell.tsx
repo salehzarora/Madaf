@@ -18,7 +18,7 @@ import { useState, type ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { TenantSwitcher } from "@/components/auth/tenant-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
-import { LogoMark, LogoWordmark } from "@/components/logo";
+import { LogoMark } from "@/components/logo";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { cn } from "@/lib/utils";
@@ -35,11 +35,10 @@ export interface AdminSession {
 }
 
 /**
- * Admin shell — SaaS dashboard layout with a start-side sidebar (RTL-aware:
- * sidebar sits on the right in he/ar) and a collapsible drawer on mobile.
- *
- * In Supabase mode `session` carries the authenticated supplier's identity
- * and enables the logout control; in mock mode it is omitted.
+ * Admin shell — the "Madaf Ledger" layout: a deep bottle-green navigation
+ * band on the inline start (right in he/ar) carrying the logo, tenant
+ * switcher and nav; a warm top bar; a light content area. Mobile: a band top
+ * bar + drawer + bottom tab bar. Dark chrome belongs to navigation only.
  */
 export function AdminShell({
   locale,
@@ -57,8 +56,7 @@ export function AdminShell({
 
   const base = `/${locale}/admin`;
   // Team management is owner/admin only (Supabase mode); hidden otherwise.
-  const canManageTeam =
-    session?.role === "owner" || session?.role === "admin";
+  const canManageTeam = session?.role === "owner" || session?.role === "admin";
   const nav = [
     { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
     { href: `${base}/products`, label: dict.nav.products, icon: Package },
@@ -73,13 +71,25 @@ export function AdminShell({
   ];
 
   function isActive(item: (typeof nav)[number]): boolean {
-    return item.exact
-      ? pathname === item.href
-      : pathname.startsWith(item.href);
+    return item.exact ? pathname === item.href : pathname.startsWith(item.href);
   }
+  const activeLabel = nav.find(isActive)?.label ?? dict.nav.dashboard;
 
-  const sidebar = (
-    <nav className="flex flex-1 flex-col gap-1 p-3">
+  const logoBlock = (
+    <Link
+      href={base}
+      onClick={() => setOpen(false)}
+      className="flex items-center gap-2.5 rounded-field p-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <LogoMark className="size-9" />
+      <span className="text-[17px] font-extrabold tracking-[-0.01em] text-band-ink">
+        {dict.admin.title}
+      </span>
+    </Link>
+  );
+
+  const navList = (
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
       {nav.map((item) => {
         const Icon = item.icon;
         const active = isActive(item);
@@ -88,23 +98,30 @@ export function AdminShell({
             key={item.href}
             href={item.href}
             onClick={() => setOpen(false)}
+            aria-current={active ? "page" : undefined}
             className={cn(
-              "flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium transition-colors",
+              "relative flex h-[42px] items-center gap-3 rounded-field px-3 text-sm transition-colors",
               active
-                ? "bg-brand-600 text-white shadow-sm"
-                : "text-ink-soft hover:bg-surface-sunken hover:text-ink",
+                ? "bg-band-ink/10 font-bold text-band-ink"
+                : "font-medium text-band-muted hover:bg-band-ink/[.08] hover:text-band-ink",
             )}
           >
+            {active ? (
+              <span
+                className="absolute inset-inline-start-0 top-2 bottom-2 w-[3px] rounded-full bg-accent"
+                aria-hidden
+              />
+            ) : null}
             <Icon className="size-5 shrink-0" aria-hidden />
             {item.label}
           </Link>
         );
       })}
-      <div className="mt-auto border-t border-line pt-3">
+      <div className="mt-auto pt-3">
         <Link
           href={`/${locale}/catalog`}
           onClick={() => setOpen(false)}
-          className="flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+          className="flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium text-band-muted transition-colors hover:bg-band-ink/[.08] hover:text-band-ink"
         >
           <X className="size-5 shrink-0" aria-hidden />
           {dict.nav.exitAdmin}
@@ -113,91 +130,146 @@ export function AdminShell({
     </nav>
   );
 
-  return (
-    <div className="flex min-h-dvh flex-col">
-      {/* Top bar */}
-      <header className="sticky top-0 z-40 border-b border-line bg-surface">
-        <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-label={open ? dict.common.close : dict.common.menu}
-            className="flex size-11 items-center justify-center rounded-field text-ink-soft transition-colors hover:bg-surface-sunken lg:hidden"
-          >
-            {open ? <X className="size-5" /> : <Menu className="size-5" />}
-          </button>
-          <Link href={base} className="flex items-center gap-2.5">
-            <LogoMark />
-            <LogoWordmark
-              appName={dict.admin.title}
-              appNameNative={dict.admin.title}
-              className="hidden sm:flex"
-            />
-          </Link>
-          {session ? (
-            session.tenants.length > 1 ? (
-              <div className="hidden sm:block">
-                <TenantSwitcher
-                  locale={locale}
-                  currentTenantId={session.currentTenantId}
-                  currentName={session.tenantName}
-                  tenants={session.tenants}
-                  label={dict.access.tenant.switch}
-                />
-              </div>
-            ) : (
-              <span className="hidden max-w-40 truncate rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 sm:inline-block">
-                {session.tenantName}
-              </span>
-            )
-          ) : (
-            <span className="rounded-full bg-accent-100 px-2.5 py-1 text-xs font-semibold text-accent-800">
-              {dict.common.demoBadge}
+  const bandTop = (
+    <div className="flex flex-col gap-3 border-b border-band-muted/15 p-4">
+      {logoBlock}
+      {session ? (
+        session.tenants.length > 1 ? (
+          <TenantSwitcher
+            locale={locale}
+            currentTenantId={session.currentTenantId}
+            currentName={session.tenantName}
+            tenants={session.tenants}
+            label={dict.access.tenant.switch}
+          />
+        ) : (
+          <span className="inline-flex max-w-full items-center gap-2 truncate rounded-field border border-band-muted/25 bg-band-ink/5 px-2.5 py-2 text-[13px] font-semibold text-band-ink">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-[12px] font-extrabold text-band">
+              {session.tenantName.slice(0, 1)}
             </span>
-          )}
-          <div className="ms-auto flex items-center gap-2">
+            <span className="truncate">{session.tenantName}</span>
+          </span>
+        )
+      ) : (
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-badge border border-dashed border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-accent">
+          {dict.common.demoBadge}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-dvh flex-col lg:flex-row">
+      {/* Desktop band sidebar (inline start — right in he/ar) */}
+      <aside className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col bg-band lg:flex">
+        {bandTop}
+        {navList}
+      </aside>
+
+      {/* Mobile band top bar */}
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-band px-4 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? dict.common.close : dict.common.menu}
+          className="flex size-11 items-center justify-center rounded-field text-band-ink transition-colors hover:bg-band-ink/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {open ? <X className="size-5" /> : <Menu className="size-5" />}
+        </button>
+        {logoBlock}
+      </header>
+
+      {/* Mobile drawer */}
+      {open ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-ink/50"
+            onClick={() => setOpen(false)}
+            aria-hidden
+          />
+          <aside className="absolute inset-y-0 start-0 flex w-72 flex-col bg-band shadow-float">
+            {bandTop}
+            {navList}
+          </aside>
+        </div>
+      ) : null}
+
+      {/* Content column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Warm top bar (desktop) */}
+        <header className="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-line bg-surface-warm px-7 lg:flex">
+          <div className="leading-tight">
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+              {session?.tenantName ?? dict.common.demoBadge}
+            </p>
+            <p className="text-sm font-bold text-ink">{activeLabel}</p>
+          </div>
+          <div className="ms-auto flex items-center gap-2.5">
             <LocaleSwitcher current={locale} />
             {session ? (
               <>
-                <div className="hidden text-end leading-tight md:block">
-                  <p className="max-w-44 truncate text-xs font-medium text-ink" dir="ltr">
-                    {session.email}
-                  </p>
-                  <p className="text-[11px] uppercase tracking-wide text-ink-muted">
-                    {dict.access.session.roles[session.role]}
-                  </p>
+                <div className="hidden items-center gap-2.5 md:flex">
+                  <span className="flex size-7 items-center justify-center rounded-lg bg-band text-[13px] font-bold text-accent">
+                    {(session.email ?? "?").slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="text-end leading-tight">
+                    <p
+                      className="max-w-44 truncate font-mono text-[12px] font-medium text-ink"
+                      dir="ltr"
+                    >
+                      {session.email}
+                    </p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+                      {dict.access.session.roles[session.role]}
+                    </p>
+                  </div>
                 </div>
                 <LogoutButton locale={locale} label={dict.access.session.logout} />
               </>
             ) : null}
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="flex flex-1">
-        {/* Desktop sidebar (start side — right in RTL) */}
-        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-60 shrink-0 flex-col border-e border-line bg-surface lg:flex">
-          {sidebar}
-        </aside>
-
-        {/* Mobile drawer */}
-        {open ? (
-          <div className="fixed inset-0 z-30 lg:hidden">
-            <div
-              className="absolute inset-0 bg-ink/30"
-              onClick={() => setOpen(false)}
-              aria-hidden
-            />
-            <aside className="absolute inset-y-0 start-0 flex w-72 flex-col border-e border-line bg-surface pt-20 shadow-float">
-              {sidebar}
-            </aside>
-          </div>
-        ) : null}
-
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-8">
           {children}
         </main>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 rounded-t-2xl border-t border-band-muted/20 bg-band px-2 py-1.5 lg:hidden">
+        {[
+          { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
+          { href: `${base}/orders`, label: dict.nav.orders, icon: ShoppingBag },
+          { href: `${base}/products`, label: dict.nav.products, icon: Package },
+          { href: `${base}/customers`, label: dict.nav.customers, icon: Store },
+        ].map((item) => {
+          const Icon = item.icon;
+          const active = item.exact
+            ? pathname === item.href
+            : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold",
+                active ? "text-accent" : "text-band-muted",
+              )}
+            >
+              <Icon className="size-[19px]" aria-hidden />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold text-band-muted"
+        >
+          <Menu className="size-[19px]" aria-hidden />
+          <span>{dict.common.menu}</span>
+        </button>
+      </nav>
     </div>
   );
 }

@@ -70,13 +70,13 @@ export function OrdersTable({
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[680px] text-sm">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-3 text-start font-medium">{t.colOrder}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colShop}</th>
-                <th className="px-4 py-3 text-end font-medium">{t.colItems}</th>
-                <th className="px-4 py-3 text-end font-medium">{t.colTotal}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colStatus}</th>
-                <th className="px-4 py-3 text-start font-medium">{t.colDate}</th>
+              <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+                <th className="px-4 py-3 text-start">{t.colOrder}</th>
+                <th className="px-4 py-3 text-start">{t.colShop}</th>
+                <th className="px-4 py-3 text-end">{t.colItems}</th>
+                <th className="px-4 py-3 text-end">{t.colTotal}</th>
+                <th className="px-4 py-3 text-start">{t.colStatus}</th>
+                <th className="px-4 py-3 text-start">{t.colDate}</th>
               </tr>
             </thead>
             <tbody>
@@ -85,18 +85,18 @@ export function OrdersTable({
                 return (
                   <tr
                     key={order.id}
-                    className="relative border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                    className="relative border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                   >
                     <td className="px-4 py-3.5">
                       <Link
                         href={`/${locale}/admin/orders/${order.id}`}
-                        className="font-semibold text-brand-700 hover:underline"
+                        className="font-mono text-[13px] font-semibold text-brand-700 hover:underline"
                         dir="ltr"
                       >
                         {order.number}
                       </Link>
                     </td>
-                    <td className="px-4 py-3.5 text-ink">
+                    <td className="px-4 py-3.5 font-medium text-ink">
                       {customer?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3.5 text-end tabular-nums text-ink-soft">
@@ -104,7 +104,7 @@ export function OrdersTable({
                         count: order.items.length,
                       })}
                     </td>
-                    <td className="px-4 py-3.5 text-end font-semibold tabular-nums text-ink">
+                    <td className="px-4 py-3.5 text-end font-bold tabular-nums text-ink">
                       {formatCurrency(orderSubtotal(order), locale)}
                     </td>
                     <td className="px-4 py-3.5">

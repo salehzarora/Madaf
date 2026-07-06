@@ -1,65 +1,70 @@
 @import "tailwindcss";
 
 /*
- * Madaf / מדף — Design tokens (M0)
- * Light-only in this phase. Semantic tokens first, raw scales below.
- * See docs/DESIGN_SYSTEM.md for usage rules.
+ * Madaf / מדף — Design tokens ("Madaf Ledger", design/sitewide-visual-refresh)
+ * A wholesale supplier's paper ledger, digitized: warm paper canvas, a deep
+ * bottle-green navigation band (dark chrome for nav only; content stays
+ * light), a single amber operational accent, and IBM Plex Mono for Latin
+ * identifiers. See docs/design/madaf-ledger/ and docs/DESIGN_SYSTEM.md.
  */
 @theme {
-  /* Typography — Rubik covers Latin, Hebrew and Arabic scripts */
+  /* Typography */
   --font-sans: var(--font-rubik), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
 
-  /* Surfaces & text (warm neutrals — "shelf" feeling, not cold gray) */
-  --color-background: #f7f6f3;
+  /* Surfaces & text — deeper warm paper */
+  --color-background: #f2efe7;
   --color-surface: #ffffff;
-  --color-surface-sunken: #f1efeb;
-  --color-ink: #211e1b;
-  --color-ink-soft: #57524c;
-  --color-ink-muted: #8a847c;
-  --color-line: #e8e5e0;
-  --color-line-strong: #d6d2cb;
+  --color-surface-warm: #fbf9f3; /* card header strips, table heads, wells */
+  --color-surface-sunken: #eae5d9;
+  --color-ink: #191612;
+  --color-ink-soft: #4e4941;
+  --color-ink-muted: #837b6d;
+  --color-line: #e2dccd;
+  --color-line-hair: #ede9de; /* row dividers */
+  --color-line-strong: #cbc3b0;
 
-  /* Brand — deep shelf teal */
-  --color-brand-50: #f0f9f7;
-  --color-brand-100: #d9f0ec;
-  --color-brand-200: #b3e1da;
-  --color-brand-300: #83ccc2;
-  --color-brand-400: #4fb0a5;
-  --color-brand-500: #2f958a;
-  --color-brand-600: #1e7a70;
-  --color-brand-700: #175f58;
-  --color-brand-800: #144c47;
-  --color-brand-900: #113e3a;
-  --color-brand-950: #082523;
+  /* Band — navigation chrome */
+  --color-band: #12312a; /* sidebar, storefront cart bar, login bg, invite panel */
+  --color-band-ink: #f4f1e8; /* text on band */
+  --color-band-muted: #9db4aa; /* secondary text on band */
 
-  /* Accent — warm amber, used sparingly (highlights, expiry, promos) */
-  --color-accent-50: #fff8eb;
-  --color-accent-100: #feeecc;
-  --color-accent-200: #fddd99;
-  --color-accent-300: #fbc75c;
-  --color-accent-400: #f8ac2b;
-  --color-accent-500: #f29411;
-  --color-accent-600: #d67708;
-  --color-accent-700: #b25806;
-  --color-accent-800: #8f4409;
-  --color-accent-900: #75380c;
+  /* Brand — bottle green (replaces the teal scale) */
+  --color-brand-50: #eff6f1;
+  --color-brand-100: #d8ebdd;
+  --color-brand-300: #8fc7ab;
+  --color-brand-500: #2e8168;
+  --color-brand-600: #17694f; /* primary action */
+  --color-brand-700: #125540; /* hover, links */
+  --color-brand-800: #0e4634; /* active */
+  --color-brand-900: #0b3a2c;
+  --color-brand-950: #12312a; /* = band */
 
-  /* Status */
-  --color-info: #2563eb;
-  --color-info-soft: #eff4ff;
-  --color-success: #16a34a;
-  --color-success-soft: #effaf1;
-  --color-warning: #d97706;
-  --color-warning-soft: #fdf6ec;
-  --color-danger: #dc2626;
-  --color-danger-soft: #fdf1f1;
+  /* Accent — amber */
+  --color-accent: #e8a33d; /* bright: on band, counts, active-nav bar */
+  --color-accent-text: #9a6210; /* readable amber on light surfaces */
+  --color-accent-deep: #7a4e0c; /* banner body text */
+  --color-accent-soft: #f8edd8; /* badge fill */
+  --color-accent-wash: #fdf8ec; /* banner / tinted card bg */
 
-  /* Shape & elevation */
-  --radius-card: 1rem;
-  --radius-field: 0.75rem;
-  --shadow-card: 0 1px 2px rgb(33 30 27 / 0.05), 0 4px 14px rgb(33 30 27 / 0.06);
-  --shadow-float: 0 4px 10px rgb(33 30 27 / 0.08), 0 12px 32px rgb(33 30 27 / 0.12);
+  /* Status (square-dot ticket badges) */
+  --color-info: #3b62b8;
+  --color-info-soft: #edf1fa;
+  --color-success: #23784a;
+  --color-success-soft: #e9f4ec;
+  --color-warning: #9a6210;
+  --color-warning-soft: #f8edd8;
+  --color-danger: #bc3a31;
+  --color-danger-soft: #faecea;
+
+  /* Shape & elevation — squarer, crisper */
+  --radius-card: 0.875rem; /* 14px */
+  --radius-field: 0.625rem; /* 10px */
+  --radius-badge: 6px;
+  --shadow-card: 0 1px 2px rgb(25 22 18 / 0.05), 0 6px 18px rgb(25 22 18 / 0.04);
+  --shadow-float: 0 2px 6px rgb(25 22 18 / 0.08), 0 16px 48px rgb(25 22 18 / 0.12);
 }
 
 /* Hide scrollbars on horizontal chip rows (content still scrolls) */

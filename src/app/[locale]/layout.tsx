@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Rubik } from "next/font/google";
+import { IBM_Plex_Mono, Rubik } from "next/font/google";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { dirFor, isLocale, locales, type Locale } from "@/i18n/config";
@@ -21,6 +21,16 @@ import "../globals.css";
 const rubik = Rubik({
   subsets: ["latin", "arabic", "hebrew"],
   variable: "--font-rubik",
+  display: "swap",
+});
+
+// IBM Plex Mono — Latin only; applied solely to Latin identifiers/digits
+// (order/doc numbers, SKUs, warehouse slots, emails, chart values). Needs no
+// Hebrew/Arabic glyphs.
+const plexMono = IBM_Plex_Mono({
+  weight: ["400", "500", "600"],
+  subsets: ["latin"],
+  variable: "--font-plex-mono",
   display: "swap",
 });
 
@@ -69,7 +79,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       dir={dirFor(locale as Locale)}
-      className={`${rubik.variable} antialiased`}
+      className={`${rubik.variable} ${plexMono.variable} antialiased`}
     >
       <body className="min-h-dvh">
         <ShopDataProvider

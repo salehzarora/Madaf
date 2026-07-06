@@ -13,16 +13,21 @@ import { CustomerPicker } from "@/components/customer-picker";
 import { EmptyState } from "@/components/empty-state";
 import { OrderPad } from "@/components/order-pad";
 import { ProductCard } from "@/components/product-card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
-import { categoryStyle } from "@/lib/category-style";
+import { categoryDot } from "@/lib/category-style";
 import { useCart } from "@/lib/cart-context";
 import { formatCurrency } from "@/lib/format";
+import { productName } from "@/lib/catalog-helpers";
 import { useShopData } from "@/lib/shop-data-context";
 import { cn } from "@/lib/utils";
+
+type SortKey = "featured" | "priceAsc" | "priceDesc" | "name";
 
 /**
  * The catalog experience, retail-first:
@@ -53,6 +58,7 @@ export function CatalogView({
   } = useShopData();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>("featured");
   const [manufacturerIds, setManufacturerIds] = useState<Set<string>>(
     new Set(),
   );
@@ -94,6 +100,20 @@ export function CatalogView({
     });
   }, [query, categoryId, manufacturerIds, products, manufacturerById]);
 
+  const sorted = useMemo(() => {
+    if (sort === "featured") return filtered;
+    const copy = [...filtered];
+    if (sort === "priceAsc")
+      copy.sort((a, b) => a.wholesalePrice - b.wholesalePrice);
+    else if (sort === "priceDesc")
+      copy.sort((a, b) => b.wholesalePrice - a.wholesalePrice);
+    else if (sort === "name")
+      copy.sort((a, b) =>
+        productName(a, locale).localeCompare(productName(b, locale), locale),
+      );
+    return copy;
+  }, [filtered, sort, locale]);
+
   const hasFilters =
     query !== "" || categoryId !== null || manufacturerIds.size > 0;
 
@@ -108,10 +128,13 @@ export function CatalogView({
 
   return (
     <div className="mx-auto w-full max-w-[1720px] px-4 pb-28 pt-5 sm:px-6 xl:pb-10">
-      {/* Title row */}
+      {/* Title block — ledger page header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+            {dict.nav.catalog}
+          </p>
+          <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
             {dict.catalog.title}
           </h1>
           <p className="mt-0.5 text-sm text-ink-muted">
@@ -121,15 +144,16 @@ export function CatalogView({
         {/* Shop picker lives in the order pad on xl+ */}
         <CustomerPicker locale={locale} dict={dict} className="xl:hidden" />
       </div>
+      <ShelfRule className="mt-4" />
 
       {/* Sales-visit banner — loud and unmissable when a shop is selected */}
       {hydrated && selectedShop ? (
-        <div className="mt-4 flex items-center gap-3 rounded-card border border-brand-300 bg-brand-50 px-4 py-3">
+        <div className="mt-4 flex items-center gap-3 overflow-hidden rounded-card border border-brand-600/30 bg-brand-50 px-4 py-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-600 text-white">
             <Store className="size-5" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-brand-700">
+            <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-brand-700">
               {dict.catalog.orderingFor}
             </p>
             <p className="truncate text-base font-bold text-brand-900">
@@ -178,23 +202,22 @@ export function CatalogView({
               ) : null}
             </div>
 
-            {/* Category chips — color-coded, one tap */}
+            {/* Category tabs — squared ledger tabs with color-dot identity */}
             <div className="scrollbar-none -mx-4 mt-2.5 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
               <button
                 type="button"
                 aria-pressed={categoryId === null}
                 onClick={() => setCategoryId(null)}
                 className={cn(
-                  "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition-colors",
+                  "inline-flex h-11 shrink-0 items-center gap-2 rounded-field border px-4 text-sm font-semibold transition-colors",
                   categoryId === null
-                    ? "border-ink bg-ink text-white shadow-sm"
-                    : "border-line-strong bg-surface text-ink-soft hover:border-ink/40",
+                    ? "border-ink bg-ink text-background"
+                    : "border-line-strong bg-surface text-ink-soft hover:border-ink",
                 )}
               >
                 {dict.common.all}
               </button>
               {categories.map((category) => {
-                const style = categoryStyle(category.id);
                 const selected = categoryId === category.id;
                 return (
                   <button
@@ -207,13 +230,17 @@ export function CatalogView({
                       )
                     }
                     className={cn(
-                      "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold shadow-sm transition-colors",
-                      selected ? style.chipSelected : style.chipIdle,
+                      "inline-flex h-11 shrink-0 items-center gap-2 rounded-field border px-4 text-sm font-semibold transition-colors",
+                      selected
+                        ? "border-brand-600 bg-brand-50 text-brand-800 shadow-[inset_0_0_0_1px_var(--color-brand-600)]"
+                        : "border-line-strong bg-surface text-ink-soft hover:border-ink",
                     )}
                   >
-                    <span className="text-base" aria-hidden>
-                      {category.icon}
-                    </span>
+                    <span
+                      className="size-2.5 shrink-0 rounded-[3px]"
+                      style={{ backgroundColor: categoryDot(category.id) }}
+                      aria-hidden
+                    />
                     {category.name[locale]}
                   </button>
                 );
@@ -260,12 +287,31 @@ export function CatalogView({
             </div>
           </div>
 
-          {/* Results */}
-          <p className="mt-3 text-sm text-ink-muted">
-            {interpolate(dict.catalog.resultsCount, { count: filtered.length })}
-          </p>
+          {/* Results header — count + sort */}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-ink-muted">
+              {interpolate(dict.catalog.resultsCount, {
+                count: filtered.length,
+              })}
+            </p>
+            <label className="flex items-center gap-2">
+              <span className="hidden text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted sm:inline">
+                {dict.catalog.sort}
+              </span>
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label={dict.catalog.sort}
+              >
+                <option value="featured">{dict.catalog.sortFeatured}</option>
+                <option value="priceAsc">{dict.catalog.sortPriceAsc}</option>
+                <option value="priceDesc">{dict.catalog.sortPriceDesc}</option>
+                <option value="name">{dict.catalog.sortName}</option>
+              </Select>
+            </label>
+          </div>
 
-          {filtered.length === 0 ? (
+          {sorted.length === 0 ? (
             <EmptyState
               className="mt-3"
               icon={<PackageSearch />}
@@ -274,7 +320,7 @@ export function CatalogView({
             />
           ) : (
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
-              {filtered.map((product) => (
+              {sorted.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}

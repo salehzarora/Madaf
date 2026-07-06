@@ -6,16 +6,23 @@ import type {
 import { cn } from "@/lib/utils";
 
 const fieldBase =
-  "w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink " +
+  "w-full rounded-field border border-line-strong bg-surface px-3.5 text-sm text-ink " +
   "placeholder:text-ink-muted transition-colors " +
-  "focus:border-brand-400 focus:outline-2 focus:outline-offset-0 focus:outline-brand-200 " +
+  "focus:border-brand-600 focus:outline-none focus:ring-[3px] focus:ring-brand-600/15 " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Input({
   className,
+  mono = false,
   ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(fieldBase, "h-11", className)} {...props} />;
+}: InputHTMLAttributes<HTMLInputElement> & { mono?: boolean }) {
+  // mono variant: emails / SKUs / tokens — callers also pass dir="ltr".
+  return (
+    <input
+      className={cn(fieldBase, "h-11", mono && "font-mono text-[13px]", className)}
+      {...props}
+    />
+  );
 }
 
 export function Textarea({
@@ -51,7 +58,10 @@ export function Label({
   return (
     <label
       htmlFor={htmlFor}
-      className={cn("mb-1.5 block text-sm font-medium text-ink-soft", className)}
+      className={cn(
+        "mb-1.5 block text-[13px] font-semibold text-ink-soft",
+        className,
+      )}
     >
       {children}
     </label>

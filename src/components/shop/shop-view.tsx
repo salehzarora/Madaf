@@ -168,7 +168,7 @@ export function ShopView({
                   className={cn(
                     "flex flex-col overflow-hidden rounded-card border bg-surface shadow-card transition-all",
                     qty > 0
-                      ? "border-brand-400 ring-1 ring-brand-300"
+                      ? "border-brand-500 ring-1 ring-brand-300"
                       : "border-line",
                   )}
                 >
@@ -193,7 +193,7 @@ export function ShopView({
                       <QuantityStepper
                         value={qty}
                         onChange={(next) => setQty(product.id, next)}
-                        className="w-full justify-between border-brand-400 bg-brand-50"
+                        className="w-full justify-between border-brand-500 bg-brand-50"
                       />
                     ) : (
                       <button
