@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { RepAssignments } from "@/components/admin/rep-assignments";
 import { TeamManager } from "@/components/admin/team-manager";
-import { Card } from "@/components/ui/card";
+import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
@@ -44,19 +44,23 @@ export default async function AdminTeamPage({
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-muted">{t.subtitle}</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+          {dict.nav.admin}
+        </p>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+          {t.title}
+        </h1>
+        <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+        <ShelfRule className="mt-4" />
       </div>
-      <Card className="p-5 sm:p-6">
-        <TeamManager
-          locale={locale}
-          dict={dict}
-          currentUserId={userId}
-          currentUserRole={membership.role}
-          initialMembers={members}
-          initialInvites={invites}
-        />
-      </Card>
+      <TeamManager
+        locale={locale}
+        dict={dict}
+        currentUserId={userId}
+        currentUserRole={membership.role}
+        initialMembers={members}
+        initialInvites={invites}
+      />
       <RepAssignments
         locale={locale}
         dict={dict}

@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckCircle2, Plus, ShoppingCart } from "lucide-react";
+import { CheckCircle2, PackageSearch, Plus, ShoppingCart } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { ProductImage } from "@/components/product-image";
 import { QuantityStepper } from "@/components/quantity-stepper";
@@ -101,19 +102,19 @@ export function ShopView({
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-4 py-16 text-center">
         <CheckCircle2 className="size-14 text-success" aria-hidden />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-ink">
+        <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-ink">
           {t.successTitle}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">{t.successBody}</p>
-        <div className="mt-5 rounded-card border border-line bg-surface px-5 py-3">
-          <p className="text-xs uppercase tracking-wide text-ink-muted">
+        <div className="mt-5 rounded-card border border-line bg-surface-warm px-5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
             {t.orderNumberLabel}
           </p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums text-ink" dir="ltr">
+          <p className="mt-0.5 font-mono text-lg font-bold text-ink" dir="ltr">
             {orderNumber}
           </p>
         </div>
-        <p className="mt-6 max-w-sm text-xs text-ink-muted">{t.disclaimer}</p>
+        <p className="mt-6 max-w-sm text-xs text-ink-soft">{t.disclaimer}</p>
       </main>
     );
   }
@@ -121,7 +122,7 @@ export function ShopView({
   return (
     <div className="min-h-dvh bg-surface-sunken pb-28">
       {/* Header */}
-      <header className="border-b border-line bg-surface">
+      <header className="border-b border-line bg-surface-warm">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-medium text-ink-muted">{t.welcome}</p>
@@ -152,9 +153,7 @@ export function ShopView({
       {/* Product grid */}
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         {catalog.products.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line px-4 py-16 text-center text-sm text-ink-muted">
-            {t.empty}
-          </p>
+          <EmptyState icon={<PackageSearch />} title={t.empty} />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {catalog.products.map((product) => {
@@ -233,8 +232,8 @@ export function ShopView({
               placeholder={dict.cart.notesPlaceholder}
               maxLength={2000}
             />
-            <p className="text-xs text-ink-muted">{t.vatNote}</p>
-            <p className="text-xs text-ink-muted">{t.disclaimer}</p>
+            <p className="text-xs text-ink-soft">{t.vatNote}</p>
+            <p className="text-xs text-ink-soft">{t.disclaimer}</p>
           </div>
         ) : null}
 

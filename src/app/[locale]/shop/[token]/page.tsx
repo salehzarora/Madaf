@@ -31,7 +31,7 @@ export default async function ShopTokenPage({
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-4 py-16 text-center">
         <Link2Off className="size-12 text-ink-muted" aria-hidden />
-        <h1 className="mt-4 text-xl font-bold tracking-tight text-ink">
+        <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">
           {t.invalidTitle}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">{t.invalidBody}</p>

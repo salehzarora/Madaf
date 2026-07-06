@@ -52,7 +52,7 @@ export function TenantSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
-        className="flex max-w-48 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50"
+        className="flex max-w-48 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
       >
         <span className="truncate">{currentName}</span>
         <ChevronsUpDown className="size-3.5 shrink-0" aria-hidden />
@@ -79,7 +79,7 @@ export function TenantSwitcher({
                     aria-selected={active}
                     onClick={() => choose(t.id)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-field px-2.5 py-2 text-start text-sm transition-colors",
+                      "flex w-full items-center gap-2 rounded-field px-2.5 py-2 text-start text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
                       active
                         ? "bg-brand-50 font-semibold text-brand-800"
                         : "text-ink-soft hover:bg-surface-sunken hover:text-ink",

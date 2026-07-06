@@ -132,18 +132,18 @@ export function ManufacturersManager({
 
       {formOpen ? (
         <Card key={formKey}>
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader variant="strip">
             <CardTitle>{editing ? t.editTitle : t.addTitle}</CardTitle>
             <button
               type="button"
               onClick={() => setFormOpen(false)}
               aria-label={dict.common.close}
-              className="rounded-field p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="rounded-field p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
               <X className="size-4" />
             </button>
           </CardHeader>
-          <CardContent className="pt-4">
+          <CardContent>
             {!live ? (
               <p className="mb-4 rounded-field bg-info-soft px-3 py-2 text-sm text-info">
                 {t.mockNotice}
@@ -172,7 +172,7 @@ export function ManufacturersManager({
                 <p className="mt-1 text-xs text-ink-muted">{t.logoUrlHint}</p>
               </div>
               {failed ? (
-                <p role="alert" className="text-sm font-medium text-danger sm:col-span-2">
+                <p role="alert" className="text-[13px] font-medium text-danger sm:col-span-2">
                   {t.saveError}
                 </p>
               ) : null}
@@ -189,11 +189,11 @@ export function ManufacturersManager({
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[520px] text-sm">
           <thead>
-            <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-              <th className="px-4 py-3 text-start font-medium">{t.colName}</th>
-              <th className="px-4 py-3 text-start font-medium">{dict.nav.products}</th>
+            <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+              <th className="px-4 py-3 text-start">{t.colName}</th>
+              <th className="px-4 py-3 text-end">{dict.nav.products}</th>
               {live ? (
-                <th className="px-4 py-3 text-end font-medium">{t.colActions}</th>
+                <th className="px-4 py-3 text-end">{t.colActions}</th>
               ) : null}
             </tr>
           </thead>
@@ -201,9 +201,9 @@ export function ManufacturersManager({
             {manufacturers.map((manufacturer) => (
               <tr
                 key={manufacturer.id}
-                className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface-sunken/50"
+                className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
               >
-                <td className="px-4 py-3">
+                <td className="px-4 py-3.5">
                   <div className="flex items-center gap-3">
                     <LogoAvatar manufacturer={manufacturer} />
                     <span className="font-medium text-ink">
@@ -211,19 +211,19 @@ export function ManufacturersManager({
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-3 tabular-nums text-ink-soft">
+                <td className="px-4 py-3.5 text-end font-mono text-[13px] tabular-nums text-ink-soft">
                   {productCounts[manufacturer.id] ?? 0}
                 </td>
                 {live ? (
-                  <td className="px-4 py-3 text-end">
-                    <button
-                      type="button"
+                  <td className="px-4 py-3.5 text-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => openEdit(manufacturer)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-2.5 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
                     >
                       <Pencil className="size-3.5" aria-hidden />
                       {t.edit}
-                    </button>
+                    </Button>
                   </td>
                 ) : null}
               </tr>
