@@ -164,10 +164,23 @@ drafts, still no tax invoices, no numbering, no provider, no payments).
 5. Only after all of the above may UI labels drop the "draft" wording —
    behind a feature flag, defaulting OFF.
 
-**Deferred to M6:** the legal items above (tax settings, numbering, provider
-integration, cryptographic signing, long-term archival). **Nice-to-have
-polish:** a content-hash cache-skip so unchanged documents never re-render;
-further Arabic mixed-direction bidi refinement; per-locale font subsetting;
-and (only if fully scoped + tested) tokenized-customer PDF access.
+**Deferred to M6 (legal invoicing):** the legal items above (tax settings,
+numbering, provider integration, cryptographic signing, long-term archival).
+The **architecture for these is now designed** in
+[LEGAL_INVOICING_ARCHITECTURE.md](LEGAL_INVOICING_ARCHITECTURE.md) (**M6A —
+design spike, NOTHING IMPLEMENTED**). Read it before starting M6B.
+
+> **M6A changed no behavior.** There is still **no legal tax invoice, no tax
+> authority / provider integration, and no legal numbering** in Madaf. The
+> `invoice_draft` stays a **draft**; a future legal `tax_invoice` will be a
+> **separate, feature-flagged** document family — the draft is never renamed
+> or promoted into a legal invoice, and its DRAFT watermark + "not a tax
+> invoice" notices are **not** removed. Legal issuing (M6E+) is off by default
+> and requires a tax/accounting/legal review before any production use.
+
+**Nice-to-have polish (non-legal):** a content-hash cache-skip so unchanged
+documents never re-render; further Arabic mixed-direction bidi refinement;
+per-locale font subsetting; and (only if fully scoped + tested)
+tokenized-customer PDF access.
 
 Until then, every invoice surface keeps the draft watermark and notices.

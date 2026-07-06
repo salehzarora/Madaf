@@ -4,7 +4,21 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M5C shipped** (M1–M5B.1 as below). **M5C is production-readiness
+> **STATUS — M6A shipped: legal-invoicing ARCHITECTURE (design spike, DOCS
+> ONLY).** M6A added **zero** code / schema / routes / provider deps / numbering
+> / payments — it is a *plan*. Madaf still issues **DRAFTS ONLY**; there is no
+> legal tax invoice, no tax-authority/provider integration, and no legal
+> numbering. The `invoice_draft` stays a draft (a future legal `tax_invoice`
+> will be a separate, feature-flagged family; the draft is never renamed and
+> its warnings stay). The full plan — proposed schema, state machine, numbering,
+> the three default-OFF feature flags (`MADAF_LEGAL_INVOICING_ENABLED`,
+> `MADAF_TAX_PROVIDER_MODE`, `MADAF_LEGAL_NUMBERING_ENABLED`), provider adapter,
+> legal-PDF strategy, RLS plan, phased M6B–M6G migration, risk register, and an
+> M6B/M6C checklist — is in
+> [docs/LEGAL_INVOICING_ARCHITECTURE.md](LEGAL_INVOICING_ARCHITECTURE.md).
+> **Requires official-source verification + a tax/accounting/legal review
+> before any production use.** Earlier summary follows. **M5C is
+> production-readiness
 > cleanup before M6** (no features, no payments, no legal invoices). (1)
 > Trusted document storage now uses a DEDICATED server-only client
 > (`src/lib/data/trusted-document-storage.ts`, separate from the generic demo

@@ -469,3 +469,12 @@ that email, then open `/he/invite/<token>` while signed in as it).
   membership-less only today).
 - **Owner invites by email** (M4D keeps owner grants to promote/demote only —
   no owner invitations).
+- **Legal-invoicing roles & RLS (M6, designed not built).** A future
+  legal-tax-invoice family will add tenant-scoped, RPC-only, **immutable-once-
+  issued** tables and possibly an **`accountant`** role (finance-only; issue +
+  credit, no catalog/team powers); `sales_rep` would at most *read* legal docs
+  for assigned-customer orders (like `can_access_order`), never issue. No
+  cross-tenant `platform_admin` is introduced. All of this is **design only**
+  and gated behind default-OFF feature flags — see
+  [LEGAL_INVOICING_ARCHITECTURE.md](LEGAL_INVOICING_ARCHITECTURE.md). Nothing
+  is implemented; the app issues drafts only.
