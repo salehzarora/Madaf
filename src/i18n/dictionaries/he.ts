@@ -404,6 +404,13 @@ const he: Dictionary = {
     supplierIdLabel: "ח.פ",
     downloadPdf: "הורדת PDF",
     pdfFooter: "הופק על ידי מדף · מסמך פנימי · אינו חשבונית מס.",
+    status: {
+      draft: "טיוטה",
+      generated: "הופק",
+      voided: "בוטל",
+    },
+    regenerate: "יצירה מחדש",
+    notGenerated: "טרם הופק",
   },
   notFound: {
     title: "העמוד לא נמצא",

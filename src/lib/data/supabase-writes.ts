@@ -89,7 +89,11 @@ export async function sbCreateOrderDocument(input: {
   documentType: "order_request" | "delivery_note" | "invoice_draft";
   documentLocale: "ar" | "he" | "en";
   legalNotice: string | null;
-}): Promise<{ documentNumber: string; documentDate: string }> {
+}): Promise<{
+  documentId: string;
+  documentNumber: string;
+  documentDate: string;
+}> {
   const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .rpc("create_order_document", {
@@ -101,7 +105,34 @@ export async function sbCreateOrderDocument(input: {
     })
     .single();
   if (error) fail("createOrderDocument", error.message);
-  return { documentNumber: data.document_number, documentDate: data.created_at };
+  return {
+    documentId: data.id,
+    documentNumber: data.document_number,
+    documentDate: data.created_at,
+  };
+}
+
+/**
+ * Record the stored-PDF metadata (path/size/checksum) of a document via the
+ * set_document_storage RPC (SECURITY DEFINER — authorize_tenant +
+ * can_access_order + tenant-prefix check). documents stay table-level
+ * read-only; this is the only write path for the storage columns.
+ */
+export async function sbSetDocumentStorage(input: {
+  documentId: string;
+  storagePath: string;
+  fileSizeBytes: number;
+  checksum: string;
+}): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("set_document_storage", {
+    p_tenant_id: tenantId,
+    p_document_id: input.documentId,
+    p_storage_path: input.storagePath,
+    p_file_size_bytes: input.fileSizeBytes,
+    p_checksum: input.checksum,
+  });
+  if (error) fail("setDocumentStorage", error.message);
 }
 
 // ── M3B: catalog writes ───────────────────────────────────────────────────

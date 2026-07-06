@@ -404,6 +404,13 @@ const ar: Dictionary = {
     supplierIdLabel: "رقم الشركة (ح.ف)",
     downloadPdf: "تنزيل PDF",
     pdfFooter: "أُنشئ بواسطة مَداف · مستند داخلي · ليس فاتورة ضريبية.",
+    status: {
+      draft: "مسودة",
+      generated: "صدر",
+      voided: "ملغى",
+    },
+    regenerate: "إعادة إنشاء",
+    notGenerated: "لم يُنشأ بعد",
   },
   notFound: {
     title: "الصفحة غير موجودة",

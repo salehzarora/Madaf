@@ -5,6 +5,16 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M5B — stored PDFs & signed URLs.** Generated document PDFs are now
+> stored in a **private** Supabase Storage bucket and served via short-lived,
+> access-checked **signed URLs** (no public URLs). The admin order-detail page
+> lists per-type document history (status · number · date) with **download**
+> and **regenerate**. Access is gated a third time at the storage layer
+> (`can_access_order` on the object path): owner/admin any order, a sales_rep
+> only assigned-customer orders, cross-tenant/anon blocked. Hebrew/Arabic PDF
+> spacing is much improved. **Still drafts only — no legal tax invoices, no
+> tax-authority integration, no legal numbering, no payments.** Built on:
+>
 > **Phase M5A — documents & PDF foundation.** Admins download real
 > server-generated PDFs for the three safe document types — **order request,
 > delivery note, and invoice DRAFT** — from the order-detail page

@@ -51,7 +51,11 @@ export async function recordOrderDocument(input: {
   type: DocumentType;
   locale: Locale;
   legalNotice: string | null;
-}): Promise<{ documentNumber: string; documentDate: string }> {
+}): Promise<{
+  documentId: string;
+  documentNumber: string;
+  documentDate: string;
+}> {
   if (getDataMode() === "supabase") {
     return (await import("./supabase-writes")).sbCreateOrderDocument({
       orderId: input.orderId,
@@ -62,9 +66,58 @@ export async function recordOrderDocument(input: {
   }
   const serial = input.orderNumber.replace("MDF-", "");
   return {
+    documentId: `doc-${serial}-${DOC_SUFFIX[input.type].toLowerCase()}`,
     documentNumber: `DOC-${serial}-${DOC_SUFFIX[input.type]}`,
     documentDate: input.orderDate,
   };
+}
+
+/**
+ * Sign an ALREADY-stored document PDF (M5B reuse path) — a short-lived
+ * signed URL, or null if not stored yet / mock mode / not signable. Access
+ * is enforced by the storage policies (can_access_order on the path).
+ */
+export async function signStoredDocument(input: {
+  orderId: string;
+  type: DocumentType;
+  documentId: string;
+  locale: Locale;
+  filename: string;
+}): Promise<string | null> {
+  if (getDataMode() !== "supabase") return null;
+  return (await import("./document-storage")).sbSignDocument({
+    orderId: input.orderId,
+    dbType: DOCUMENT_TYPE_TO_DB[input.type],
+    documentId: input.documentId,
+    locale: input.locale,
+    filename: input.filename,
+  });
+}
+
+/**
+ * Upload the freshly-rendered PDF to private storage, record its metadata,
+ * and return a short-lived signed URL. Null in mock mode (no storage) or on
+ * failure — the route then streams the bytes it already has.
+ */
+export async function storeDocumentPdf(input: {
+  orderId: string;
+  type: DocumentType;
+  documentId: string;
+  locale: Locale;
+  filename: string;
+  bytes: Uint8Array;
+  checksum: string;
+}): Promise<string | null> {
+  if (getDataMode() !== "supabase") return null;
+  return (await import("./document-storage")).sbStoreDocument({
+    orderId: input.orderId,
+    dbType: DOCUMENT_TYPE_TO_DB[input.type],
+    documentId: input.documentId,
+    locale: input.locale,
+    filename: input.filename,
+    bytes: input.bytes,
+    checksum: input.checksum,
+  });
 }
 
 function round2(n: number): number {

@@ -52,6 +52,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260708110000_sales_rep_order_read_scope.sql` | M4D.1: `can_access_order()` re-scopes the orders / order_items / order_status_history / documents SELECT policies (a sales_rep reads only assigned-customer orders) |
 | `migrations/20260708120000_restrict_customer_link_reads.sql` | M4D.2: swap the `customer_access_links` SELECT policy from member-wide (`is_tenant_member`) to owner/admin-only (`has_tenant_role(['owner','admin'])`) — a sales_rep can no longer read private-link metadata, even for an assigned customer |
 | `migrations/20260709100000_document_generation.sql` | M5A: `create_order_document()` — the ONLY document write path (documents stay table-level read-only). SECURITY DEFINER, authorize_tenant + can_access_order gated; idempotent per (order, type); internal `DOC-####-x` number; invoice_draft forced `draft` with a guaranteed legal_notice (never a legal tax invoice) |
+| `migrations/20260710100000_document_storage.sql` | M5B: PRIVATE `documents` storage bucket + `storage.objects` policies gated by `can_access_order` on the path's tenant + order segments (SELECT/INSERT/UPDATE; no public/anon, no DELETE); storage-metadata columns on `documents` (`storage_path`/`generated_at`/`file_size_bytes`/`checksum`); `set_document_storage()` RPC (the only writer of those columns) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -212,6 +213,20 @@ server validates JPEG/PNG/WebP + 5 MB, writes under the tenant path, and
 stores that path in `products.image_url`. The read layer resolves storage
 paths to short-lived **signed URLs** (the bucket stays private); external
 `http(s)` image URLs pass through unchanged.
+
+Bucket `documents` (**M5B**, private, 10 MiB, `application/pdf` only). Path
+convention: `<tenant_id>/documents/<order_id>/<document_type>/<document_id>_
+<locale>.pdf` — no token_hash/secret in the path. Unlike product-images, its
+`storage.objects` policies key on BOTH the tenant (segment 1) AND the order
+(segment 3) via **`can_access_order`**, so a `sales_rep` can only
+sign/upload documents for assigned-customer orders (owner/admin any tenant
+order; walk-in orders owner/admin only; cross-tenant + anon blocked; no
+public/DELETE policy). The download route (`/admin/orders/[id]/documents/
+[type]`) reads the order under RLS, records via `create_order_document`,
+uploads on the authenticated client, records the path via
+`set_document_storage`, and 302-redirects to a ~60s **signed URL** (reused
+unless `?regenerate=1`). Mock mode streams the bytes (no storage). PDFs are
+never public and never exposed to tokenized customers.
 
 ### Catalog writes (M3B)
 

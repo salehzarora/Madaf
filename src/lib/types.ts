@@ -184,6 +184,12 @@ export interface Order {
 export type DocumentType = "order" | "delivery" | "invoiceDraft";
 
 /**
+ * Document lifecycle status (DB `document_status`). invoice_draft can NEVER
+ * be "generated" in this phase (a DB CHECK forbids it) — it stays "draft".
+ */
+export type DocumentStatus = "draft" | "generated" | "voided";
+
+/**
  * A previewable document derived from an order.
  * IMPORTANT (legal): "invoiceDraft" is a draft preview only — never a legal
  * tax invoice in this phase. See docs/DOCUMENTS_AND_INVOICES_GUIDE.md.
@@ -194,8 +200,12 @@ export interface OrderDocument {
   orderId: string;
   /** Document number, e.g. "DOC-1042-D". */
   number: string;
-  /** ISO date the document was generated. */
+  /** ISO date the document row was created. */
   date: string;
+  /** Lifecycle status (DB-backed). Absent in mock mode. */
+  status?: DocumentStatus;
+  /** ISO time the stored PDF was last generated (M5B). Absent until stored. */
+  generatedAt?: string;
 }
 
 /** Israeli VAT rate used for ESTIMATES on drafts (18% since 2025). */

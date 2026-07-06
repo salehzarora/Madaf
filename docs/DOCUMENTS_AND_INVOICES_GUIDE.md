@@ -92,6 +92,36 @@ HTML preview. Download links live on the admin order-detail Documents card
   for assigned-customer orders (RLS on the read + `can_access_order` in the
   RPC); a walk-in/null-customer order is owner/admin only; anon has no path.
 
+## Stored PDFs + signed-URL delivery (M5B)
+
+M5B stores each generated PDF in a **PRIVATE** Supabase Storage bucket and
+serves it via a **short-lived signed URL** — the legal boundary is
+**unchanged** (still drafts, still no tax invoices, no numbering, no
+provider, no payments).
+
+- **Bucket `documents` is private** (`public=false`) — no public URLs, no
+  anon access. Path: `<tenant_id>/documents/<order_id>/<document_type>/
+  <document_id>_<locale>.pdf` — no token_hash / secret / raw token in it.
+- **Triple-gated access**: the download route reads the order under RLS
+  (`can_access_order` → 404 for a rep on an unassigned order / non-member),
+  records via `create_order_document`, and the upload + signed-URL creation
+  run on the authenticated client under the **storage.objects policies**,
+  which re-check `can_access_order` on the path's tenant + order segments.
+  So a `sales_rep` can only store/sign documents for assigned-customer
+  orders; owner/admin for any tenant order; a walk-in/null-customer order is
+  owner/admin only; non-member/anon nothing. Cross-tenant paths are blocked.
+- **Signed URLs are short-lived (~60s)** and access-checked at creation; the
+  route 302-redirects to one. The public object URL returns an error.
+- **Storage metadata** (`storage_path` / `generated_at` / `file_size_bytes`
+  / `checksum`) lives on `documents`, written ONLY by the SECURITY DEFINER
+  `set_document_storage` RPC — the table stays read-only (no direct writes).
+- **Reuse vs regenerate**: a download reuses the stored object when present;
+  `?regenerate=1` (the admin "Regenerate" action) forces a fresh render +
+  upsert. There is no content-hash cache-skip yet — regeneration is explicit.
+- **Mock mode** stores nothing and streams the freshly-rendered bytes (M5A).
+- **Not exposed to tokenized customers**: PDF download stays admin-only in
+  M5B; customer/token PDF access is a future, fully-scoped addition.
+
 ## What the backend agent must add before invoices become real
 
 1. **Tax settings** on the supplier: VAT registration type
@@ -100,15 +130,17 @@ HTML preview. Download links live on the admin order-detail Documents card
    (Israel Tax Authority "חשבוניות ישראל" allocation-number regime) —
    via a certified invoicing provider/API.
 3. **Immutable numbering** sequences per document type, per legal entity.
-4. **Signed PDF generation + archival** (7 years). M5A generates *unsigned
-   draft* PDFs on demand (not stored); cryptographic signing, immutable
-   archival and a private storage bucket remain M5B/M6.
+4. **Signed PDF generation + archival** (7 years). M5A generates *draft*
+   PDFs on demand; **M5B stores** them in a private bucket with signed-URL
+   delivery. Still remaining: **cryptographic signing** and **immutable
+   long-term archival** (versioned, tamper-evident) — M6.
 5. Only after all of the above may UI labels drop the "draft" wording —
    behind a feature flag, defaulting OFF.
 
-**Deferred to M5B/M6:** private Storage bucket + signed-URL delivery for
-generated PDFs (tenant-scoped paths, `can_access_order`-gated signing);
-full Arabic mixed-direction bidi polish; per-locale font subsetting; then
-the legal items above (numbering, provider integration, signing, archival).
+**Deferred to M6:** the legal items above (tax settings, numbering, provider
+integration, cryptographic signing, long-term archival). **Nice-to-have
+polish:** a content-hash cache-skip so unchanged documents never re-render;
+further Arabic mixed-direction bidi refinement; per-locale font subsetting;
+and (only if fully scoped + tested) tokenized-customer PDF access.
 
 Until then, every invoice surface keeps the draft watermark and notices.

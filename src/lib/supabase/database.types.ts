@@ -215,38 +215,50 @@ export type Database = {
       }
       documents: {
         Row: {
+          checksum: string | null
           created_at: string
           document_locale: Database["public"]["Enums"]["locale_code"]
           document_number: string
           document_type: Database["public"]["Enums"]["document_type"]
+          file_size_bytes: number | null
+          generated_at: string | null
           id: string
           legal_notice: string
           order_id: string
           status: Database["public"]["Enums"]["document_status"]
+          storage_path: string | null
           tenant_id: string
           totals_snapshot: Json
         }
         Insert: {
+          checksum?: string | null
           created_at?: string
           document_locale?: Database["public"]["Enums"]["locale_code"]
           document_number: string
           document_type: Database["public"]["Enums"]["document_type"]
+          file_size_bytes?: number | null
+          generated_at?: string | null
           id?: string
           legal_notice?: string
           order_id: string
           status?: Database["public"]["Enums"]["document_status"]
+          storage_path?: string | null
           tenant_id: string
           totals_snapshot?: Json
         }
         Update: {
+          checksum?: string | null
           created_at?: string
           document_locale?: Database["public"]["Enums"]["locale_code"]
           document_number?: string
           document_type?: Database["public"]["Enums"]["document_type"]
+          file_size_bytes?: number | null
+          generated_at?: string | null
           id?: string
           legal_notice?: string
           order_id?: string
           status?: Database["public"]["Enums"]["document_status"]
+          storage_path?: string | null
           tenant_id?: string
           totals_snapshot?: Json
         }
@@ -938,14 +950,18 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: {
+          checksum: string | null
           created_at: string
           document_locale: Database["public"]["Enums"]["locale_code"]
           document_number: string
           document_type: Database["public"]["Enums"]["document_type"]
+          file_size_bytes: number | null
+          generated_at: string | null
           id: string
           legal_notice: string
           order_id: string
           status: Database["public"]["Enums"]["document_status"]
+          storage_path: string | null
           tenant_id: string
           totals_snapshot: Json
         }[]
@@ -1077,6 +1093,16 @@ export type Database = {
       revoke_tenant_invite: {
         Args: { p_invite_id: string; p_tenant_id: string }
         Returns: string
+      }
+      set_document_storage: {
+        Args: {
+          p_checksum?: string
+          p_document_id: string
+          p_file_size_bytes?: number
+          p_storage_path: string
+          p_tenant_id: string
+        }
+        Returns: undefined
       }
       set_product_active: {
         Args: {

@@ -107,6 +107,14 @@ export function renderOrderDocumentPdf(
   const pdfAlign = (a: Align): "left" | "right" | "center" =>
     a === "center" ? "center" : a === "start" ? startAlign : endAlign;
 
+  // RTL word-spacing fix (M5B): pdfkit zeroes some inter-word space advances
+  // when fontkit reverses an RTL run, so Hebrew/Arabic words run together.
+  // Adding wordSpacing (~a normal space, scaled to the font) restores the
+  // gaps WITHOUT reversing embedded digits (unlike swapping in NBSP) and
+  // without breaking line wrapping. LTR text keeps its natural spacing.
+  const wordSpacingFor = (size: number): number | undefined =>
+    rtl ? size * 0.22 : undefined;
+
   // ── Watermark + footer on every page (drawn before content → behind it) ──
   const drawChrome = () => {
     const w = doc.page.width;
@@ -138,7 +146,11 @@ export function renderOrderDocumentPdf(
       .font("body")
       .fontSize(7.5)
       .fillColor(COLOR.inkMuted)
-      .text(t.pdfFooter, M, fy, { width: w - 2 * M, align: "center" });
+      .text(t.pdfFooter, M, fy, {
+        width: w - 2 * M,
+        align: "center",
+        wordSpacing: wordSpacingFor(7.5),
+      });
   };
   doc.on("pageAdded", drawChrome);
   doc.addPage();
@@ -170,11 +182,16 @@ export function renderOrderDocumentPdf(
     w: number,
     opts: { size?: number; bold?: boolean; color?: string; align?: Align } = {},
   ): number => {
+    const size = opts.size ?? 9;
     doc
       .font(opts.bold ? "bold" : "body")
-      .fontSize(opts.size ?? 9)
+      .fontSize(size)
       .fillColor(opts.color ?? COLOR.ink)
-      .text(clean(str), x, y, { width: w, align: pdfAlign(opts.align ?? "start") });
+      .text(clean(str), x, y, {
+        width: w,
+        align: pdfAlign(opts.align ?? "start"),
+        wordSpacing: wordSpacingFor(size),
+      });
     return doc.y;
   };
   const rule = (y: number, color: string = COLOR.line, weight = 1) => {
@@ -360,10 +377,15 @@ export function renderOrderDocumentPdf(
       price: formatCurrency(item.unitPrice, docLocale),
       total: formatCurrency(item.lineTotal, docLocale),
     };
-    // Row height driven by the (wrappable) item-name cell.
+    // Row height driven by the (wrappable) item-name cell. Measure with the
+    // SAME string (clean) and SAME wordSpacing the render applies — otherwise
+    // an RTL name wraps wider at draw time than measured and overlaps the next
+    // row (pdfkit adds wordSpacing to the wrap width but heightOfString omits
+    // it unless passed).
     doc.font("body").fontSize(9);
-    const nameH = doc.heightOfString(values.item, {
+    const nameH = doc.heightOfString(clean(values.item), {
       width: (showPrices ? contentW * 0.42 : contentW * 0.6) - 4,
+      wordSpacing: wordSpacingFor(9),
     });
     const rowH = Math.max(nameH, 12) + 8;
     if (y + rowH > pageBottom) {

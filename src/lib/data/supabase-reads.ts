@@ -267,6 +267,8 @@ function mapDocument(row: Row<"documents">): OrderDocument {
     orderId: row.order_id,
     number: row.document_number,
     date: row.created_at,
+    status: row.status,
+    generatedAt: row.generated_at ?? undefined,
   };
 }
 
