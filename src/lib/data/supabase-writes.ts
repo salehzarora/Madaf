@@ -3,8 +3,10 @@ import "server-only";
 /**
  * Supabase write implementations — SERVER ONLY.
  *
- * Thin wrappers around service-role-only database RPCs that do the real
- * validation/computation atomically:
+ * Thin wrappers around tenant-validated database RPCs that do the real
+ * validation/computation atomically. Since M4A they run on the
+ * authenticated cookie client (getDataContext) and each RPC is gated by
+ * `authorize_tenant` — the tenant comes from membership, never client input:
  *   - M3A orders: create_order_request / update_order_status.
  *   - M3B catalog: create_product / update_product / set_product_active /
  *     upsert_inventory_item / create_manufacturer / update_manufacturer
@@ -12,7 +14,7 @@ import "server-only";
  *     sbUploadProductImage → Storage (private product-images bucket).
  *
  * Reached only through the data layer via dynamic import — never from
- * client code (see supabase-context.ts for the access model). No
+ * client code (see src/lib/auth/session.ts for the access model). No
  * documents/invoice drafts are created here (M5).
  */
 import { getDataContext } from "@/lib/auth/session";
@@ -206,8 +208,10 @@ const PRODUCT_IMAGE_BUCKET = "product-images";
  * tenant-scoped path `<tenant_id>/products/<product_id>/<filename>`.
  * Returns the object PATH (stored on products.image_url — the read layer
  * signs it) plus a short-lived signed URL for immediate preview. The
- * product must belong to the tenant (checked here; service role bypasses
- * storage RLS, so this is the tenant boundary for uploads).
+ * product must belong to the tenant (checked here); on top of that the
+ * upload runs on the authenticated client, so the storage RLS policy
+ * ("owners/admins can upload" to their `<tenant_id>/…` path) is enforced
+ * too (M4A).
  */
 export async function sbUploadProductImage(input: {
   productId: string;
