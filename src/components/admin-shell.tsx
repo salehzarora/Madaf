@@ -9,6 +9,7 @@ import {
   Package,
   ShoppingBag,
   Store,
+  Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -51,6 +52,9 @@ export function AdminShell({
   const [open, setOpen] = useState(false);
 
   const base = `/${locale}/admin`;
+  // Team management is owner/admin only (Supabase mode); hidden otherwise.
+  const canManageTeam =
+    session?.role === "owner" || session?.role === "admin";
   const nav = [
     { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
     { href: `${base}/products`, label: dict.nav.products, icon: Package },
@@ -59,6 +63,9 @@ export function AdminShell({
     { href: `${base}/inventory`, label: dict.nav.inventory, icon: Boxes },
     { href: `${base}/customers`, label: dict.nav.customers, icon: Store },
     { href: `${base}/documents`, label: dict.nav.documents, icon: FileText },
+    ...(canManageTeam
+      ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }]
+      : []),
   ];
 
   function isActive(item: (typeof nav)[number]): boolean {

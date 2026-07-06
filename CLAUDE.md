@@ -3,19 +3,22 @@
 @AGENTS.md
 
 B2B supplier catalog & ordering platform (Israel/local market, trilingual
-ar/he/en with RTL). **Current phase: M4A auth & access — real Supabase
-Auth in supabase mode: supplier users sign in (`/login`), `/admin`
-requires a session + tenant membership (onboarding at `/onboarding`), and
-the data path runs on cookie-bound authenticated clients under RLS.
-Tenant-owned write RPCs are gated by `authorize_tenant` (never trusts a
-client `tenant_id`); roles are owner/admin (catalog+orders+status+links)
-and sales_rep (orders only). Customers order with NO login via private
-tokenized links (`/shop/<token>` — hash-only storage, revocable). Anon
-has zero direct table access. Mock stays the zero-config default (no
-auth, open demo admin). All reads/writes go through `src/lib/data/`; UI
-code must NOT import `src/lib/mock`. Documents/invoices are M5/M6.** Full
-context in `docs/`; auth in `docs/AUTH_AND_ACCESS_MODEL.md`; backend setup
-in `supabase/README.md`.
+ar/he/en with RTL). **Current phase: M4B team & access hardening — on top
+of M4A auth (supplier sign-in at `/login`, `/admin` needs a session +
+tenant membership, cookie-bound authenticated clients under RLS, write
+RPCs gated by `authorize_tenant`, customers order with NO login via
+tokenized `/shop/<token>` links). M4B adds tenant TEAM management: owner
+(and admin, for invites) manage members at `/admin/team` via tokenized
+invitations (`/invite/<token>`, hash-only, email-verified accept) and
+membership RPCs with last-owner protection + no self-promotion. Direct
+`tenant_users` writes are now LOCKED (RPC-only), like orders/catalog.
+Roles: owner (everything incl. role changes/removal), admin (catalog +
+orders + status + links + invite/revoke), sales_rep (orders only). Anon
+has zero direct table access. Mock stays the zero-config default (no auth,
+open demo admin). All reads/writes go through `src/lib/data/`; UI code
+must NOT import `src/lib/mock`. Documents/invoices are M5/M6; multi-tenant
+switching is M4C.** Full context in `docs/`; auth in
+`docs/AUTH_AND_ACCESS_MODEL.md`; backend setup in `supabase/README.md`.
 
 ## Commands
 
@@ -55,11 +58,14 @@ npm run start   # serve the production build
 - No secrets in the repo, no hosted/production Supabase (local stack
   only — `supabase/README.md`), no payments in this phase.
 - Auth (supabase mode): never trust a client-submitted `tenant_id`,
-  price, or total — the DB derives the tenant via `authorize_tenant` and
-  computes money server-side. Don't loosen RLS, re-enable direct table
-  writes, add broad anon/public read policies, or ship the service-role
-  key to the browser. Store only `token_hash` for shop links (never the
-  raw token). See `docs/AUTH_AND_ACCESS_MODEL.md`.
+  price, `role`, or total — the DB derives the tenant via
+  `authorize_tenant` and computes money server-side. Don't loosen RLS,
+  re-enable direct table writes (incl. `tenant_users` — membership changes
+  are RPC-only since M4B), add broad anon/public read policies, or ship the
+  service-role key to the browser. Store only `token_hash` for shop links
+  AND team invites (never the raw token). Membership RPCs must preserve
+  last-owner protection, block self-promotion, and never grant the owner
+  role outside onboarding. See `docs/AUTH_AND_ACCESS_MODEL.md`.
 - Data access goes through `src/lib/data/` (mode boundary; mock is the
   default and must keep working with zero env vars). Schema changes =
   new migration + `supabase db reset` + regenerate

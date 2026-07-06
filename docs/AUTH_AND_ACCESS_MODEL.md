@@ -1,13 +1,17 @@
-# Auth & Access Model (M4A)
+# Auth & Access Model (M4A · M4A.1 · M4B)
 
 How Madaf decides **who** may see or change **what**, once real
 authentication is switched on. Read `MVP_SCOPE.md` and
 `FUTURE_BACKEND_HANDOFF.md` first; this document is the authoritative
-picture of the M4A auth/authorization/tenancy layer.
+picture of the auth/authorization/tenancy layer.
 
 > **Phase:** M4A — real Supabase Auth for supplier users, tenant
 > membership + roles, an authenticated (RLS-scoped) data path, and
-> private tokenized shop links for customers. Still **local Supabase
+> private tokenized shop links for customers. **M4A.1** locked the
+> `customer_access_links` grants. **M4B** adds tenant **team management**:
+> tokenized team invitations, membership RPCs (invite / accept / change
+> role / remove) with last-owner protection and no self-promotion, and a
+> hard lockdown of direct `tenant_users` writes. Still **local Supabase
 > only**, still **no payments, no legal invoices, no hosted project**.
 > Mock stays the zero-config default.
 
@@ -89,7 +93,7 @@ accepted if it equals the caller's real membership tenant, and the
 server always substitutes the derived value. This is the one checkpoint
 that makes cross-tenant writes impossible regardless of what the UI sends.
 
-### Role matrix (M4A)
+### Role matrix (M4A + M4B)
 
 | Capability | owner | admin | sales_rep |
 |---|:---:|:---:|:---:|
@@ -98,10 +102,17 @@ that makes cross-tenant writes impossible regardless of what the UI sends.
 | Create order requests | ✓ | ✓ | ✓ |
 | Change order status | ✓ | ✓ | — |
 | Create / revoke customer links | ✓ | ✓ | — |
+| View team roster (with emails) | ✓ | ✓ | — |
+| Invite / revoke team invitations (admin, sales_rep) | ✓ | ✓ | — |
+| Change a member's role · remove a member | ✓ | — | — |
 | Create a tenant (onboarding) | membership-less user only | | |
 
-`sales_rep` is **tenant-wide** in M4A (a rep sees and orders for the whole
-tenant). Per-customer / per-rep scoping is deferred to **M4B**.
+Team rules the RPCs enforce: no **owner** invites or promotions (owner is
+set only at onboarding); no self-role-change; **last-owner protection** (a
+tenant can never drop to zero owners); admin can invite/revoke but cannot
+change roles or remove members. `sales_rep` is still **tenant-wide** (sees
+and orders for the whole tenant); per-customer/per-rep scoping is deferred
+to **M4C**.
 
 ## 5. Reads — RLS, and the anon short-circuit
 
@@ -132,9 +143,13 @@ re-declared in M4A to gate on `authorize_tenant` and granted `EXECUTE` to
 Direct table `INSERT/UPDATE/DELETE` on
 products/inventory_items/manufacturers/categories/customers/orders/
 order_items stay **blocked** at both the policy and grant level (M3A.1 /
-M3B.1 are intact — verified by regression probe). The service-role
-client remains only for **local bootstrap/seed**, and still refuses
-non-local and production URLs.
+M3B.1 are intact — verified by regression probe). **M4B extends this to
+`tenant_users`**: the M1.1 direct owner/admin write policies are dropped
+and the grants revoked, so membership changes flow ONLY through
+`create_tenant_with_owner` (onboarding) and the M4B team RPCs — no member
+can self-promote via a raw `UPDATE`. The service-role client remains only
+for **local bootstrap/seed**, is unused by the app runtime, and still
+refuses non-local and production URLs.
 
 ## 7. Onboarding
 
@@ -194,6 +209,40 @@ Anon can call **only** those two token RPCs (both SECURITY DEFINER,
 `search_path=''`). Anon still has zero direct table access — including
 `products` and `customer_access_links`.
 
+## 8b. Team management & invitations (M4B)
+
+Supplier teams grow through **tokenized invitations**, mirroring the
+customer-link model. `tenant_invitations` stores only a `token_hash`
+(never column-readable by members), a `token_preview`, the invited email,
+the target role (CHECK: `admin`/`sales_rep` only — no owner invites), and
+expiry/accepted/revoked timestamps. RLS: owner/admin read their tenant's
+invites; **no** direct write grants; anon has nothing; no
+`TRUNCATE/REFERENCES/TRIGGER/MAINTAIN` (locked exactly like
+`customer_access_links`).
+
+All membership changes go through SECURITY DEFINER RPCs (tenant derived
+from membership, never client input):
+
+| RPC | Caller | Enforces |
+|---|---|---|
+| `create_tenant_invite(email, role, token_hash, preview, expires_at)` | owner/admin | role ∈ {admin, sales_rep}; valid email |
+| `revoke_tenant_invite(id)` | owner/admin | only pending (unaccepted) invites |
+| `accept_tenant_invite(raw token)` | authenticated | hashes the token server-side; **caller's auth email must equal the invite email**; not revoked/expired/accepted; inserts the membership |
+| `update_tenant_member_role(user, role)` | **owner** | role ∈ {admin, sales_rep}; not self; last-owner protection |
+| `remove_tenant_member(user)` | **owner** | last-owner protection |
+| `list_tenant_members()` | owner/admin | returns the roster **with emails** (authenticated cannot read `auth.users`) |
+
+The raw invite token is generated in the Server Action (32 random bytes,
+base64url), shown once, and only its SHA-256 hash is stored — a leaked
+hash is not replayable (the RPC hashes the presented raw token). Invite
+state errors use the Madaf SQLSTATE class `MDF0x` (catchable by
+`WHEN OTHERS`, unlike the built-in `P0004 = assert_failure`); the accept
+page maps them to localized messages (wrong-email / already-a-member /
+invalid). Accepting an invite while already a member of another tenant is
+rejected (`MDF07`) — multi-tenant membership is M4C. Routes:
+`/[locale]/admin/team` (owner/admin) and `/[locale]/invite/<token>`
+(login-first; `/login?next=` returns the user to the invite).
+
 ## 9. Route guards
 
 - `src/app/[locale]/admin/layout.tsx` — in supabase mode: no session →
@@ -205,6 +254,12 @@ Anon can call **only** those two token RPCs (both SECURITY DEFINER,
   `/onboarding`).
 - `/shop/<token>` — `notFound()` in mock mode; anonymous token path in
   supabase mode.
+- `/admin/team` — `notFound()` in mock mode; owner/admin only in supabase
+  mode (`sales_rep` → 404). The Team nav item is hidden unless the session
+  role is owner/admin.
+- `/invite/<token>` — `notFound()` in mock mode; logged-out visitors get a
+  sign-in prompt (`/login?next=…`, restricted to same-locale paths to
+  block open redirects), logged-in visitors get the accept action.
 
 ## 10. Security invariants (do not weaken)
 
@@ -243,11 +298,22 @@ docker exec -i supabase_db_<project> psql -U postgres -d postgres \
 
 Then set `NEXT_PUBLIC_MADAF_DATA_MODE=supabase` +
 `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` in
-`.env.local`, `npm run dev`, and sign in at `/he/login`.
+`.env.local`, `npm run dev`, and sign in at `/he/login`. To exercise team
+invites end-to-end you need a **second** local auth user whose email you
+control (create one in Studio → Authentication, sign in as owner, invite
+that email, then open `/he/invite/<token>` while signed in as it).
 
-## 12. Deferred to M4B
+## 12. Deferred to M4C / later
 
-- Multi-tenant membership / tenant switching (M4A = one membership/user).
-- Per-customer / per-rep scoping for `sales_rep`.
-- Password reset, invites, email verification flows.
-- Rate-limiting / abuse controls on the anonymous token endpoints.
+- **Multi-tenant membership / tenant switching** — M4A/M4B assume one
+  membership per user (`unique(user_id)` on `tenant_users`); accepting a
+  second invite is rejected until this lands. A tenant selector + a
+  membership-verified "current tenant" cookie would replace the constraint.
+- **Per-customer / per-rep scoping** for `sales_rep` (a
+  `sales_rep_customers` assignment table).
+- **Owner transfer** and broader admin member-management (M4B keeps role
+  change / removal owner-only, and never grants the owner role via RPC).
+- **Signup / password-reset / email-verification** flows (M4B is
+  login-first; invited users must already have an auth account).
+- **Rate-limiting / abuse controls** and `usage_count` / `last_used_ip`
+  on the anonymous token + invite endpoints.

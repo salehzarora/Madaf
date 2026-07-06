@@ -655,6 +655,62 @@ export type Database = {
           },
         ]
       }
+      tenant_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          email: string
+          expires_at: string | null
+          id: string
+          invited_by: string | null
+          revoked_at: string | null
+          role: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+          token_hash: string
+          token_preview: string | null
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          revoked_at?: string | null
+          role: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+          token_hash: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          revoked_at?: string | null
+          role?: Database["public"]["Enums"]["tenant_role"]
+          tenant_id?: string
+          token_hash?: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_invitations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_users: {
         Row: {
           created_at: string
@@ -767,6 +823,7 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      accept_tenant_invite: { Args: { p_token: string }; Returns: string }
       assert_service_role: { Args: { p_fn: string }; Returns: undefined }
       authorize_tenant: {
         Args: {
@@ -809,6 +866,16 @@ export type Database = {
         Args: { p_inventory?: Json; p_product: Json; p_tenant_id: string }
         Returns: string
       }
+      create_tenant_invite: {
+        Args: {
+          p_email: string
+          p_expires_at?: string
+          p_role: Database["public"]["Enums"]["tenant_role"]
+          p_token_hash: string
+          p_token_preview?: string
+        }
+        Returns: string
+      }
       create_tenant_with_owner: {
         Args: {
           p_default_locale?: Database["public"]["Enums"]["locale_code"]
@@ -844,11 +911,22 @@ export type Database = {
         Returns: string
       }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
+      list_tenant_members: {
+        Args: never
+        Returns: {
+          created_at: string
+          email: string
+          role: Database["public"]["Enums"]["tenant_role"]
+          user_id: string
+        }[]
+      }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      remove_tenant_member: { Args: { p_user_id: string }; Returns: undefined }
       revoke_customer_access_link: {
         Args: { p_link_id: string }
         Returns: string
       }
+      revoke_tenant_invite: { Args: { p_invite_id: string }; Returns: string }
       set_product_active: {
         Args: {
           p_is_active: boolean
@@ -889,6 +967,13 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      update_tenant_member_role: {
+        Args: {
+          p_new_role: Database["public"]["Enums"]["tenant_role"]
+          p_user_id: string
+        }
+        Returns: undefined
       }
       upsert_inventory_item: {
         Args: { p_inventory: Json; p_product_id: string; p_tenant_id: string }

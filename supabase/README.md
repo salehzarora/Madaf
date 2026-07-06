@@ -45,6 +45,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260705160000_lock_catalog_writes.sql` | M3B.1: master-data tables READ-ONLY for authenticated — writes only via the RPCs |
 | `migrations/20260705170000_auth_and_private_links.sql` | M4A: `authorize_tenant()` + `current_membership()` + `create_tenant_with_owner()`; write RPCs re-gated for authenticated owner/admin/sales_rep; `customer_access_links` table + tokenized shop RPCs (`get_token_catalog`, `create_order_request_from_token`) |
 | `migrations/20260706100000_lock_customer_access_links_grants.sql` | M4A.1: strip default-ACL TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from anon/authenticated on `customer_access_links`; re-grant only the column-scoped member SELECT (no `token_hash`) |
+| `migrations/20260706110000_tenant_team_and_invites.sql` | M4B: lock `tenant_users` direct writes (RPC-only); `tenant_invitations` table (grant-locked like `customer_access_links`) + team RPCs (`create/revoke/accept_tenant_invite`, `update_tenant_member_role`, `remove_tenant_member`, `list_tenant_members`) with owner/admin gates + last-owner protection |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -133,8 +134,18 @@ documents stay renderable after catalog or customer changes.
   M3A.1 blanket strip predated the table). Links are created/revoked only
   via `insert_customer_access_link` / `revoke_customer_access_link`; anon
   resolves/reads/orders only through the SECURITY DEFINER token functions.
+- `tenant_users` is **RPC-only for writes since M4B**: the M1.1 direct
+  owner/admin insert/update/delete policies were dropped and the grants
+  revoked, so no member can self-promote or orphan the tenant via a raw
+  write. Memberships change ONLY through `create_tenant_with_owner`
+  (onboarding), `accept_tenant_invite`, `update_tenant_member_role` and
+  `remove_tenant_member` — the last two owner-only, with last-owner
+  protection. `tenant_invitations` (M4B) is grant-locked exactly like
+  `customer_access_links` (anon nothing; owner/admin column-scoped SELECT
+  without `token_hash`; no dangerous privileges) and read-gated to
+  owner/admin.
 - Admins cannot touch owner memberships or grant the owner role — only
-  owners manage owners.
+  owners manage owners (and never via a direct write).
 - Tenant onboarding is live in M4A: a signed-in, membership-less user
   creates their tenant + first `owner` `tenant_users` row atomically via
   `create_tenant_with_owner()` (authenticated, membership-less only).

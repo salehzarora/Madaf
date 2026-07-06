@@ -1,24 +1,22 @@
 import "server-only";
 
 /**
- * Shared Supabase service context for the M2/M3 dev data paths —
- * SERVER ONLY.
+ * Shared Supabase service-role context — SERVER ONLY, and no longer on the
+ * app's runtime data path.
  *
- * There is no auth yet, and RLS (correctly) gives the anon key zero
- * rows. Rather than loosening RLS or shipping keys to the browser, the
- * local-dev supabase mode runs on a server-side service-role client
- * pinned to the demo tenant:
+ * Since M4A the app reads and writes through cookie-bound *authenticated*
+ * clients under RLS (src/lib/auth/session.ts). This service-role context is
+ * retained only for local bootstrap/seed tooling, and FAILS CLOSED so it can
+ * never leak against a real project:
  *   - requires SUPABASE_SERVICE_ROLE_KEY in .env.local (server env — the
  *     browser never sees it; this module refuses to load client-side),
  *   - refuses to run in production builds/servers,
- *   - refuses any NON-LOCAL Supabase URL (M3A.1): a dev server pointed
- *     at a hosted project with a service key would expose real writes
- *     through the public Server Actions — only 127.0.0.1/localhost/::1
- *     stacks are accepted,
- *   - callers must scope every query/RPC by the returned tenantId
- *     because the service role bypasses RLS.
- * M4 replaces this with cookie-bound authenticated clients + RLS, at
- * which point this module is deleted.
+ *   - refuses any NON-LOCAL Supabase URL (M3A.1): only 127.0.0.1/localhost/
+ *     ::1 stacks are accepted,
+ *   - callers must scope every query/RPC by the returned tenantId because
+ *     the service role bypasses RLS.
+ * `getServiceContext` has no importers in app code; a future cleanup phase
+ * can delete it once the bootstrap tooling is fully self-contained.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
