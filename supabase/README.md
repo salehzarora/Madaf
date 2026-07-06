@@ -50,6 +50,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260707110000_deprecate_current_membership.sql` | M4C.1: deprecate the legacy single-membership `current_membership()` (revoke EXECUTE from authenticated + legacy comment; use `list_memberships()`) |
 | `migrations/20260708100000_sales_rep_scope_owner_transfer.sql` | M4D: `can_access_customer()` + rep-scoped customers SELECT policy + `create_order_request` sales_rep gate; `promote_tenant_owner` / `demote_tenant_owner` (last-owner-protected); global per-purpose token rate-limit counter |
 | `migrations/20260708110000_sales_rep_order_read_scope.sql` | M4D.1: `can_access_order()` re-scopes the orders / order_items / order_status_history / documents SELECT policies (a sales_rep reads only assigned-customer orders) |
+| `migrations/20260708120000_restrict_customer_link_reads.sql` | M4D.2: swap the `customer_access_links` SELECT policy from member-wide (`is_tenant_member`) to owner/admin-only (`has_tenant_role(['owner','admin'])`) — a sales_rep can no longer read private-link metadata, even for an assigned customer |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -99,9 +100,13 @@ documents stay renderable after catalog or customer changes.
 - `authenticated` reaches only rows of tenants they belong to, via
   `is_tenant_member(tenant_id)` / `has_tenant_role(tenant_id, roles[])` —
   SECURITY DEFINER helpers over `tenant_users`.
-- Role tiers: **any member** (incl. `sales_rep`) reads everything in
-  their tenant. Master-data and order tables are all **read-only at the
-  table level for every authenticated client** — writes flow only
+- Role tiers: owner/admin read everything in their tenant. A `sales_rep`
+  is **scoped** — they read only their assigned customers (M4D), only
+  orders/documents for those customers (M4D.1), and **no** private-link
+  metadata at all (M4D.2); master-data (products, manufacturers,
+  categories, inventory) stays member-wide read. Master-data and order
+  tables are all **read-only at the table level for every authenticated
+  client** — writes flow only
   through validated RPCs, now `EXECUTE`-granted to `authenticated` and
   gated by `authorize_tenant` (M4A: owner/admin for catalog/status,
   owner/admin/sales_rep for order creation). A member can never change a
@@ -131,13 +136,18 @@ documents stay renderable after catalog or customer changes.
   `generated` (also blocked by CHECK, even for the service role), or
   plant audit entries.
 - `customer_access_links` (private shop links, M4A) is anon-inaccessible
-  and member read-only: `anon` has NO grants; `authenticated` has a
-  **column-scoped SELECT that omits `token_hash`** plus the RLS
-  members-read policy — no INSERT/UPDATE/DELETE, and no
+  and **owner/admin read-only** (M4D.2): `anon` has NO grants;
+  `authenticated` has a **column-scoped SELECT that omits `token_hash`**,
+  but the RLS SELECT policy is now
+  `has_tenant_role(tenant_id, ['owner','admin'])`, so a `sales_rep` reads
+  **no** link rows — not even for a customer assigned to them (private
+  links are an owner/admin concern; the link-management UI is owner/admin
+  only). There are no INSERT/UPDATE/DELETE grants, and no
   TRUNCATE/REFERENCES/TRIGGER/MAINTAIN either (locked in M4A.1, since the
   M3A.1 blanket strip predated the table). Links are created/revoked only
   via `insert_customer_access_link` / `revoke_customer_access_link`; anon
-  resolves/reads/orders only through the SECURITY DEFINER token functions.
+  resolves/reads/orders only through the SECURITY DEFINER token functions
+  (which bypass RLS, so the tokenized shop flow is unaffected).
 - `tenant_users` is **RPC-only for writes since M4B**: the M1.1 direct
   owner/admin insert/update/delete policies were dropped and the grants
   revoked, so no member can self-promote or orphan the tenant via a raw
@@ -155,7 +165,7 @@ documents stay renderable after catalog or customer changes.
   `madaf_tenant` cookie. `sales_rep_customers` and `token_access_attempts`
   (anon-token rate limiter — raw token never stored, no anon/authenticated
   access) are grant-locked exactly like the other M4 tables.
-- **sales_rep scoping (M4D · M4D.1):** `can_access_customer(tenant,
+- **sales_rep scoping (M4D · M4D.1 · M4D.2):** `can_access_customer(tenant,
   customer)` gives owner/admin every customer in the tenant and a sales_rep
   only their assigned ones — it backs the `customers` SELECT policy and
   `create_order_request` (a rep may order only for an assigned customer, no
@@ -163,8 +173,10 @@ documents stay renderable after catalog or customer changes.
   the `orders` / `order_items` / `order_status_history` / `documents` SELECT
   policies so a rep READS only orders tied to an assigned customer (a
   null-customer walk-in order is owner/admin only) — no unassigned-customer
-  data via order/document snapshots. Assignments are managed by owner/admin
-  via `assign_customer_to_rep` / `unassign_customer_from_rep`.
+  data via order/document snapshots. And (M4D.2) the `customer_access_links`
+  SELECT policy is owner/admin-only, so a rep reads no private-link metadata
+  at all. Assignments are managed by owner/admin via
+  `assign_customer_to_rep` / `unassign_customer_from_rep`.
 - **Owner transfer (M4D):** `promote_tenant_owner` / `demote_tenant_owner`
   (owner-only, tenant-scoped, last-owner-protected; self-demotion only while
   another owner remains). The owner role is granted ONLY here — never by

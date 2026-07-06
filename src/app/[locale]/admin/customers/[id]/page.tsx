@@ -28,9 +28,10 @@ export default async function AdminCustomerDetailPage({
   // customers assigned to them (RLS-scoped getCustomer), and even then does
   // not manage links.
   const isSupabase = getDataMode() === "supabase";
-  const canManageLinks = isSupabase
-    ? (await getSessionContext()).membership?.role !== "sales_rep"
-    : false;
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  // Explicit owner/admin allowlist (never default-allow on a null membership);
+  // RLS is the real gate (M4D.2 SELECT policy returns 0 rows for anyone else).
+  const canManageLinks = role === "owner" || role === "admin";
   const links = isSupabase && canManageLinks ? await listCustomerLinks(id) : [];
 
   return (

@@ -4,7 +4,19 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M4D.1 shipped** (M1–M4D as below). **M4D.1 enforces sales_rep
+> **STATUS — M4D.2 shipped** (M1–M4D.1 as below). **M4D.2 restricts
+> private-link metadata to owner/admin**: `customer_access_links` still
+> carried the M4A member-wide `is_tenant_member` SELECT policy, so any
+> authenticated member — including a `sales_rep` — could read a link's
+> `customer_id` / `label` / `token_preview` / expiry / revoked / last-used /
+> created-by (only `token_hash` was already hidden by the M4A.1 column
+> grant). The SELECT policy is now
+> `has_tenant_role(tenant_id, ['owner','admin'])`, so a `sales_rep` sees
+> **no** link rows (even for an assigned customer) — private links are an
+> owner/admin concern and the link-management UI was already owner/admin
+> only. Column grant, write locks, and the anon SECURITY DEFINER token RPCs
+> (which bypass RLS) are unchanged, so the tokenized shop flow and
+> owner/admin link management keep working. **M4D.1 enforces sales_rep
 > ORDER-READ scoping**: `can_access_order(tenant, order)` re-scopes the
 > `orders` / `order_items` / `order_status_history` / `documents` SELECT
 > policies so a rep reads only orders tied to an assigned customer (a

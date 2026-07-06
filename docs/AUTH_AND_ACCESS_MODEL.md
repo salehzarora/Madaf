@@ -1,4 +1,4 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2)
 
 How Madaf decides **who** may see or change **what**, once real
 authentication is switched on. Read `MVP_SCOPE.md` and
@@ -157,6 +157,16 @@ customer in the tenant. Assignments are managed by owner/admin
 flow (SECURITY DEFINER, `source='remote_customer'`) and order creation are
 unaffected — those RPCs run past RLS and validate scope themselves.
 
+**sales_rep private-link scoping (ENFORCED in M4D.2):** `customer_access_links`
+kept the M4A member-wide `is_tenant_member` SELECT policy, so a `sales_rep`
+could still read a link's `customer_id` / `label` / `token_preview` / expiry /
+revoked / last-used / created-by (only `token_hash` was already column-hidden).
+The SELECT policy is now `has_tenant_role(tenant_id, ['owner','admin'])`, so a
+`sales_rep` reads **no** link rows at all — not even for a customer assigned to
+them — since private links are an owner/admin concern and the link-management
+UI (`/admin/customers/[id]`) is already owner/admin only. Column grant, write
+locks, and the anon token RPCs are unchanged (§8).
+
 ## 5. Reads — RLS, and the anon short-circuit
 
 Authenticated reads run through the cookie client under RLS: a member
@@ -216,10 +226,14 @@ account.
 **Table `customer_access_links`** stores, per link: `tenant_id`,
 `customer_id`, `token_hash` (unique), `token_preview` (last 6 chars, for
 the admin list only), `label`, `expires_at`, `revoked_at`,
-`last_used_at`, `created_by`, timestamps. RLS: members read their
-tenant's links, but the **`token_hash` column is not granted to members**
-(the member `SELECT` is column-scoped and omits it — the UI only ever
-needs `token_preview`). There are **no direct write grants** —
+`last_used_at`, `created_by`, timestamps. RLS: **only owner/admin may read
+their tenant's links** (M4D.2 — the SELECT policy is
+`has_tenant_role(tenant_id, ['owner','admin'])`; a `sales_rep` sees **no**
+link rows, even for a customer assigned to them, since private links are
+an owner/admin concern and the link-management UI is already owner/admin
+only). On top of that, the **`token_hash` column is not granted to any
+member** (the authenticated `SELECT` is column-scoped and omits it — the
+UI only ever needs `token_preview`). There are **no direct write grants** —
 inserts/revokes go through RPCs.
 
 **The raw token is never stored.** It is generated in the Server Action
@@ -392,7 +406,7 @@ invites end-to-end you need a **second** local auth user whose email you
 control (create one in Studio → Authentication, sign in as owner, invite
 that email, then open `/he/invite/<token>` while signed in as it).
 
-## 12. Delivered in M4C · M4D
+## 12. Delivered in M4C · M4D · M4D.1 · M4D.2
 
 - **M4C — Multi-tenant membership + tenant switcher** (verified `madaf_tenant`
   cookie; `authorize_tenant` verifies the named tenant), the
@@ -409,6 +423,15 @@ that email, then open `/he/invite/<token>` while signed in as it).
   policies) — a rep can no longer read unassigned-customer orders or their
   names via order/document snapshots. sales_rep scoping is now enforced for
   customer reads, order creation, AND order reads.
+- **M4D.2 — private-link metadata restricted to owner/admin.** The
+  `customer_access_links` SELECT policy moved from the M4A member-wide
+  `is_tenant_member` to `has_tenant_role(tenant_id, ['owner','admin'])`, so a
+  `sales_rep` reads **no** link rows (even for a customer assigned to them) —
+  closing the last member-wide read of private-link + customer metadata
+  (`customer_id` / `label` / `token_preview` / expiry / revoked / last-used /
+  created-by). `token_hash` stays column-hidden (M4A.1), writes stay
+  RPC-only, and the anon SECURITY DEFINER token RPCs bypass RLS, so the
+  tokenized shop flow and owner/admin link management are unaffected.
 
 ## 13. Deferred to M5 / infra
 
