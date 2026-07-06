@@ -270,7 +270,7 @@ export default async function AdminOrderDetailPage({
               )}
 
               {/* Permanent legal notice: drafts are previews, not tax invoices. */}
-              <p className="text-xs leading-relaxed text-ink-muted">
+              <p className="text-xs leading-relaxed text-ink-soft">
                 {dict.admin.documents.legalBanner}
               </p>
             </CardContent>

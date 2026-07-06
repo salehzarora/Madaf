@@ -49,7 +49,7 @@ export function ProductCard({
     >
       <Link
         href={`/${locale}/product/${product.id}`}
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-0 rounded-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
         aria-label={productName(product, locale)}
       />
 
@@ -63,7 +63,7 @@ export function ProductCard({
         {showStock ? (
           <span
             className={cn(
-              "absolute inset-inline-start-2 top-2 rounded-badge px-2 py-0.5 text-[11px] font-bold",
+              "absolute start-2 top-2 rounded-badge px-2 py-0.5 text-[11px] font-bold",
               soldOut
                 ? "bg-danger-soft text-danger"
                 : "bg-warning-soft text-warning",
@@ -73,7 +73,7 @@ export function ProductCard({
           </span>
         ) : null}
         {product.trackExpiry ? (
-          <span className="absolute inset-inline-end-2 top-2 inline-flex items-center gap-1 rounded-badge border border-dashed border-warning/50 bg-accent-wash px-1.5 py-0.5 text-[10px] font-semibold text-accent-deep">
+          <span className="absolute end-2 top-2 inline-flex items-center gap-1 rounded-badge border border-dashed border-warning/50 bg-accent-wash px-1.5 py-0.5 text-[10px] font-semibold text-accent-deep">
             <AlertTriangle className="size-3" aria-hidden />
             {dict.catalog.expiryTracked}
           </span>

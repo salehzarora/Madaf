@@ -52,6 +52,7 @@ export function AppShell({
             <CartLink locale={locale} label={dict.nav.cart} />
             <Link
               href={`/${locale}/admin`}
+              aria-label={dict.nav.admin}
               className="inline-flex h-11 items-center gap-2 rounded-field px-3 text-sm font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <LayoutDashboard className="size-5" aria-hidden />

@@ -136,7 +136,7 @@ export function OrderStatusControl({
         }
         disabled={pending || (live && !allowed.includes("cancelled"))}
         className={cn(
-          "self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
+          "inline-flex min-h-11 items-center self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
           status === "cancelled"
             ? "bg-danger-soft text-danger"
             : "text-ink-muted hover:bg-danger-soft hover:text-danger",

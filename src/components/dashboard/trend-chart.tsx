@@ -19,7 +19,10 @@ export interface TrendDay {
 export function TrendChart({ days }: { days: TrendDay[] }) {
   const max = Math.max(1, ...days.map((d) => d.value));
   return (
-    <div>
+    <div className="overflow-x-auto">
+      {/* min-width floor keeps 14 bars legible; scrolls inside the card on
+          narrow viewports instead of overflowing the page. */}
+      <div className="min-w-[440px]">
       <div className="flex h-[150px] items-end gap-2 border-b-[1.5px] border-line-strong">
         {days.map((d, i) => {
           const pct = d.value > 0 ? Math.max((d.value / max) * 100, 2) : 0;
@@ -66,6 +69,7 @@ export function TrendChart({ days }: { days: TrendDay[] }) {
             {d.dayLabel}
           </span>
         ))}
+      </div>
       </div>
     </div>
   );

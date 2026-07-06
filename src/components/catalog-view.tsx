@@ -249,7 +249,7 @@ export function CatalogView({
 
             {/* Manufacturer chips */}
             <div className="scrollbar-none -mx-4 mt-2 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
-              <span className="shrink-0 text-xs font-medium text-ink-muted">
+              <span className="shrink-0 text-xs font-medium text-ink-soft">
                 {dict.catalog.manufacturers}:
               </span>
               {manufacturers.map((manufacturer) => (

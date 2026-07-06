@@ -100,7 +100,7 @@ export function AdminShell({
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex h-[42px] items-center gap-3 rounded-field px-3 text-sm transition-colors",
+              "relative flex h-[42px] items-center gap-3 rounded-field px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
               active
                 ? "bg-band-ink/10 font-bold text-band-ink"
                 : "font-medium text-band-muted hover:bg-band-ink/[.08] hover:text-band-ink",
@@ -108,7 +108,7 @@ export function AdminShell({
           >
             {active ? (
               <span
-                className="absolute inset-inline-start-0 top-2 bottom-2 w-[3px] rounded-full bg-accent"
+                className="absolute start-0 top-2 bottom-2 w-[3px] rounded-full bg-accent"
                 aria-hidden
               />
             ) : null}
@@ -121,7 +121,7 @@ export function AdminShell({
         <Link
           href={`/${locale}/catalog`}
           onClick={() => setOpen(false)}
-          className="flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium text-band-muted transition-colors hover:bg-band-ink/[.08] hover:text-band-ink"
+          className="flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium text-band-muted transition-colors hover:bg-band-ink/[.08] hover:text-band-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           <X className="size-5 shrink-0" aria-hidden />
           {dict.nav.exitAdmin}
@@ -219,7 +219,7 @@ export function AdminShell({
                     >
                       {session.email}
                     </p>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-soft">
                       {dict.access.session.roles[session.role]}
                     </p>
                   </div>
@@ -252,7 +252,7 @@ export function AdminShell({
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold",
+                "flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
                 active ? "text-accent" : "text-band-muted",
               )}
             >
@@ -264,7 +264,7 @@ export function AdminShell({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold text-band-muted"
+          className="flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold text-band-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
         >
           <Menu className="size-[19px]" aria-hidden />
           <span>{dict.common.menu}</span>

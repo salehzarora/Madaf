@@ -26,7 +26,7 @@ export function ProductImage({
     showSizeTag && product.unitSize ? (
       <span
         dir="ltr"
-        className="absolute bottom-2 inset-inline-end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[10.5px] font-semibold text-background"
+        className="absolute bottom-2 end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[11px] font-semibold text-background"
       >
         {product.unitSize}
       </span>

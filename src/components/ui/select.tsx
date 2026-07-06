@@ -21,7 +21,7 @@ export function Select({
         {...props}
       />
       <ChevronDown
-        className="pointer-events-none absolute inset-inline-end-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+        className="pointer-events-none absolute end-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
         aria-hidden
       />
     </div>

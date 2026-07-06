@@ -72,7 +72,7 @@ export function OrderPad({
                       type="button"
                       onClick={() => removeItem(item.productId)}
                       aria-label={dict.common.remove}
-                      className="shrink-0 rounded p-1 text-ink-muted transition-colors hover:text-danger"
+                      className="flex size-9 shrink-0 items-center justify-center rounded text-ink-muted transition-colors hover:text-danger"
                     >
                       <Trash2 className="size-3.5" aria-hidden />
                     </button>
@@ -107,7 +107,7 @@ export function OrderPad({
             {formatCurrency(subtotal, locale)}
           </span>
         </div>
-        <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">
+        <p className="mt-0.5 text-[11px] leading-snug text-ink-soft">
           {dict.cart.vatNote}
         </p>
         <Link

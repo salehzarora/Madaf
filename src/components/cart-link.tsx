@@ -21,6 +21,7 @@ export function CartLink({
   return (
     <Link
       href={`/${locale}/cart`}
+      aria-label={label}
       className={cn(
         "relative inline-flex h-11 items-center gap-2 rounded-field bg-ink px-3.5 text-sm font-bold text-background transition-colors hover:bg-band",
         className,
