@@ -4,7 +4,26 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M5B.1 shipped** (M1–M5B as below). **M5B.1 locks stored-PDF
+> **STATUS — M5C shipped** (M1–M5B.1 as below). **M5C is production-readiness
+> cleanup before M6** (no features, no payments, no legal invoices). (1)
+> Trusted document storage now uses a DEDICATED server-only client
+> (`src/lib/data/trusted-document-storage.ts`, separate from the generic demo
+> `getServiceContext`) with an explicit config model: LOCAL-ONLY by default
+> and fail-closed; production is opt-in via
+> `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
+> `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<ref>` (pins the URL to
+> `<ref>.supabase.co`) + `SUPABASE_SERVICE_ROLE_KEY`; a misconfigured client
+> makes the route safely STREAM the PDF without storing. Never enabled by
+> default; never NEXT_PUBLIC; never in the browser. (2) Local auth bootstrap
+> fixed: `supabase/bootstrap-auth.sql` now sets the `auth.users` token/`*_change`
+> columns to `''` (not NULL), so demo users sign in on the FIRST attempt (the
+> prior GoTrue-500 "converting NULL to string" is gone). (3) `npm audit` is
+> clean — the transitive PostCSS advisory (nested under Next) was cleared with
+> a targeted `overrides: { postcss: ^8.5.10 }` (same-major, no Next downgrade;
+> `npm audit fix --force` was NOT used); see `docs/security/AUDIT_NOTES.md`.
+> All M4D/M5B security guarantees intact (storage lock, direct-write regression,
+> grant audit); mock stays the zero-config default. Earlier summary follows.
+> **M5B.1 locks stored-PDF
 > uploads to a trusted server path.** Codex flagged that M5B let a normal
 > authenticated user (e.g. an assigned sales_rep) DIRECTLY upload/overwrite a
 > forged PDF at the deterministic path via the Storage API. Fix: the
