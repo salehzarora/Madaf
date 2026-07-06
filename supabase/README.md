@@ -47,6 +47,7 @@ Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 | `migrations/20260706100000_lock_customer_access_links_grants.sql` | M4A.1: strip default-ACL TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from anon/authenticated on `customer_access_links`; re-grant only the column-scoped member SELECT (no `token_hash`) |
 | `migrations/20260706110000_tenant_team_and_invites.sql` | M4B: lock `tenant_users` direct writes (RPC-only); `tenant_invitations` table (grant-locked like `customer_access_links`) + team RPCs (`create/revoke/accept_tenant_invite`, `update_tenant_member_role`, `remove_tenant_member`, `list_tenant_members`) with owner/admin gates + last-owner protection |
 | `migrations/20260707100000_multi_tenant_and_hardening.sql` | M4C: drop `unique(user_id)` (multi-tenant); `authorize_tenant` verifies the named tenant; team/link RPCs take `p_tenant_id`; `list_memberships()`; `sales_rep_customers` + assign/unassign/list RPCs (grant-locked); `token_access_attempts` + fingerprint rate limiter wired into the anon shop-token endpoints |
+| `migrations/20260707110000_deprecate_current_membership.sql` | M4C.1: deprecate the legacy single-membership `current_membership()` (revoke EXECUTE from authenticated + legacy comment; use `list_memberships()`) |
 | `seed.sql` | demo tenant + full 1:1 mapping of `src/lib/mock/*` |
 | `bootstrap-auth.sql` | **not auto-run** — creates 4 demo auth users + memberships for local sign-in (see `docs/AUTH_AND_ACCESS_MODEL.md`) |
 
@@ -158,10 +159,10 @@ documents stay renderable after catalog or customer changes.
 - Tenant onboarding is live in M4A: a signed-in, membership-less user
   creates their tenant + first `owner` `tenant_users` row atomically via
   `create_tenant_with_owner()` (authenticated, membership-less only).
-- Every tenant-owned write RPC is now gated by `authorize_tenant(tenant,
-  roles[])`, which derives the tenant from the caller's membership and
-  rejects a mismatched client `tenant_id` or a disallowed role (`42501`).
-  The client-submitted `tenant_id` is never trusted.
+- Every tenant-owned write RPC is gated by `authorize_tenant(tenant,
+  roles[])`. Since M4C (multi-tenant) it accepts the caller-named tenant
+  ONLY if it's one of the caller's own memberships with an allowed role
+  (`42501` otherwise); the client-submitted `tenant_id` is never trusted.
 
 To sign in as a member locally, run `bootstrap-auth.sql` after a reset
 (4 demo users). Full model: `docs/AUTH_AND_ACCESS_MODEL.md`.
@@ -171,7 +172,9 @@ To sign in as a member locally, run `bootstrap-auth.sql` after a reset
 Bucket `product-images` (private, 5 MiB, image mime types). Path
 convention: `<tenant_id>/products/<product_id>/<file>` — policies key on
 the first folder segment being the tenant uuid. **M3B wires real uploads**
-(`uploadProductImageAction` → `sbUploadProductImage`, service role): the
+(`uploadProductImageAction` → `sbUploadProductImage`): the upload runs on
+the authenticated client (M4A), so the storage RLS policy
+("owners/admins can upload" to their `<tenant_id>/…` path) is enforced; the
 server validates JPEG/PNG/WebP + 5 MB, writes under the tenant path, and
 stores that path in `products.image_url`. The read layer resolves storage
 paths to short-lived **signed URLs** (the bucket stays private); external
@@ -242,11 +245,13 @@ npm run dev                  # app runs exactly as in M0 — no DB required
 The mode boundary lives in `src/lib/data/` (`getDataMode()`). Every UI
 read goes through it; mock is the default and needs zero configuration.
 
-**Supabase read mode (local dev only):** set
-`NEXT_PUBLIC_MADAF_DATA_MODE=supabase` and `SUPABASE_SERVICE_ROLE_KEY`
-(the "Secret" key from `supabase status`) in `.env.local`, then
-`npm run dev` — the entire UI (catalog, product pages, admin, documents)
-renders from the seeded database.
+**Supabase mode (local dev only):** set
+`NEXT_PUBLIC_MADAF_DATA_MODE=supabase` in `.env.local` (the
+`NEXT_PUBLIC_SUPABASE_URL` + anon key come pre-filled), run
+`bootstrap-auth.sql` once, then `npm run dev` and sign in — the entire UI
+(catalog, product pages, admin, team, documents) renders from the seeded
+database under the signed-in member's tenant. `SUPABASE_SERVICE_ROLE_KEY`
+is NOT needed for the app; it's only for local bootstrap/seed tooling.
 
 **Since M4A this runs on real auth.** Supplier users sign in at `/login`
 (create the demo users with `bootstrap-auth.sql`); the session lives in
