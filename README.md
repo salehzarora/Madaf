@@ -124,6 +124,7 @@ hand-rolled shadcn-style UI primitives (no runtime UI deps).
 | [docs/INFORMATION_ARCHITECTURE.md](docs/INFORMATION_ARCHITECTURE.md) | routes, folders, data model |
 | [docs/I18N_RTL_GUIDE.md](docs/I18N_RTL_GUIDE.md) | locales, RTL rules, formatting |
 | [docs/DOCUMENTS_AND_INVOICES_GUIDE.md](docs/DOCUMENTS_AND_INVOICES_GUIDE.md) | legal wording & invoice safety |
+| [docs/LEGAL_INVOICING_ARCHITECTURE.md](docs/LEGAL_INVOICING_ARCHITECTURE.md) | M6 legal-invoicing plan (**design only — nothing issued**) |
 | [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md) | auth, roles, RLS, tenant links (M4A) |
 | [docs/FUTURE_BACKEND_HANDOFF.md](docs/FUTURE_BACKEND_HANDOFF.md) | Supabase plan for the next agent |
 | [docs/security/AUDIT_NOTES.md](docs/security/AUDIT_NOTES.md) | `npm audit` status & handling |
