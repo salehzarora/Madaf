@@ -55,6 +55,7 @@ export async function recordOrderDocument(input: {
   documentId: string;
   documentNumber: string;
   documentDate: string;
+  storagePath: string | null;
 }> {
   if (getDataMode() === "supabase") {
     return (await import("./supabase-writes")).sbCreateOrderDocument({
@@ -69,27 +70,32 @@ export async function recordOrderDocument(input: {
     documentId: `doc-${serial}-${DOC_SUFFIX[input.type].toLowerCase()}`,
     documentNumber: `DOC-${serial}-${DOC_SUFFIX[input.type]}`,
     documentDate: input.orderDate,
+    storagePath: null, // mock persists nothing
   };
 }
 
 /**
- * Sign an ALREADY-stored document PDF (M5B reuse path) — a short-lived
- * signed URL, or null if not stored yet / mock mode / not signable. Access
- * is enforced by the storage policies (can_access_order on the path).
+ * Reuse path (M5B.1): sign an already-stored PDF ONLY when its recorded
+ * `storedPath` is exactly the expected DB-derived path — a short-lived signed
+ * URL, or null (mock, not stored, or path mismatch → the route regenerates
+ * through the trusted server path). Signing runs on the trusted service
+ * client; the route has already verified order access.
  */
 export async function signStoredDocument(input: {
   orderId: string;
   type: DocumentType;
   documentId: string;
   locale: Locale;
+  storedPath: string | null;
   filename: string;
 }): Promise<string | null> {
   if (getDataMode() !== "supabase") return null;
-  return (await import("./document-storage")).sbSignDocument({
+  return (await import("./document-storage")).sbSignStoredDocument({
     orderId: input.orderId,
     dbType: DOCUMENT_TYPE_TO_DB[input.type],
     documentId: input.documentId,
     locale: input.locale,
+    storedPath: input.storedPath,
     filename: input.filename,
   });
 }

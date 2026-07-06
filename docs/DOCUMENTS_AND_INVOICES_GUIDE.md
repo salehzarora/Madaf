@@ -92,35 +92,56 @@ HTML preview. Download links live on the admin order-detail Documents card
   for assigned-customer orders (RLS on the read + `can_access_order` in the
   RPC); a walk-in/null-customer order is owner/admin only; anon has no path.
 
-## Stored PDFs + signed-URL delivery (M5B)
+## Stored PDFs + signed-URL delivery (M5B · M5B.1)
 
 M5B stores each generated PDF in a **PRIVATE** Supabase Storage bucket and
-serves it via a **short-lived signed URL** — the legal boundary is
-**unchanged** (still drafts, still no tax invoices, no numbering, no
-provider, no payments).
+serves it via a **short-lived signed URL**; **M5B.1** locks uploads to a
+**trusted server-only path**. The legal boundary is **unchanged** (still
+drafts, still no tax invoices, no numbering, no provider, no payments).
 
 - **Bucket `documents` is private** (`public=false`) — no public URLs, no
   anon access. Path: `<tenant_id>/documents/<order_id>/<document_type>/
   <document_id>_<locale>.pdf` — no token_hash / secret / raw token in it.
-- **Triple-gated access**: the download route reads the order under RLS
-  (`can_access_order` → 404 for a rep on an unassigned order / non-member),
-  records via `create_order_document`, and the upload + signed-URL creation
-  run on the authenticated client under the **storage.objects policies**,
-  which re-check `can_access_order` on the path's tenant + order segments.
-  So a `sales_rep` can only store/sign documents for assigned-customer
-  orders; owner/admin for any tenant order; a walk-in/null-customer order is
-  owner/admin only; non-member/anon nothing. Cross-tenant paths are blocked.
-- **Signed URLs are short-lived (~60s)** and access-checked at creation; the
-  route 302-redirects to one. The public object URL returns an error.
+- **Normal authenticated users cannot upload, overwrite, or read documents
+  objects directly (M5B.1).** The bucket's `storage.objects` policies were
+  DROPPED, so RLS denies every anon/authenticated SELECT/INSERT/UPDATE/DELETE
+  on it — closing the M5B forgery vector where a user with `can_access_order`
+  could plant a fake PDF at the deterministic path. The **service role**
+  (which bypasses RLS) does the upload/sign, used ONLY from the server-only
+  `src/lib/data/document-storage.ts` after the route has authorized the
+  request. product-images policies are untouched.
+- **Access is still verified via the authenticated context first**: the
+  download route reads the order under RLS (`can_access_order` → 404 for a
+  rep on an unassigned order / non-member), records via
+  `create_order_document`, and records the storage metadata via
+  `set_document_storage` on the **authenticated** client (which re-checks
+  `authorize_tenant` + `can_access_order`). Only then does the trusted
+  service client upload + sign. So a `sales_rep` gets a document only for an
+  assigned-customer order; owner/admin any tenant order; walk-in/null-customer
+  owner/admin only; non-member/anon nothing; cross-tenant blocked.
+- **Signed URLs are short-lived (~60s)** and only created by the trusted
+  server after the access checks; the route 302-redirects to one. The public
+  object URL returns an error; there is no authenticated direct-download path.
 - **Storage metadata** (`storage_path` / `generated_at` / `file_size_bytes`
   / `checksum`) lives on `documents`, written ONLY by the SECURITY DEFINER
   `set_document_storage` RPC — the table stays read-only (no direct writes).
-- **Reuse vs regenerate**: a download reuses the stored object when present;
-  `?regenerate=1` (the admin "Regenerate" action) forces a fresh render +
-  upsert. There is no content-hash cache-skip yet — regeneration is explicit.
+  M5B.1: the RPC validates the storage path **exactly** against the
+  DB-derived `<tenant>/documents/<order>/<type>/<id>_<locale>.pdf` (rejecting
+  any mismatched tenant/order/type/id/locale, traversal, non-`.pdf`, blank).
+- **Reuse vs regenerate**: a download reuses a stored object ONLY when the
+  recorded `storage_path` is exactly the expected DB-derived path (M5B.1 —
+  never trust an object at an unexpected path); otherwise it regenerates
+  through the trusted server path. `?regenerate=1` (the admin "Regenerate"
+  action) always re-renders. There is no content-hash cache-skip yet.
 - **Mock mode** stores nothing and streams the freshly-rendered bytes (M5A).
-- **Not exposed to tokenized customers**: PDF download stays admin-only in
-  M5B; customer/token PDF access is a future, fully-scoped addition.
+- **Not exposed to tokenized customers**: PDF download stays admin-only;
+  customer/token PDF access is a future, fully-scoped addition.
+- **Trusted-storage limitation**: the service-role client is server-only and
+  **fail-closed** (refuses production `NODE_ENV` and non-local Supabase URLs,
+  key from a non-public env var, never in a client bundle). So storage +
+  signing work in local-dev supabase mode (`npm run dev`); a hardened
+  server-only production storage model is future work — if the trusted client
+  is unavailable the route safely falls back to streaming the bytes.
 
 ## What the backend agent must add before invoices become real
 

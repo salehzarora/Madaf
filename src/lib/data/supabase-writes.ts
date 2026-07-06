@@ -93,6 +93,7 @@ export async function sbCreateOrderDocument(input: {
   documentId: string;
   documentNumber: string;
   documentDate: string;
+  storagePath: string | null;
 }> {
   const { client, tenantId } = await getDataContext();
   const { data, error } = await client
@@ -109,14 +110,16 @@ export async function sbCreateOrderDocument(input: {
     documentId: data.id,
     documentNumber: data.document_number,
     documentDate: data.created_at,
+    // The path of a previously-stored PDF (M5B.1 reuse check), or null.
+    storagePath: data.storage_path ?? null,
   };
 }
 
 /**
  * Record the stored-PDF metadata (path/size/checksum) of a document via the
  * set_document_storage RPC (SECURITY DEFINER — authorize_tenant +
- * can_access_order + tenant-prefix check). documents stay table-level
- * read-only; this is the only write path for the storage columns.
+ * can_access_order + EXACT expected-path check, M5B.1). documents stay
+ * table-level read-only; this is the only write path for the storage columns.
  */
 export async function sbSetDocumentStorage(input: {
   documentId: string;

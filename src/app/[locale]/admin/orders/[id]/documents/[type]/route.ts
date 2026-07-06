@@ -9,15 +9,18 @@
  * authenticated RLS client (getOrderDocumentSource), so a sales_rep only
  * reaches assigned-customer orders and a non-member reaches none → 404.
  * Recording goes through create_order_document (authorize_tenant +
- * can_access_order); the storage upload + signed URL run on the same
- * authenticated client, gated a THIRD time by the storage.objects policies
- * (can_access_order on the path's tenant + order segments).
+ * can_access_order), and set_document_storage (authenticated) re-checks
+ * access + the exact expected path. Only AFTER these authorization checks
+ * does the TRUSTED, server-only service-role client perform the actual
+ * upload + signing (M5B.1) — normal authenticated users can no longer write
+ * to the documents bucket directly (its storage policies were dropped), so a
+ * forged PDF cannot be planted at the deterministic path.
  *
- * M5B behavior:
- *   - supabase mode: store the PDF in the PRIVATE `documents` bucket and
- *     302-redirect to a SHORT-LIVED signed URL. Reuses a stored object when
- *     present unless ?regenerate=1. The signed URL is access-checked at
- *     creation and expires quickly; no public URL exists.
+ * M5B/M5B.1 behavior:
+ *   - supabase mode: store the PDF in the PRIVATE `documents` bucket via the
+ *     trusted server path and 302-redirect to a SHORT-LIVED signed URL. Reuse
+ *     a stored object ONLY when its recorded storage_path is exactly the
+ *     expected DB-derived path, unless ?regenerate=1. No public URL exists.
  *   - mock mode: no storage — stream the freshly-rendered bytes (M5A).
  *
  * ⚠️ invoice_draft renders a DRAFT watermark + not-a-tax-invoice notice; it
@@ -75,6 +78,7 @@ export async function GET(
     documentId: string;
     documentNumber: string;
     documentDate: string;
+    storagePath: string | null;
   };
   try {
     record = await recordOrderDocument({
@@ -93,13 +97,17 @@ export async function GET(
 
   const filename = `${record.documentNumber}.pdf`;
 
-  // Reuse a stored PDF (supabase, not ?regenerate) → redirect to a signed URL.
-  if (!regenerate) {
+  // Reuse a stored PDF only when the recorded storage_path is exactly the
+  // expected DB-derived path (M5B.1 — never trust an object at an unexpected
+  // path). Signing runs on the trusted server client; access was already
+  // verified above. ?regenerate=1 always re-renders through the trusted path.
+  if (!regenerate && record.storagePath) {
     const existing = await signStoredDocument({
       orderId: id,
       type,
       documentId: record.documentId,
       locale: docLocale,
+      storedPath: record.storagePath,
       filename,
     });
     if (existing) return Response.redirect(existing, 302);

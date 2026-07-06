@@ -4,7 +4,22 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M5B shipped** (M1–M5A as below). **M5B stores the generated
+> **STATUS — M5B.1 shipped** (M1–M5B as below). **M5B.1 locks stored-PDF
+> uploads to a trusted server path.** Codex flagged that M5B let a normal
+> authenticated user (e.g. an assigned sales_rep) DIRECTLY upload/overwrite a
+> forged PDF at the deterministic path via the Storage API. Fix: the
+> `documents` bucket's `storage.objects` policies were DROPPED, so RLS denies
+> every anon/authenticated read/insert/update/delete on it — uploads + signing
+> now run ONLY through the server-only, fail-closed SERVICE-ROLE client
+> (`getServiceContext`, never in a client bundle), and only AFTER the route
+> authorizes the request (RLS order read + `create_order_document` +
+> `set_document_storage`). `set_document_storage` now validates the storage
+> path EXACTLY against the DB-derived `<tenant>/documents/<order>/<type>/<id>_
+> <locale>.pdf` (rejecting any mismatched tenant/order/type/id/locale,
+> traversal, non-.pdf, blank). Reuse trusts an object only when `storage_path`
+> equals that exact path. product-images policies untouched; bucket still
+> private; no public URL; no service-role key in the browser. Legal boundary
+> unchanged (drafts only). Earlier summary follows. **M5B stores the generated
 > PDFs** in a PRIVATE Supabase Storage `documents` bucket and serves them via
 > SHORT-LIVED, access-checked SIGNED URLs. The download route
 > (`/[locale]/admin/orders/[id]/documents/[type]?lang=…&regenerate=1`) reads
