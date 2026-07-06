@@ -1,4 +1,4 @@
-import { ArrowRight, FileText } from "lucide-react";
+import { ArrowRight, Download, FileText } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OrderStatusControl } from "@/components/order-status-control";
@@ -175,6 +175,7 @@ export default async function AdminOrderDetailPage({
               <CardTitle>{t.previewDoc}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 pt-3">
+              {/* Preview (HTML sheet) for documents already on record */}
               {orderDocs.map((doc) => (
                 <Link
                   key={doc.id}
@@ -188,6 +189,39 @@ export default async function AdminOrderDetailPage({
                   </span>
                 </Link>
               ))}
+
+              {/* Server-generated PDF downloads (M5A). A plain anchor: the
+                  route returns an application/pdf attachment. Access is
+                  enforced server-side (this page only renders for orders the
+                  member can access; the route re-checks). */}
+              <div
+                className={
+                  orderDocs.length
+                    ? "mt-1 flex flex-col gap-2 border-t border-line pt-3"
+                    : "flex flex-col gap-2"
+                }
+              >
+                {(["order", "delivery", "invoiceDraft"] as const).map(
+                  (docType) => (
+                    <a
+                      key={docType}
+                      href={`/${locale}/admin/orders/${order.id}/documents/${docType}`}
+                      className="flex h-11 items-center gap-3 rounded-field border border-line px-3 text-sm font-medium text-ink transition-colors hover:border-brand-300 hover:bg-brand-50"
+                    >
+                      <Download className="size-4 text-brand-600" aria-hidden />
+                      {dict.docs.types[docType]}
+                      <span className="ms-auto text-xs font-medium text-brand-700">
+                        {dict.docs.downloadPdf}
+                      </span>
+                    </a>
+                  ),
+                )}
+              </div>
+
+              {/* Permanent legal notice: drafts are previews, not tax invoices. */}
+              <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+                {dict.admin.documents.legalBanner}
+              </p>
             </CardContent>
           </Card>
         </div>

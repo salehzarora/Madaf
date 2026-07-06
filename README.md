@@ -5,6 +5,18 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M5A — documents & PDF foundation.** Admins download real
+> server-generated PDFs for the three safe document types — **order request,
+> delivery note, and invoice DRAFT** — from the order-detail page
+> (`/admin/orders/[id]`). PDFs render from order snapshots (Hebrew-first,
+> `?lang=` for ar/he/en); invoice drafts always carry a DRAFT watermark +
+> "not a tax invoice" notice, and every PDF footer says so. **Still no legal
+> tax invoices, no tax-authority integration, no legal numbering** — drafts
+> only. Generation is gated exactly like order reads (owner/admin any order,
+> a sales_rep only assigned-customer orders) via the `create_order_document`
+> RPC; documents stay RPC-only writes. Built on the M4 access-control
+> foundation below.
+>
 > **Phase M4D — access-control enforcement.** The UI is the polished
 > trilingual M0 design (no payments, and **no legal tax invoices** — drafts
 > only; see [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)). Building on **M4C**
@@ -74,6 +86,7 @@ model: [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md).
 | Shops | `/he/admin/customers` |
 | Documents (Hebrew-first previews) | `/he/admin/documents` |
 | Invoice DRAFT with watermark | `/he/admin/documents/doc-1043-i` |
+| Download order/delivery/invoice-draft PDF | order detail → Documents card, or `/he/admin/orders/o1043/documents/invoiceDraft` |
 
 Languages: use the switcher in the header — עברית / العربية / English.
 Hebrew & Arabic render fully RTL; documents default to Hebrew with their
@@ -84,6 +97,8 @@ own language toggle.
 Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS v4
 (design tokens in `src/app/globals.css`) · lucide-react icons ·
 Rubik font (one variable font for Latin+Hebrew+Arabic) ·
+pdfkit + a vendored OFL Rubik TTF for server-side document PDFs
+(`src/lib/pdf/`, Node runtime, no Chromium) ·
 hand-rolled shadcn-style UI primitives (no runtime UI deps).
 
 ## Documentation
@@ -115,7 +130,10 @@ hand-rolled shadcn-style UI primitives (no runtime UI deps).
 9. Inventory: low-stock filter; expiry column only for dairy items.
 10. Documents: open an invoice draft → DRAFT watermark + legal notice;
     switch document language he/ar/en; print preview hides app chrome.
-11. Repeat a spot-check of 2–4 in Arabic and English.
+11. Order detail → Documents card → Download PDF (order / delivery /
+    invoice draft): a PDF downloads; the invoice draft shows the DRAFT
+    watermark + "not a tax invoice" notice; the delivery note has no prices.
+12. Repeat a spot-check of 2–4 in Arabic and English.
 
 ## License / status
 

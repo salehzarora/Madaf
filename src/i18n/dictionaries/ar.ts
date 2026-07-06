@@ -402,6 +402,8 @@ const ar: Dictionary = {
     printAction: "طباعة / حفظ PDF",
     backToDocuments: "الرجوع إلى المستندات",
     supplierIdLabel: "رقم الشركة (ح.ف)",
+    downloadPdf: "تنزيل PDF",
+    pdfFooter: "أُنشئ بواسطة مَداف · مستند داخلي · ليس فاتورة ضريبية.",
   },
   notFound: {
     title: "الصفحة غير موجودة",

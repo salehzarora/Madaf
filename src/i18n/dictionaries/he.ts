@@ -402,6 +402,8 @@ const he: Dictionary = {
     printAction: "הדפסה / שמירת PDF",
     backToDocuments: "חזרה למסמכים",
     supplierIdLabel: "ח.פ",
+    downloadPdf: "הורדת PDF",
+    pdfFooter: "הופק על ידי מדף · מסמך פנימי · אינו חשבונית מס.",
   },
   notFound: {
     title: "העמוד לא נמצא",

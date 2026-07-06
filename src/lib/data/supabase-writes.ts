@@ -14,8 +14,10 @@ import "server-only";
  *     sbUploadProductImage → Storage (private product-images bucket).
  *
  * Reached only through the data layer via dynamic import — never from
- * client code (see src/lib/auth/session.ts for the access model). No
- * documents/invoice drafts are created here (M5).
+ * client code (see src/lib/auth/session.ts for the access model).
+ *   - M5A documents: create_order_document records an order-derived
+ *     document row (order request / delivery note / invoice DRAFT). It is
+ *     the ONLY document write path — documents stay table-level read-only.
  */
 import { getDataContext } from "@/lib/auth/session";
 import type { OrderSource } from "./orders";
@@ -72,6 +74,34 @@ export async function sbUpdateOrderStatus(
     oldStatus: data.old_status,
     newStatus: data.new_status,
   };
+}
+
+// ── M5A: document generation ──────────────────────────────────────────────
+
+/**
+ * Record an order-derived document via the create_order_document RPC
+ * (SECURITY DEFINER — authorize_tenant + can_access_order). Returns the
+ * internal document number + creation timestamp. invoice_draft rows stay
+ * status 'draft' with a guaranteed legal notice — never a legal tax invoice.
+ */
+export async function sbCreateOrderDocument(input: {
+  orderId: string;
+  documentType: "order_request" | "delivery_note" | "invoice_draft";
+  documentLocale: "ar" | "he" | "en";
+  legalNotice: string | null;
+}): Promise<{ documentNumber: string; documentDate: string }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client
+    .rpc("create_order_document", {
+      p_tenant_id: tenantId,
+      p_order_id: input.orderId,
+      p_document_type: input.documentType,
+      p_document_locale: input.documentLocale,
+      ...(input.legalNotice ? { p_legal_notice: input.legalNotice } : {}),
+    })
+    .single();
+  if (error) fail("createOrderDocument", error.message);
+  return { documentNumber: data.document_number, documentDate: data.created_at };
 }
 
 // ── M3B: catalog writes ───────────────────────────────────────────────────
