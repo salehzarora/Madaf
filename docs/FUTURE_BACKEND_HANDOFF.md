@@ -4,6 +4,19 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M6C shipped: DISABLED legal numbering skeleton.** On top of M6B,
+> M6C added ONE gated primitive — `draw_legal_document_number(...)`
+> (SECURITY DEFINER, owner/admin, atomic row-locked draw from
+> `legal_invoice_sequences`) that returns an **internal, NON-LEGAL preview**
+> number (`DRAFT-LEGAL-YYYY-######`). It is **fail-closed behind two default-OFF
+> gates**: a service-role-only DB kill switch (`legal_numbering_settings.enabled`,
+> default `false`) and the env flag `MADAF_LEGAL_NUMBERING_ENABLED` gating a
+> **dormant** helper (`src/lib/data/legal-numbering.ts`) that is wired to nothing.
+> M6C issues **NOTHING** (no invoice, allocation number, provider call, payment,
+> PDF, `legal_number` on `legal_documents`, or `issued` status) and no UI/route
+> draws numbers. **M6D** = provider sandbox/mock adapter; **M6E** = flag-gated
+> issuing; both need a professional tax/accounting/legal review + official-source
+> re-verification first. Prior:
 > **STATUS — M6B shipped: INERT legal-invoicing foundation.** On top of the M6A
 > architecture spike, M6B added — all INERT — per-tenant **tax settings**
 > (`tenant_tax_settings` + owner/admin `get`/`upsert` RPCs; `/admin/settings/tax`

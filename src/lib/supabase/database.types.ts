@@ -624,6 +624,27 @@ export type Database = {
           },
         ]
       }
+      legal_numbering_settings: {
+        Row: {
+          enabled: boolean
+          id: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       manufacturers: {
         Row: {
           created_at: string
@@ -1397,6 +1418,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _legal_numbering_enabled: { Args: never; Returns: boolean }
       _order_create_core: {
         Args: {
           p_customer_id: string
@@ -1550,6 +1572,15 @@ export type Database = {
           p_user_id: string
         }
         Returns: undefined
+      }
+      draw_legal_document_number: {
+        Args: {
+          p_document_type: Database["public"]["Enums"]["legal_document_type"]
+          p_legal_entity_id?: string
+          p_tenant_id: string
+          p_year?: number
+        }
+        Returns: string
       }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }
