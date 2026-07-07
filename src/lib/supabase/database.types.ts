@@ -9,6 +9,54 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      archival_records: {
+        Row: {
+          archive_uri: string | null
+          archived_at: string
+          checksum: string | null
+          created_at: string
+          id: string
+          legal_document_id: string
+          retention_until: string | null
+          tenant_id: string
+        }
+        Insert: {
+          archive_uri?: string | null
+          archived_at?: string
+          checksum?: string | null
+          created_at?: string
+          id?: string
+          legal_document_id: string
+          retention_until?: string | null
+          tenant_id: string
+        }
+        Update: {
+          archive_uri?: string | null
+          archived_at?: string
+          checksum?: string | null
+          created_at?: string
+          id?: string
+          legal_document_id?: string
+          retention_until?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "archival_records_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "archival_records_tenant_id_legal_document_id_fkey"
+            columns: ["tenant_id", "legal_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       audit_events: {
         Row: {
           actor_user_id: string | null
@@ -327,6 +375,252 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "products"
             referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      legal_document_events: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          created_at: string
+          event: string
+          id: number
+          legal_document_id: string
+          note: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event: string
+          id?: never
+          legal_document_id: string
+          note?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event?: string
+          id?: never
+          legal_document_id?: string
+          note?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_document_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_document_events_tenant_id_legal_document_id_fkey"
+            columns: ["tenant_id", "legal_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      legal_document_items: {
+        Row: {
+          created_at: string
+          id: string
+          legal_document_id: string
+          line_subtotal: number | null
+          line_total: number | null
+          line_vat: number | null
+          name_snapshot: Json | null
+          quantity: number | null
+          sku_snapshot: string | null
+          tenant_id: string
+          unit_price: number | null
+          vat_rate: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          legal_document_id: string
+          line_subtotal?: number | null
+          line_total?: number | null
+          line_vat?: number | null
+          name_snapshot?: Json | null
+          quantity?: number | null
+          sku_snapshot?: string | null
+          tenant_id: string
+          unit_price?: number | null
+          vat_rate?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          legal_document_id?: string
+          line_subtotal?: number | null
+          line_total?: number | null
+          line_vat?: number | null
+          name_snapshot?: Json | null
+          quantity?: number | null
+          sku_snapshot?: string | null
+          tenant_id?: string
+          unit_price?: number | null
+          vat_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_document_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_document_items_tenant_id_legal_document_id_fkey"
+            columns: ["tenant_id", "legal_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      legal_documents: {
+        Row: {
+          allocation_number: string | null
+          content_hash: string | null
+          corrects_document_id: string | null
+          created_at: string
+          currency: string | null
+          customer_snapshot: Json | null
+          document_type: Database["public"]["Enums"]["legal_document_type"]
+          id: string
+          issued_at: string | null
+          legal_entity_id: string | null
+          legal_number: string | null
+          order_id: string | null
+          pdf_sha256: string | null
+          pdf_storage_path: string | null
+          status: Database["public"]["Enums"]["legal_document_status"]
+          subtotal: number | null
+          supplier_snapshot: Json | null
+          tenant_id: string
+          total: number | null
+          vat_breakdown: Json | null
+          vat_total: number | null
+        }
+        Insert: {
+          allocation_number?: string | null
+          content_hash?: string | null
+          corrects_document_id?: string | null
+          created_at?: string
+          currency?: string | null
+          customer_snapshot?: Json | null
+          document_type: Database["public"]["Enums"]["legal_document_type"]
+          id?: string
+          issued_at?: string | null
+          legal_entity_id?: string | null
+          legal_number?: string | null
+          order_id?: string | null
+          pdf_sha256?: string | null
+          pdf_storage_path?: string | null
+          status?: Database["public"]["Enums"]["legal_document_status"]
+          subtotal?: number | null
+          supplier_snapshot?: Json | null
+          tenant_id: string
+          total?: number | null
+          vat_breakdown?: Json | null
+          vat_total?: number | null
+        }
+        Update: {
+          allocation_number?: string | null
+          content_hash?: string | null
+          corrects_document_id?: string | null
+          created_at?: string
+          currency?: string | null
+          customer_snapshot?: Json | null
+          document_type?: Database["public"]["Enums"]["legal_document_type"]
+          id?: string
+          issued_at?: string | null
+          legal_entity_id?: string | null
+          legal_number?: string | null
+          order_id?: string | null
+          pdf_sha256?: string | null
+          pdf_storage_path?: string | null
+          status?: Database["public"]["Enums"]["legal_document_status"]
+          subtotal?: number | null
+          supplier_snapshot?: Json | null
+          tenant_id?: string
+          total?: number | null
+          vat_breakdown?: Json | null
+          vat_total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_documents_tenant_id_corrects_document_id_fkey"
+            columns: ["tenant_id", "corrects_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "legal_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_documents_tenant_id_order_id_fkey"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      legal_invoice_sequences: {
+        Row: {
+          created_at: string
+          document_type: Database["public"]["Enums"]["legal_document_type"]
+          id: string
+          legal_entity_id: string | null
+          next_value: number
+          prefix: string | null
+          tenant_id: string
+          updated_at: string
+          year_scope: number | null
+        }
+        Insert: {
+          created_at?: string
+          document_type: Database["public"]["Enums"]["legal_document_type"]
+          id?: string
+          legal_entity_id?: string | null
+          next_value?: number
+          prefix?: string | null
+          tenant_id: string
+          updated_at?: string
+          year_scope?: number | null
+        }
+        Update: {
+          created_at?: string
+          document_type?: Database["public"]["Enums"]["legal_document_type"]
+          id?: string
+          legal_entity_id?: string | null
+          next_value?: number
+          prefix?: string | null
+          tenant_id?: string
+          updated_at?: string
+          year_scope?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_invoice_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -699,6 +993,156 @@ export type Database = {
           },
         ]
       }
+      signing_records: {
+        Row: {
+          algorithm: string | null
+          cert_ref: string | null
+          created_at: string
+          id: string
+          legal_document_id: string
+          signature: string | null
+          signed_at: string | null
+          signed_hash: string | null
+          tenant_id: string
+        }
+        Insert: {
+          algorithm?: string | null
+          cert_ref?: string | null
+          created_at?: string
+          id?: string
+          legal_document_id: string
+          signature?: string | null
+          signed_at?: string | null
+          signed_hash?: string | null
+          tenant_id: string
+        }
+        Update: {
+          algorithm?: string | null
+          cert_ref?: string | null
+          created_at?: string
+          id?: string
+          legal_document_id?: string
+          signature?: string | null
+          signed_at?: string | null
+          signed_hash?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signing_records_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signing_records_tenant_id_legal_document_id_fkey"
+            columns: ["tenant_id", "legal_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      tax_authority_requests: {
+        Row: {
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          kind: string | null
+          legal_document_id: string | null
+          provider_mode: string | null
+          request_payload: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          kind?: string | null
+          legal_document_id?: string | null
+          provider_mode?: string | null
+          request_payload?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          kind?: string | null
+          legal_document_id?: string | null
+          provider_mode?: string | null
+          request_payload?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_authority_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_authority_requests_tenant_id_legal_document_id_fkey"
+            columns: ["tenant_id", "legal_document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
+      tax_authority_responses: {
+        Row: {
+          allocation_number: string | null
+          http_status: number | null
+          id: string
+          outcome: string | null
+          provider_ref: string | null
+          received_at: string
+          request_id: string | null
+          response_payload: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          allocation_number?: string | null
+          http_status?: number | null
+          id?: string
+          outcome?: string | null
+          provider_ref?: string | null
+          received_at?: string
+          request_id?: string | null
+          response_payload?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          allocation_number?: string | null
+          http_status?: number | null
+          id?: string
+          outcome?: string | null
+          provider_ref?: string | null
+          received_at?: string
+          request_id?: string | null
+          response_payload?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_authority_responses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_authority_responses_tenant_id_request_id_fkey"
+            columns: ["tenant_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "tax_authority_requests"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       tenant_invitations: {
         Row: {
           accepted_at: string | null
@@ -750,6 +1194,83 @@ export type Database = {
             foreignKeyName: "tenant_invitations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_tax_settings: {
+        Row: {
+          business_registration_number: string | null
+          city: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          country: string | null
+          country_code: string
+          created_at: string
+          default_vat_rate: number | null
+          id: string
+          invoice_language: string | null
+          legal_invoicing_ready: boolean
+          legal_name: string | null
+          postal_code: string | null
+          readiness_notes: string | null
+          street: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          vat_registration_number: string | null
+          vat_registration_type: string | null
+        }
+        Insert: {
+          business_registration_number?: string | null
+          city?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          country?: string | null
+          country_code?: string
+          created_at?: string
+          default_vat_rate?: number | null
+          id?: string
+          invoice_language?: string | null
+          legal_invoicing_ready?: boolean
+          legal_name?: string | null
+          postal_code?: string | null
+          readiness_notes?: string | null
+          street?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          vat_registration_number?: string | null
+          vat_registration_type?: string | null
+        }
+        Update: {
+          business_registration_number?: string | null
+          city?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          country?: string | null
+          country_code?: string
+          created_at?: string
+          default_vat_rate?: number | null
+          id?: string
+          invoice_language?: string | null
+          legal_invoicing_ready?: boolean
+          legal_name?: string | null
+          postal_code?: string | null
+          readiness_notes?: string | null
+          street?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          vat_registration_number?: string | null
+          vat_registration_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_tax_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -1030,6 +1551,37 @@ export type Database = {
         }
         Returns: undefined
       }
+      get_tenant_tax_settings: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          business_registration_number: string | null
+          city: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          country: string | null
+          country_code: string
+          created_at: string
+          default_vat_rate: number | null
+          id: string
+          invoice_language: string | null
+          legal_invoicing_ready: boolean
+          legal_name: string | null
+          postal_code: string | null
+          readiness_notes: string | null
+          street: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          vat_registration_number: string | null
+          vat_registration_type: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tenant_tax_settings"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_token_catalog: { Args: { p_token: string }; Returns: Json }
       has_tenant_role: {
         Args: {
@@ -1161,6 +1713,54 @@ export type Database = {
         Args: { p_inventory: Json; p_product_id: string; p_tenant_id: string }
         Returns: string
       }
+      upsert_tenant_tax_settings: {
+        Args: {
+          p_business_registration_number?: string
+          p_city?: string
+          p_contact_email?: string
+          p_contact_phone?: string
+          p_country?: string
+          p_country_code?: string
+          p_default_vat_rate?: number
+          p_invoice_language?: string
+          p_legal_invoicing_ready?: boolean
+          p_legal_name?: string
+          p_postal_code?: string
+          p_readiness_notes?: string
+          p_street?: string
+          p_tenant_id: string
+          p_vat_registration_number?: string
+          p_vat_registration_type?: string
+        }
+        Returns: {
+          business_registration_number: string | null
+          city: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          country: string | null
+          country_code: string
+          created_at: string
+          default_vat_rate: number | null
+          id: string
+          invoice_language: string | null
+          legal_invoicing_ready: boolean
+          legal_name: string | null
+          postal_code: string | null
+          readiness_notes: string | null
+          street: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          vat_registration_number: string | null
+          vat_registration_type: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tenant_tax_settings"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       validate_product_payload: {
         Args: { p_product: Json; p_tenant_id: string }
         Returns: {
@@ -1200,6 +1800,22 @@ export type Database = {
       customer_type: "grocery" | "kiosk" | "supermarket" | "minimarket"
       document_status: "draft" | "generated" | "voided"
       document_type: "order_request" | "delivery_note" | "invoice_draft"
+      legal_document_status:
+        | "draft_internal"
+        | "ready_for_issue"
+        | "issuing_locked"
+        | "provider_pending"
+        | "provider_approved"
+        | "issued"
+        | "issue_failed"
+        | "cancel_requested"
+        | "cancelled"
+        | "archived"
+      legal_document_type:
+        | "tax_invoice"
+        | "tax_invoice_receipt"
+        | "credit_note"
+        | "cancellation_notice"
       locale_code: "ar" | "he" | "en"
       order_source: "sales_visit" | "remote_customer" | "admin"
       order_status:
@@ -1351,6 +1967,24 @@ export const Constants = {
       customer_type: ["grocery", "kiosk", "supermarket", "minimarket"],
       document_status: ["draft", "generated", "voided"],
       document_type: ["order_request", "delivery_note", "invoice_draft"],
+      legal_document_status: [
+        "draft_internal",
+        "ready_for_issue",
+        "issuing_locked",
+        "provider_pending",
+        "provider_approved",
+        "issued",
+        "issue_failed",
+        "cancel_requested",
+        "cancelled",
+        "archived",
+      ],
+      legal_document_type: [
+        "tax_invoice",
+        "tax_invoice_receipt",
+        "credit_note",
+        "cancellation_notice",
+      ],
       locale_code: ["ar", "he", "en"],
       order_source: ["sales_visit", "remote_customer", "admin"],
       order_status: ["new", "confirmed", "preparing", "delivered", "cancelled"],

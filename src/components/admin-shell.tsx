@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Menu,
   Package,
+  Receipt,
   ShoppingBag,
   Store,
   Users,
@@ -57,6 +58,10 @@ export function AdminShell({
   const base = `/${locale}/admin`;
   // Team management is owner/admin only (Supabase mode); hidden otherwise.
   const canManageTeam = session?.role === "owner" || session?.role === "admin";
+  // Tax settings (M6B, inert): owner/admin in Supabase mode; shown in the open
+  // mock demo too (no session). Hidden for sales_rep. Nothing is issued there.
+  const canManageSettings =
+    !session || session.role === "owner" || session.role === "admin";
   const nav = [
     { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
     { href: `${base}/products`, label: dict.nav.products, icon: Package },
@@ -67,6 +72,9 @@ export function AdminShell({
     { href: `${base}/documents`, label: dict.nav.documents, icon: FileText },
     ...(canManageTeam
       ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }]
+      : []),
+    ...(canManageSettings
+      ? [{ href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt }]
       : []),
   ];
 

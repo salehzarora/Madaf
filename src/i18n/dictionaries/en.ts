@@ -73,6 +73,7 @@ const en: Dictionary = {
     documents: "Documents",
     manufacturers: "Manufacturers",
     team: "Team",
+    settings: "Tax settings",
     exitAdmin: "Exit admin",
   },
   landing: {
@@ -386,6 +387,50 @@ const en: Dictionary = {
       open: "Open",
       legalBanner:
         "Documents here are previews. Tax invoices remain drafts until tax settings and an invoicing provider are configured.",
+    },
+    settings: {
+      title: "Tax settings",
+      subtitle:
+        "Prepare the tax details a future legal invoice would use. This is preparation only.",
+      notActiveWarning:
+        "Legal invoicing is not active yet. Saving these settings does not issue tax invoices.",
+      flagsTitle: "Legal invoicing status",
+      flagsSubtitle:
+        "Server-side switches. All are off by default; issuing is not implemented.",
+      flagInvoicing: "Legal invoicing",
+      flagProvider: "Tax provider",
+      flagNumbering: "Legal numbering",
+      statusOff: "Off",
+      statusDisabled: "Disabled",
+      sectionIdentity: "Legal identity",
+      sectionAddress: "Registered address",
+      sectionContact: "Invoicing contact",
+      sectionReadiness: "Readiness",
+      legalName: "Legal name",
+      businessRegistrationNumber: "Business registration no. (ח.פ)",
+      vatRegistrationNumber: "VAT registration no. (עוסק)",
+      vatRegistrationType: "VAT registration type",
+      countryCode: "Country code",
+      defaultVatRate: "Default VAT rate (%)",
+      invoiceLanguage: "Invoice language",
+      invoiceLanguageAuto: "Default (tenant document language)",
+      street: "Street",
+      city: "City",
+      postalCode: "Postal code",
+      country: "Country",
+      contactEmail: "Contact email",
+      contactPhone: "Contact phone",
+      legalInvoicingReady: "Mark tax details as ready",
+      legalInvoicingReadyHint:
+        "A note for your records only. It does not enable issuing — legal invoicing stays off.",
+      readinessNotes: "Readiness notes",
+      liveNotice: "Supabase mode — settings are saved to the local database.",
+      mockNotice:
+        "Demo mode — nothing is stored. Run Supabase mode to save these settings.",
+      save: "Save settings",
+      saving: "Saving…",
+      savedToast: "Settings saved. No tax invoice was issued.",
+      saveError: "Saving failed — please try again.",
     },
   },
   docs: {

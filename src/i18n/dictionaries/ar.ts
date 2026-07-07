@@ -73,6 +73,7 @@ const ar: Dictionary = {
     documents: "المستندات",
     manufacturers: "الشركات",
     team: "الفريق",
+    settings: "إعدادات الضريبة",
     exitAdmin: "الخروج من الإدارة",
   },
   landing: {
@@ -386,6 +387,50 @@ const ar: Dictionary = {
       open: "فتح",
       legalBanner:
         "المستندات هنا للمعاينة فقط. تبقى الفواتير الضريبية مسودات حتى يتم ضبط إعدادات الضريبة وربط مزوّد فوترة.",
+    },
+    settings: {
+      title: "إعدادات الضريبة",
+      subtitle:
+        "تحضير بيانات الضريبة التي ستستخدمها فاتورة ضريبية مستقبلية. هذا تحضير فقط.",
+      notActiveWarning:
+        "إصدار الفواتير الضريبية غير مفعّل بعد. حفظ الإعدادات لا يُصدر فاتورة ضريبية.",
+      flagsTitle: "حالة إصدار الفواتير الضريبية",
+      flagsSubtitle:
+        "مفاتيح على الخادم. كلها متوقفة افتراضيًا؛ الإصدار غير منفَّذ.",
+      flagInvoicing: "إصدار الفواتير الضريبية",
+      flagProvider: "مزوّد الضريبة",
+      flagNumbering: "الترقيم القانوني",
+      statusOff: "متوقف",
+      statusDisabled: "معطّل",
+      sectionIdentity: "الهوية القانونية",
+      sectionAddress: "العنوان المسجّل",
+      sectionContact: "جهة اتصال الفوترة",
+      sectionReadiness: "الجاهزية",
+      legalName: "الاسم القانوني",
+      businessRegistrationNumber: "رقم تسجيل النشاط (ח.פ)",
+      vatRegistrationNumber: "رقم تسجيل ضريبة القيمة المضافة (עוסק)",
+      vatRegistrationType: "نوع تسجيل ضريبة القيمة المضافة",
+      countryCode: "رمز الدولة",
+      defaultVatRate: "نسبة ضريبة القيمة المضافة الافتراضية (%)",
+      invoiceLanguage: "لغة الفاتورة",
+      invoiceLanguageAuto: "الافتراضي (لغة مستندات المورّد)",
+      street: "الشارع",
+      city: "المدينة",
+      postalCode: "الرمز البريدي",
+      country: "الدولة",
+      contactEmail: "البريد الإلكتروني للتواصل",
+      contactPhone: "هاتف التواصل",
+      legalInvoicingReady: "تحديد بيانات الضريبة كجاهزة",
+      legalInvoicingReadyHint:
+        "ملاحظة لسجلّك فقط. لا تُفعّل الإصدار — يبقى إصدار الفواتير الضريبية متوقفًا.",
+      readinessNotes: "ملاحظات الجاهزية",
+      liveNotice: "وضع Supabase — تُحفَظ الإعدادات في قاعدة البيانات المحلية.",
+      mockNotice:
+        "وضع العرض — لا شيء يُحفَظ. شغّل وضع Supabase لحفظ هذه الإعدادات.",
+      save: "حفظ الإعدادات",
+      saving: "جارٍ الحفظ…",
+      savedToast: "تم حفظ الإعدادات. لم تُصدَر أي فاتورة ضريبية.",
+      saveError: "فشل الحفظ — يرجى المحاولة مرة أخرى.",
     },
   },
   docs: {

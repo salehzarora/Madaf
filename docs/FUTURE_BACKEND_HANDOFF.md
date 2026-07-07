@@ -4,9 +4,20 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
-> **STATUS — M6A shipped: legal-invoicing ARCHITECTURE (design spike, DOCS
-> ONLY).** M6A added **zero** code / schema / routes / provider deps / numbering
-> / payments — it is a *plan*. Madaf still issues **DRAFTS ONLY**; there is no
+> **STATUS — M6B shipped: INERT legal-invoicing foundation.** On top of the M6A
+> architecture spike, M6B added — all INERT — per-tenant **tax settings**
+> (`tenant_tax_settings` + owner/admin `get`/`upsert` RPCs; `/admin/settings/tax`
+> page), a **server-only feature-flag reader** (`src/lib/config/legal-invoicing.ts`;
+> the three flags default OFF/`disabled`, fail-closed, never `NEXT_PUBLIC`), and
+> an **inert legal schema** (8 tables + 2 enums + an issued-immutability guard,
+> RLS + grants locked, **no issuing/numbering RPC, no provider call, no route, no
+> bucket**). M6B issues **NOTHING**: no legal tax invoice, no allocation number,
+> no provider/tax-authority call, no legal number, no payments; `legal_invoicing_ready`
+> and the flags do NOT enable issuing. The `invoice_draft` keeps its DRAFT
+> watermark + "not a tax invoice" notice. **Re-verify official Israel Tax
+> Authority rules + get a professional review before M6C/M6D/M6E.** Prior status:
+> **M6A** added **zero** code / schema / routes / provider deps / numbering /
+> payments — a *plan*. Madaf still issues **DRAFTS ONLY**; there is no
 > legal tax invoice, no tax-authority/provider integration, and no legal
 > numbering. The `invoice_draft` stays a draft (a future legal `tax_invoice`
 > will be a separate, feature-flagged family; the draft is never renamed and
