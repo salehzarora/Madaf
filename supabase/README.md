@@ -95,6 +95,15 @@ documents stay renderable after catalog or customer changes.
 > weaken any of these without reading
 > `docs/DOCUMENTS_AND_INVOICES_GUIDE.md`.
 
+> ⚠️ **M6D (no schema change):** the legal-invoice provider adapter
+> (`src/lib/legal-invoicing/provider/`, NullProvider + SandboxProvider mock)
+> lives entirely in the app layer — no migration. The M6B
+> `tax_authority_requests` / `tax_authority_responses` tables stay
+> **service-role-only**; M6D BUILDS redacted, sandbox-marked log records but does
+> **not persist** them (no grants widened). A future trusted-server writer (M6E)
+> persists redacted records. Still no real tax-authority integration, no
+> allocation number, no production mode, no payments.
+
 ### RLS model (deny by default, hardened in M1.1; auth path live in M4A)
 
 - `anon` has **no table grants and no read policies** — zero direct

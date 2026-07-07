@@ -1,6 +1,32 @@
-# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox)
 
 > # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6D status (implemented, SANDBOX/MOCK only):** M6D added a **server-only
+> provider abstraction** (`src/lib/legal-invoicing/provider/`) with only a
+> **`NullProvider`** (disabled — every call returns `unavailable`) and a
+> **`SandboxProvider`** (a **deterministic MOCK** derived from a SHA-256 of the
+> idempotency key — no network, no dependency, no clock/randomness). The
+> selector `getLegalInvoiceProvider()` reads `MADAF_TAX_PROVIDER_MODE`
+> (`disabled` → Null, `sandbox` → Sandbox); **`production` is clamped to
+> `disabled` upstream** and never reaches a real integration. There is **NO**
+> real tax-authority (רשות המסים) / SHAAM integration, **NO** real allocation
+> number (מספר הקצאה), **NO** provider credentials/URL/API key, and **NO**
+> production mode. Every result carries `legal: false` and a loud non-legal
+> `notice`; sandbox mocks are obvious placeholders (`SANDBOX-DO-NOT-USE-…`).
+> M6D issues **NOTHING**: no invoice, no legal_number on `legal_documents`, no
+> `issued`/`provider_approved` status change, no allocation number written
+> anywhere, no PDF, no payment. The whole adapter is **DORMANT** — no route,
+> action, or UI imports it. **Idempotency + error model** (per call, no live
+> retry/queue): `idempotencyKey`, `providerRequestId`, `providerResponseId`,
+> `status` (`unavailable`/`approved`/`rejected`/`pending`/`error`), `errorCode`,
+> `retryable`, and a redacted, sandbox-marked log pair (`buildProviderLog` /
+> `redactPayload`) shaped to the M6B `tax_authority_requests` /
+> `tax_authority_responses` columns. **Log persistence is DEFERRED** — those
+> tables are service-role-only and no issuing flow writes them; a future
+> trusted-server writer (M6E) persists redacted records. Real (sandbox-first,
+> then flag-gated production) integration is **M6E**, after a professional
+> tax/accounting/legal review + official-source re-verification.
 >
 > **M6C status (implemented, DISABLED by default):** M6C added ONE low-level
 > primitive — `draw_legal_document_number(...)`, a SECURITY DEFINER RPC that
