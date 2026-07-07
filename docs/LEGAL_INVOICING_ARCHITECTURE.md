@@ -1,6 +1,46 @@
-# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox · M6E sandbox orchestration)
 
 > # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6E status (implemented, SANDBOX-ONLY, disabled by default):** M6E wires M6B
+> (tax settings) + M6C (numbering) + M6D (sandbox provider) into a server-only
+> *simulation* (`src/lib/legal-invoicing/orchestration/`, **DORMANT** — no route/
+> action/UI imports it). `simulateSandboxLegalDocumentIssue()` runs ONLY when
+> EVERY gate is explicitly enabled: the three server-only env flags
+> (`MADAF_LEGAL_INVOICING_ENABLED`, `MADAF_TAX_PROVIDER_MODE=sandbox`,
+> `MADAF_LEGAL_NUMBERING_ENABLED`) + the service-role-only DB kill switch
+> (`legal_numbering_settings.enabled`, default off) + owner/admin + tenant
+> `legal_invoicing_ready`. `sandboxOrchestrationReadiness()` explains exactly why
+> it is unavailable. Even when all pass it writes ONLY clearly-marked
+> **SANDBOX / NON-LEGAL** rows via the SECURITY DEFINER `sandbox_issue_legal_document`
+> RPC: a `draft_internal` `legal_documents` row with `sandbox=true`,
+> `legal_effective=false`, `provider_mode='sandbox'` (and `legal_number` /
+> `allocation_number` forced NULL by the M6B checks + draft status), plus a
+> redacted request/response log pair. **Structural safety (defense in depth):** a
+> HARD CHECK `legal_effective = false` on `legal_documents` and
+> `tax_authority_responses` makes a legally-effective row IMPOSSIBLE in M6E;
+> `provider_mode` is limited to sandbox/null (production rejected, `MDF72`); the
+> RPC is owner/admin-only and fail-closed (`MDF70`) behind the DB kill switch;
+> direct client writes stay blocked. **M6E issues NOTHING real:** no tax invoice,
+> no real allocation number (מספר הקצאה), no tax-authority/provider call
+> (SandboxProvider mock only, hardened so `verifyAllocationNumber` accepts only
+> SANDBOX-shaped values), no `issued`/`provider_approved` status, no payment, no
+> PDF, no tokenized-customer access. Redacted sandbox logs are now **persisted**
+> (RPC-only, service-role tables; no grants widened). `legal_effective` must stay
+> false until a future reviewed phase (M6F/M6G) — **relax only after
+> official-source verification + a professional tax/accounting/legal review.**
+>
+> **M6E.1 (RPC boundary hardening).** Because `sandbox_issue_legal_document` is
+> EXECUTE-granted to authenticated, EVERY write gate is now enforced **inside the
+> SQL function** (a direct owner/admin Data-API call cannot bypass the app): it
+> REQUIRES `tenant_tax_settings.legal_invoicing_ready = true` (`MDF73`); it CALLS
+> the M6C `draw_legal_document_number` **itself** (so the DB kill switch off fails
+> the whole call and a **duplicate idempotency key fails BEFORE any draw** — no
+> increment); and it persists **NO caller-supplied JSON** — the request/response
+> payloads are SQL-generated, minimal, and sandbox-marked, and the idempotency key
+> is **hashed** (never stored raw). The old JSON-accepting overload was **dropped**.
+> The app `sandboxOrchestrationReadiness()` is now **UX only, not the security
+> boundary**, and the app helper no longer draws a number (no double increment).
 >
 > **M6D status (implemented, SANDBOX/MOCK only):** M6D added a **server-only
 > provider abstraction** (`src/lib/legal-invoicing/provider/`) with only a

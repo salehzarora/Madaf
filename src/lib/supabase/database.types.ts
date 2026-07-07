@@ -497,11 +497,15 @@ export type Database = {
           document_type: Database["public"]["Enums"]["legal_document_type"]
           id: string
           issued_at: string | null
+          legal_effective: boolean
           legal_entity_id: string | null
           legal_number: string | null
+          non_legal_notice: string | null
           order_id: string | null
           pdf_sha256: string | null
           pdf_storage_path: string | null
+          provider_mode: string | null
+          sandbox: boolean
           status: Database["public"]["Enums"]["legal_document_status"]
           subtotal: number | null
           supplier_snapshot: Json | null
@@ -520,11 +524,15 @@ export type Database = {
           document_type: Database["public"]["Enums"]["legal_document_type"]
           id?: string
           issued_at?: string | null
+          legal_effective?: boolean
           legal_entity_id?: string | null
           legal_number?: string | null
+          non_legal_notice?: string | null
           order_id?: string | null
           pdf_sha256?: string | null
           pdf_storage_path?: string | null
+          provider_mode?: string | null
+          sandbox?: boolean
           status?: Database["public"]["Enums"]["legal_document_status"]
           subtotal?: number | null
           supplier_snapshot?: Json | null
@@ -543,11 +551,15 @@ export type Database = {
           document_type?: Database["public"]["Enums"]["legal_document_type"]
           id?: string
           issued_at?: string | null
+          legal_effective?: boolean
           legal_entity_id?: string | null
           legal_number?: string | null
+          non_legal_notice?: string | null
           order_id?: string | null
           pdf_sha256?: string | null
           pdf_storage_path?: string | null
+          provider_mode?: string | null
+          sandbox?: boolean
           status?: Database["public"]["Enums"]["legal_document_status"]
           subtotal?: number | null
           supplier_snapshot?: Json | null
@@ -1074,6 +1086,7 @@ export type Database = {
           legal_document_id: string | null
           provider_mode: string | null
           request_payload: Json | null
+          sandbox: boolean
           tenant_id: string
         }
         Insert: {
@@ -1084,6 +1097,7 @@ export type Database = {
           legal_document_id?: string | null
           provider_mode?: string | null
           request_payload?: Json | null
+          sandbox?: boolean
           tenant_id: string
         }
         Update: {
@@ -1094,6 +1108,7 @@ export type Database = {
           legal_document_id?: string | null
           provider_mode?: string | null
           request_payload?: Json | null
+          sandbox?: boolean
           tenant_id?: string
         }
         Relationships: [
@@ -1118,33 +1133,39 @@ export type Database = {
           allocation_number: string | null
           http_status: number | null
           id: string
+          legal_effective: boolean
           outcome: string | null
           provider_ref: string | null
           received_at: string
           request_id: string | null
           response_payload: Json | null
+          sandbox: boolean
           tenant_id: string
         }
         Insert: {
           allocation_number?: string | null
           http_status?: number | null
           id?: string
+          legal_effective?: boolean
           outcome?: string | null
           provider_ref?: string | null
           received_at?: string
           request_id?: string | null
           response_payload?: Json | null
+          sandbox?: boolean
           tenant_id: string
         }
         Update: {
           allocation_number?: string | null
           http_status?: number | null
           id?: string
+          legal_effective?: boolean
           outcome?: string | null
           provider_ref?: string | null
           received_at?: string
           request_id?: string | null
           response_payload?: Json | null
+          sandbox?: boolean
           tenant_id?: string
         }
         Relationships: [
@@ -1676,6 +1697,16 @@ export type Database = {
       revoke_tenant_invite: {
         Args: { p_invite_id: string; p_tenant_id: string }
         Returns: string
+      }
+      sandbox_issue_legal_document: {
+        Args: {
+          p_document_type: Database["public"]["Enums"]["legal_document_type"]
+          p_idempotency_key: string
+          p_order_id?: string
+          p_provider_mode?: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       set_document_storage: {
         Args: {

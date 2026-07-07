@@ -89,6 +89,21 @@ export class SandboxProvider implements LegalInvoiceProvider {
     number: string;
     idempotencyKey: string;
   }): Promise<VerifyResult> {
+    // Hardened (M6E): only a SANDBOX-shaped value this provider itself could
+    // have produced verifies. Arbitrary / real-looking input is REJECTED. This
+    // never checks a real allocation number and never contacts a tax authority
+    // — it is a deterministic shape check, still non-legal.
+    const isSandboxShaped = /^SANDBOX-(DO-NOT-USE|REF|CANCEL)-[0-9A-F]{12}$/.test(
+      input.number ?? "",
+    );
+    if (!isSandboxShaped) {
+      return {
+        ...base(input.idempotencyKey, "rejected"),
+        ok: false,
+        errorCode: "SANDBOX_UNVERIFIABLE",
+        verified: false,
+      };
+    }
     return { ...base(input.idempotencyKey, "approved"), verified: true };
   }
 

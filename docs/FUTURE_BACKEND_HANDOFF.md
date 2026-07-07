@@ -4,6 +4,33 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M6E shipped: SANDBOX-ONLY legal orchestration (disabled by
+> default).** On top of M6D, M6E added a server-only, DORMANT orchestration
+> (`src/lib/legal-invoicing/orchestration/`) that wires tax settings + numbering
+> + sandbox provider into a *simulation* gated by three env flags + the
+> service-role-only DB kill switch + owner/admin + tenant `legal_invoicing_ready`
+> (`sandboxOrchestrationReadiness()` reports why it is unavailable). Even fully
+> enabled it writes ONLY SANDBOX/NON-LEGAL rows via the `sandbox_issue_legal_document`
+> RPC: a `draft_internal` `legal_documents` row (`sandbox=true`,
+> `legal_effective=false`, `provider_mode=sandbox`; `legal_number`/
+> `allocation_number` stay NULL) + a redacted request/response log pair.
+> A **HARD CHECK `legal_effective = false`** on `legal_documents` +
+> `tax_authority_responses` makes a legally-effective row impossible; production
+> provider mode is rejected (`MDF72`); the RPC is owner/admin-only + fail-closed
+> (`MDF70`); direct client writes stay blocked. `SandboxProvider.verifyAllocationNumber`
+> is hardened to accept only SANDBOX-shaped values. **NOTHING real is issued** (no
+> invoice, real allocation number, tax-authority/provider call, payment, PDF,
+> `issued`/`provider_approved` status, or tokenized-customer access). Redacted
+> sandbox logs are now persisted (RPC-only; no grants widened). **M6F/M6G**
+> (archival/signing, then real issuing) require official-source verification + a
+> professional tax/accounting/legal review before `legal_effective` may ever be
+> true. **M6E.1** hardened the RPC boundary (EXECUTE-granted to authenticated →
+> all write gates enforced in SQL): requires `tenant_tax_settings.legal_invoicing_ready=true`
+> (`MDF73`), calls the M6C numbering draw INSIDE the RPC (duplicate idempotency
+> fails before draw → no increment; DB kill switch off fails the call), and
+> persists NO caller JSON (SQL-generated minimal sandbox payloads; idempotency
+> key hashed). The old JSON-accepting overload was dropped; app readiness is UX
+> only. Prior:
 > **STATUS — M6D shipped: SANDBOX/MOCK provider adapter.** On top of M6C, M6D
 > added a **server-only** legal-invoice provider abstraction
 > (`src/lib/legal-invoicing/provider/`) with a **NullProvider** (disabled →

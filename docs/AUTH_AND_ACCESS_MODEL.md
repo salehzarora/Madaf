@@ -1,4 +1,29 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E)
+
+> **M6E (sandbox legal orchestration) access posture.** The
+> `sandbox_issue_legal_document` RPC is SECURITY DEFINER, `search_path=''`,
+> **owner/admin-only** (`authorize_tenant`; sales_rep/anon/non-member/cross-tenant
+> → 42501/denied), and **fail-closed** behind the M6C service-role-only DB kill
+> switch (`MDF70`) + sandbox-only provider mode (`MDF72`). It is the ONLY write
+> path for the new sandbox markers — `legal_documents` / `tax_authority_requests`
+> / `tax_authority_responses` remain **RPC/service-role-only for writes** (direct
+> authenticated INSERT/UPDATE denied); `legal_documents` reads stay owner/admin
+> only. HARD CHECK constraints keep `legal_effective = false` and limit
+> `provider_mode` to sandbox/null, so no client (or the service role) can store a
+> legally-effective or production row in M6E. No grants were widened; no tokenized
+> customer path touches any of this. Never trust a client `tenant_id`/status/
+> number.
+>
+> **M6E.1 hardening (the RPC is the security boundary).** Since the RPC is
+> EXECUTE-granted to authenticated, a direct owner/admin Data-API call must not be
+> able to bypass the app helper — so the RPC itself now enforces **tenant tax
+> readiness** (`tenant_tax_settings.legal_invoicing_ready=true`, else `MDF73`),
+> **calls the M6C numbering draw internally** (DB kill switch off fails the whole
+> call; a **duplicate idempotency key fails BEFORE any draw**, so it never
+> increments), and persists **NO caller-supplied JSON** (payloads are
+> SQL-generated + sandbox-marked; the idempotency key is hashed, never stored
+> raw). The old JSON-accepting overload was dropped. The app
+> `sandboxOrchestrationReadiness()` is UX only, not the security boundary.
 
 > **M6B (inert legal-invoicing foundation) access posture.** `tenant_tax_settings`
 > is deny-by-default RLS: **owner/admin** of the SELECTED tenant read (and write
