@@ -11,7 +11,9 @@ WhatsApp photo albums.
 > service-role-only DB kill switch + the `MADAF_LEGAL_NUMBERING_ENABLED` env flag
 > gating a dormant, unwired helper). **Issues nothing** — no tax invoice, no
 > allocation number (מספר הקצאה), no provider, no payment, no legal PDF, no
-> `legal_number` on documents — and no UI/route draws numbers. Needs a
+> `legal_number` on documents — and no UI/route draws numbers. (M6C.1 hardened
+> input validation: year must be `2000..2100`, and legal-entity scoping is
+> rejected until modeled — invalid calls draw nothing and write no row.) Needs a
 > professional tax/accounting/legal review before real issuing (M6D-M6G). Built on:
 >
 > **Phase M6B — inert legal-invoicing foundation.** Per-tenant **tax settings**

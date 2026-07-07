@@ -22,6 +22,27 @@
 > review (M6G) are still ahead. **Re-verify official Israel Tax Authority rules
 > + get a professional tax/accounting/legal review before M6D/M6E.**
 >
+> **M6C.1 (input validation hardening):** `draw_legal_document_number` now
+> validates its inputs — `p_year` defaults to the current UTC calendar year and
+> must be in the static range **2000..2100** (else `MDF61`), and a non-null
+> `p_legal_entity_id` is **rejected** (`MDF62`) until a tenant-owned
+> `legal_entities` table exists, so no arbitrary UUID is ever written into
+> `legal_invoice_sequences`. Check order is role/tenant → entity → year → kill
+> switch → draw, and every error is raised **before** the counter UPDATE, so a
+> disabled / unauthorized / invalid call **never increments** (and creates no
+> sequence row).
+>
+> **Numbering rollback / gap policy (skeleton).** Within a committed
+> transaction, successful draws are **atomic and never reused** (row-locked
+> increment). Disabled / unauthorized / invalid calls **do not increment**. But
+> if a caller's transaction **rolls back**, the increment rolls back with it, so
+> that uncommitted attempted number can be drawn again later — i.e. gaps/reuse
+> across *rolled-back* attempts are possible. This is **acceptable for the
+> disabled internal-preview skeleton** (numbers are non-legal previews and
+> nothing is issued). **Real legal issuance (M6E+) must define a committed-number
+> / gap policy** (gapless-where-required, void/reconcile rules) with a
+> professional tax/accounting/legal review before any production use.
+>
 > **M6B status (implemented, INERT):** M6B landed the *first foundation* only —
 > per-tenant **tax settings** (`tenant_tax_settings` + owner/admin `get`/`upsert`
 > RPCs), a server-only **feature-flag reader** (`src/lib/config/legal-invoicing.ts`;

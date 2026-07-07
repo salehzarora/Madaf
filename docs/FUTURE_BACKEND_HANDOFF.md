@@ -14,9 +14,18 @@ everything here was built to be wired, not rebuilt.
 > **dormant** helper (`src/lib/data/legal-numbering.ts`) that is wired to nothing.
 > M6C issues **NOTHING** (no invoice, allocation number, provider call, payment,
 > PDF, `legal_number` on `legal_documents`, or `issued` status) and no UI/route
-> draws numbers. **M6D** = provider sandbox/mock adapter; **M6E** = flag-gated
-> issuing; both need a professional tax/accounting/legal review + official-source
-> re-verification first. Prior:
+> draws numbers. **M6C.1** hardened input validation: `p_year` defaults to the
+> current UTC year and must be `2000..2100` (`MDF61`); a non-null
+> `p_legal_entity_id` is rejected (`MDF62`, no `legal_entities` table yet) — so
+> invalid calls raise before any increment and write no sequence row.
+> **Numbering rollback/gap policy (skeleton):** committed draws are atomic and
+> not reused; disabled/unauthorized/invalid calls do not increment; a
+> rolled-back transaction rolls back its increment, so an uncommitted attempted
+> number may be drawn again later — acceptable for the disabled preview
+> skeleton; **real issuance (M6E+) must define a committed-number/gap policy with
+> professional review.** **M6D** = provider sandbox/mock adapter; **M6E** =
+> flag-gated issuing; both need a professional tax/accounting/legal review +
+> official-source re-verification first. Prior:
 > **STATUS — M6B shipped: INERT legal-invoicing foundation.** On top of the M6A
 > architecture spike, M6B added — all INERT — per-tenant **tax settings**
 > (`tenant_tax_settings` + owner/admin `get`/`upsert` RPCs; `/admin/settings/tax`
