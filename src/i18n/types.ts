@@ -77,6 +77,7 @@ export interface Dictionary {
     documents: string;
     manufacturers: string;
     team: string;
+    settings: string;
     exitAdmin: string;
   };
   landing: {
@@ -365,6 +366,47 @@ export interface Dictionary {
       colDate: string;
       open: string;
       legalBanner: string;
+    };
+    /** M6B: tenant tax settings (INERT — no legal invoice issuing exists). */
+    settings: {
+      title: string;
+      subtitle: string;
+      /** PERMANENT warning — nothing is issued. Never remove. */
+      notActiveWarning: string;
+      flagsTitle: string;
+      flagsSubtitle: string;
+      flagInvoicing: string;
+      flagProvider: string;
+      flagNumbering: string;
+      statusOff: string;
+      statusDisabled: string;
+      sectionIdentity: string;
+      sectionAddress: string;
+      sectionContact: string;
+      sectionReadiness: string;
+      legalName: string;
+      businessRegistrationNumber: string;
+      vatRegistrationNumber: string;
+      vatRegistrationType: string;
+      countryCode: string;
+      defaultVatRate: string;
+      invoiceLanguage: string;
+      invoiceLanguageAuto: string;
+      street: string;
+      city: string;
+      postalCode: string;
+      country: string;
+      contactEmail: string;
+      contactPhone: string;
+      legalInvoicingReady: string;
+      legalInvoicingReadyHint: string;
+      readinessNotes: string;
+      liveNotice: string;
+      mockNotice: string;
+      save: string;
+      saving: string;
+      savedToast: string;
+      saveError: string;
     };
   };
   docs: {

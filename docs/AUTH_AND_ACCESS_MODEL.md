@@ -1,4 +1,20 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B)
+
+> **M6B (inert legal-invoicing foundation) access posture.** `tenant_tax_settings`
+> is deny-by-default RLS: **owner/admin** of the SELECTED tenant read (and write
+> via the SECURITY DEFINER `get_tenant_tax_settings` / `upsert_tenant_tax_settings`
+> RPCs, gated by `authorize_tenant(owner/admin)`); **sales_rep, anon and
+> non-members get nothing**; writes are RPC-only (no direct-write grant/policy);
+> cross-tenant access is blocked; no secrets are stored. The **inert legal
+> schema** (`legal_documents`/`legal_document_items`/`legal_invoice_sequences`/
+> `legal_document_events`/`tax_authority_requests`/`tax_authority_responses`/
+> `archival_records`/`signing_records`) is RLS-enabled + grant-locked with **no
+> INSERT/UPDATE/DELETE grant or policy for any client** and **no issuing RPC** —
+> the four sensitive tables (sequences, provider requests/responses, signing) are
+> **service-role-only** (no authenticated grant at all), the other four are
+> **owner/admin read-only**. An `issued` legal document is immutable (guard
+> trigger). Nothing here is reachable by any issuing flow (none exists). Never
+> trust a client tenant_id/number/amount; never loosen these grants.
 
 How Madaf decides **who** may see or change **what**, once real
 authentication is switched on. Read `MVP_SCOPE.md` and

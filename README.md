@@ -5,6 +5,17 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6B — inert legal-invoicing foundation.** Per-tenant **tax settings**
+> (owner/admin, at `/admin/settings/tax`), a server-only **feature-flag reader**
+> (three flags, all default OFF/`disabled`, fail-closed, never `NEXT_PUBLIC`),
+> and an **inert legal schema** (8 RLS-locked tables + enums, **no issuing/
+> numbering RPC, no provider call, no route, no bucket**). **Nothing is issued:**
+> no legal tax invoice, no allocation number (מספר הקצאה), no tax-authority/
+> provider call, no legal number, no payments — and no draft "not a tax invoice"
+> warning is removed. Saving tax settings issues nothing (the page says so in
+> he/ar/en). Needs a professional tax/accounting/legal review + official-source
+> verification before any real issuing (M6C-M6G). Built on:
+>
 > **Phase M5B — stored PDFs & signed URLs** (hardened in **M5B.1**).
 > Generated document PDFs are now stored in a **private** Supabase Storage
 > bucket and served via short-lived, access-checked **signed URLs** (no public

@@ -12,6 +12,15 @@ Approved wording (already in all three dictionaries under `docs.*`):
 - "Not a legal tax invoice until tax settings/provider integration are
   configured."
 
+> **M6B (inert foundation) changes NONE of the above.** M6B added per-tenant
+> **tax settings** (`/admin/settings/tax`, owner/admin) and an **inert** legal
+> schema + default-OFF feature flags — but **no legal tax invoice is issued, no
+> allocation number is requested, and no provider is called**. Saving tax
+> settings issues nothing (the page says so in all three languages), and the
+> `invoice_draft` keeps its DRAFT watermark + "not a tax invoice" notice
+> unchanged. Do not remove any draft warning until real issuing ships (M6E+)
+> and is reviewed + per-tenant enabled (M6G).
+
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that
 implies legal issuance.

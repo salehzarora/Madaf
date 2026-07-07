@@ -1,9 +1,28 @@
-# Legal Invoicing Architecture (M6A — design spike)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation)
 
-> # ⚠️ DESIGN ONLY — NOTHING HERE IS IMPLEMENTED
+> # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6B status (implemented, INERT):** M6B landed the *first foundation* only —
+> per-tenant **tax settings** (`tenant_tax_settings` + owner/admin `get`/`upsert`
+> RPCs), a server-only **feature-flag reader** (`src/lib/config/legal-invoicing.ts`;
+> all default OFF/`disabled`, fail-closed, never `NEXT_PUBLIC`), an **inert legal
+> schema** (`legal_documents`/`legal_document_items`/`legal_invoice_sequences`/
+> `legal_document_events`/`tax_authority_requests`/`tax_authority_responses`/
+> `archival_records`/`signing_records` — RLS + grants locked, **no issuing RPC,
+> no numbering RPC, no provider call, no route, no bucket**), and a minimal
+> owner/admin **tax-settings page** (`/admin/settings/tax`) that says, in all
+> three languages, that nothing is issued. **What M6B does NOT do:** issue a tax
+> invoice, request/verify an allocation number (מספר הקצאה), call any tax
+> authority/provider, assign any legal number, add payments, or remove any draft
+> "not a tax invoice" warning. `tenant_tax_settings.legal_invoicing_ready` and the
+> feature flags do **not** enable issuing — there is no issuing code. The M5
+> `invoice_draft` stays a DRAFT with its watermark + notice intact. Real issuing
+> is M6C–M6G, gated + reviewed. **Re-verify official Israel Tax Authority rules
+> and get a professional tax/accounting/legal review before M6C/M6D/M6E.**
 >
 > - **M6A is an architecture spike.** No code, schema, routes, numbering,
->   provider calls, or payments were added. This document is a *plan*.
+>   provider calls, or payments were added *by M6A*. This document is the *plan*
+>   M6B began implementing (inert).
 > - **Madaf does NOT issue legal tax invoices today** and is **not legally
 >   compliant** for invoicing. Everything the app produces today is a
 >   **DRAFT / internal document** — see

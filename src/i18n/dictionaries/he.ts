@@ -73,6 +73,7 @@ const he: Dictionary = {
     documents: "מסמכים",
     manufacturers: "יצרנים",
     team: "צוות",
+    settings: "הגדרות מס",
     exitAdmin: "יציאה מהניהול",
   },
   landing: {
@@ -386,6 +387,50 @@ const he: Dictionary = {
       open: "פתיחה",
       legalBanner:
         "המסמכים כאן הם תצוגה מקדימה. חשבוניות מס נשארות טיוטות עד להגדרת מסי וספק הפקת חשבוניות.",
+    },
+    settings: {
+      title: "הגדרות מס",
+      subtitle:
+        "הכנת פרטי המס שישמשו חשבונית מס עתידית. זוהי הכנה בלבד.",
+      notActiveWarning:
+        "הפקת חשבוניות מס עדיין לא פעילה. שמירת ההגדרות אינה מפיקה חשבונית מס.",
+      flagsTitle: "מצב הפקת חשבוניות מס",
+      flagsSubtitle:
+        "מתגי שרת. כולם כבויים כברירת מחדל; ההפקה אינה ממומשת.",
+      flagInvoicing: "הפקת חשבוניות מס",
+      flagProvider: "ספק מס",
+      flagNumbering: "מספור חוקי",
+      statusOff: "כבוי",
+      statusDisabled: "מושבת",
+      sectionIdentity: "זהות משפטית",
+      sectionAddress: "כתובת רשומה",
+      sectionContact: "איש קשר לחיוב",
+      sectionReadiness: "מוכנות",
+      legalName: "שם משפטי",
+      businessRegistrationNumber: "מספר ח.פ / עוסק מורשה (ח.פ)",
+      vatRegistrationNumber: "מספר עוסק (עוסק)",
+      vatRegistrationType: "סוג רישום למע\"מ",
+      countryCode: "קוד מדינה",
+      defaultVatRate: "שיעור מע\"מ ברירת מחדל (%)",
+      invoiceLanguage: "שפת החשבונית",
+      invoiceLanguageAuto: "ברירת מחדל (שפת מסמכי הספק)",
+      street: "רחוב",
+      city: "עיר",
+      postalCode: "מיקוד",
+      country: "מדינה",
+      contactEmail: 'דוא"ל ליצירת קשר',
+      contactPhone: "טלפון ליצירת קשר",
+      legalInvoicingReady: "סימון פרטי המס כמוכנים",
+      legalInvoicingReadyHint:
+        "הערה לרישום שלך בלבד. אינה מפעילה הפקה — הפקת חשבוניות מס נשארת כבויה.",
+      readinessNotes: "הערות מוכנות",
+      liveNotice: "מצב Supabase — ההגדרות נשמרות במסד הנתונים המקומי.",
+      mockNotice:
+        "מצב הדגמה — דבר אינו נשמר. הפעל מצב Supabase כדי לשמור את ההגדרות.",
+      save: "שמירת הגדרות",
+      saving: "שומר…",
+      savedToast: "ההגדרות נשמרו. לא הופקה חשבונית מס.",
+      saveError: "השמירה נכשלה — נסה שוב.",
     },
   },
   docs: {
