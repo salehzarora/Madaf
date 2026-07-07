@@ -5,6 +5,17 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6C — disabled legal numbering skeleton.** A `draw_legal_document_number`
+> RPC (owner/admin, atomic) that draws an **internal, non-legal preview**
+> (`DRAFT-LEGAL-YYYY-######`), **fail-closed behind two default-OFF gates** (a
+> service-role-only DB kill switch + the `MADAF_LEGAL_NUMBERING_ENABLED` env flag
+> gating a dormant, unwired helper). **Issues nothing** — no tax invoice, no
+> allocation number (מספר הקצאה), no provider, no payment, no legal PDF, no
+> `legal_number` on documents — and no UI/route draws numbers. (M6C.1 hardened
+> input validation: year must be `2000..2100`, and legal-entity scoping is
+> rejected until modeled — invalid calls draw nothing and write no row.) Needs a
+> professional tax/accounting/legal review before real issuing (M6D-M6G). Built on:
+>
 > **Phase M6B — inert legal-invoicing foundation.** Per-tenant **tax settings**
 > (owner/admin, at `/admin/settings/tax`), a server-only **feature-flag reader**
 > (three flags, all default OFF/`disabled`, fail-closed, never `NEXT_PUBLIC`),

@@ -1,6 +1,47 @@
-# Legal Invoicing Architecture (M6A design · M6B inert foundation)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton)
 
 > # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6C status (implemented, DISABLED by default):** M6C added ONE low-level
+> primitive — `draw_legal_document_number(...)`, a SECURITY DEFINER RPC that
+> atomically draws the next **internal, NON-LEGAL preview number** (e.g.
+> `DRAFT-LEGAL-2026-000001`) from the M6B `legal_invoice_sequences` counters
+> (owner/admin + `authorize_tenant`; atomic row-locked increment; never
+> reused). It is **fail-closed behind TWO gates, both default OFF**: a
+> service-role-only **DB kill switch** (`legal_numbering_settings.enabled`,
+> default `false` — a normal client can neither read nor flip it; the RPC
+> refuses unless it is on) and the server-only env flag
+> `MADAF_LEGAL_NUMBERING_ENABLED` that gates a **dormant** app helper
+> (`src/lib/data/legal-numbering.ts`, wired to nothing). **M6C issues NOTHING:**
+> no tax invoice, no allocation number (מספר הקצאה), no tax-authority/provider
+> call, no payment, no legal PDF; it does **not** attach a `legal_number` to
+> `legal_documents`, set any `issued` status, or expose numbering to any UI,
+> route, or tokenized customer. Even with both gates on, drawing a number still
+> issues no invoice. Real numbering (verified format/gap policy) + provider
+> sandbox (M6D) + flag-gated issuing (M6E) + archival/signing (M6F) + external
+> review (M6G) are still ahead. **Re-verify official Israel Tax Authority rules
+> + get a professional tax/accounting/legal review before M6D/M6E.**
+>
+> **M6C.1 (input validation hardening):** `draw_legal_document_number` now
+> validates its inputs — `p_year` defaults to the current UTC calendar year and
+> must be in the static range **2000..2100** (else `MDF61`), and a non-null
+> `p_legal_entity_id` is **rejected** (`MDF62`) until a tenant-owned
+> `legal_entities` table exists, so no arbitrary UUID is ever written into
+> `legal_invoice_sequences`. Check order is role/tenant → entity → year → kill
+> switch → draw, and every error is raised **before** the counter UPDATE, so a
+> disabled / unauthorized / invalid call **never increments** (and creates no
+> sequence row).
+>
+> **Numbering rollback / gap policy (skeleton).** Within a committed
+> transaction, successful draws are **atomic and never reused** (row-locked
+> increment). Disabled / unauthorized / invalid calls **do not increment**. But
+> if a caller's transaction **rolls back**, the increment rolls back with it, so
+> that uncommitted attempted number can be drawn again later — i.e. gaps/reuse
+> across *rolled-back* attempts are possible. This is **acceptable for the
+> disabled internal-preview skeleton** (numbers are non-legal previews and
+> nothing is issued). **Real legal issuance (M6E+) must define a committed-number
+> / gap policy** (gapless-where-required, void/reconcile rules) with a
+> professional tax/accounting/legal review before any production use.
 >
 > **M6B status (implemented, INERT):** M6B landed the *first foundation* only —
 > per-tenant **tax settings** (`tenant_tax_settings` + owner/admin `get`/`upsert`

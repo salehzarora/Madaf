@@ -21,6 +21,15 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > unchanged. Do not remove any draft warning until real issuing ships (M6E+)
 > and is reviewed + per-tenant enabled (M6G).
 
+> **M6C (disabled numbering skeleton) also changes NONE of the above.** M6C
+> added a DISABLED-by-default `draw_legal_document_number` RPC that draws an
+> **internal, NON-LEGAL preview** number (`DRAFT-LEGAL-YYYY-######`) behind two
+> default-OFF gates. It **issues no legal invoice, requests no allocation
+> number, integrates no provider, and adds no payment or legal PDF**; it does
+> not attach a `legal_number` to `legal_documents` or reach any UI/route.
+> Numbering is **not legally active** — this is a skeleton, not production legal
+> numbering. Draft watermarks + "not a tax invoice" notices are untouched.
+
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that
 implies legal issuance.
