@@ -52,6 +52,13 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > and persists no caller JSON (SQL-generated sandbox payloads only). Still nothing
 > legal is issued; all draft warnings remain.
 
+> **M6G (documentation-only review gate) changes NONE of the above** and no code/
+> schema/runtime behavior. It added
+> [docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md),
+> which is REQUIRED before any future legal-effective work — no real issuing is
+> enabled; M6B–M6F remain sandbox / non-legal / default-safe; all draft "not a tax
+> invoice" warnings remain.
+
 > **M6F (sandbox archival/signing) also changes NONE of the above.** M6F can, only
 > when the DB kill switch is on and the target is an M6E sandbox / non-legal
 > document, write **write-once, NON-LEGAL** archival + signing records —

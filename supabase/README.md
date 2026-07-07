@@ -107,6 +107,14 @@ documents stay renderable after catalog or customer changes.
 > persists redacted records. Still no real tax-authority integration, no
 > allocation number, no production mode, no payments.
 
+> ⚠️ **M6G (no schema change):** documentation-only. Added
+> `docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md` — no migration,
+> no RPC/RLS/grant change, no runtime change. M6B–M6F remain sandbox / non-legal /
+> default-safe (`legal_effective` HARD-false); the legal tables stay
+> RPC/service-role-only for writes. That checklist is REQUIRED before any future
+> legal-effective work; production/legal issuing needs a qualified accountant +
+> legal-counsel review against current official sources first.
+
 ### RLS model (deny by default, hardened in M1.1; auth path live in M4A)
 
 - `anon` has **no table grants and no read policies** — zero direct
