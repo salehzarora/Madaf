@@ -39,6 +39,15 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > `provider_approved` status, and is wired to no UI/route. Draft watermarks +
 > "not a tax invoice" notices remain untouched.
 
+> **M6E (sandbox orchestration) also changes NONE of the above.** M6E can, only
+> when every gate is explicitly enabled, write clearly-marked **SANDBOX /
+> NON-LEGAL** rows (a `draft_internal` `legal_documents` row with `sandbox=true`,
+> `legal_effective=false`; `legal_number`/`allocation_number` stay NULL) + a
+> redacted log pair. A HARD CHECK keeps `legal_effective=false` — a real legal
+> document is IMPOSSIBLE in M6E. No real tax invoice, allocation number, provider
+> call, payment, PDF, or tokenized-customer legal download. The M5 `invoice_draft`
+> and every draft watermark / "not a tax invoice" notice remain untouched.
+
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that
 implies legal issuance.

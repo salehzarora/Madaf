@@ -5,6 +5,18 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6E — sandbox-only legal orchestration (disabled by default).** A
+> server-only, **dormant** orchestration (`src/lib/legal-invoicing/orchestration/`)
+> that wires tax settings + numbering + sandbox provider into a *simulation*
+> behind every gate (three env flags + a service-role-only DB kill switch +
+> owner/admin + tenant readiness). Even fully enabled it writes only clearly
+> **SANDBOX / NON-LEGAL** rows (`draft_internal`, `sandbox=true`,
+> `legal_effective=false`; a HARD CHECK makes a legally-effective row impossible).
+> **Nothing real is issued** — no tax invoice, allocation number, provider/tax-
+> authority call, payment, PDF, or customer legal download; `SandboxProvider`
+> verify hardened to accept only sandbox-shaped values. `legal_effective` stays
+> false until a future reviewed phase. Built on:
+>
 > **Phase M6D — sandbox/mock provider adapter.** A server-only legal-invoice
 > provider abstraction (`src/lib/legal-invoicing/provider/`) with a
 > **NullProvider** (disabled) and a **SandboxProvider** (deterministic mock,
