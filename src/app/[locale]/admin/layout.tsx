@@ -27,12 +27,14 @@ export default async function AdminLayout({
 
   let session: AdminSession | undefined;
   if (getDataMode() === "supabase") {
-    const { userId, email, membership, memberships } = await getSessionContext();
+    const { userId, email, phone, membership, memberships } =
+      await getSessionContext();
     if (!userId) redirect(`/${locale}/login`);
     if (!membership) redirect(`/${locale}/onboarding`);
 
     session = {
-      email,
+      // Phone-OTP users have no email — show their phone as the identity.
+      email: email ?? phone,
       role: membership.role,
       tenantName: membership.name[locale],
       currentTenantId: membership.tenantId,

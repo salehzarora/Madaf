@@ -4,6 +4,31 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M7B (+ M7B.1 hardening): phone-OTP sign-in (primary method).**
+> Supplier/admin login is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`,
+> server actions in `src/lib/actions/auth.ts`), with email+password as a
+> secondary fallback. **No tenant/RLS/security boundary changed** — a session is
+> still a Supabase-Auth session bound to an `auth.users` id; membership/roles/RLS
+> come from `tenant_users` unchanged; **no migration**. **Hosted phone OTP needs
+> an SMS provider set in the Supabase dashboard (or a Send SMS Hook) — NO
+> provider secret is committed.**
+> **M7B.1 fixed two Codex blockers:** (1) local phone OTP now works —
+> `supabase/config.toml` enables a **dummy, non-secret** local SMS provider
+> (GoTrue disables phone login without one) **plus** `[auth.sms.test_otp]`, so
+> the test numbers (`972500000001`/`2` → `123456`) verify with **no network
+> call** and yield a REAL local session, RLS intact; a real number just fails to
+> send locally. (2) the email/password fallback is now **server-enforced** —
+> `signInAction`/`signUpAction` reject (not just hide the UI) unless
+> `emailPasswordAuthAllowed()` (email-primary, or `MADAF_EMAIL_AUTH_ENABLED=true`,
+> or non-production), the single source shared with UI visibility. A **fail-closed
+> DEV fake-OTP path** (`src/lib/auth/dev-otp.ts`, `MADAF_DEV_PHONE_OTP_*`) works
+> in **mock mode only**, disabled by default, HARD-off in production / non-local
+> URLs, invents no session, grants no tenant access. **Limitation:** email team
+> invites still verify the invited email, so a phone-only account can't accept
+> one yet (no schema migration — documented follow-up; set
+> `MADAF_EMAIL_AUTH_ENABLED=true` in phone-primary prod to keep email invites
+> usable). No legal/M6 change; `legal_effective` stays hard-false. See
+> [docs/AUTH_AND_ACCESS_MODEL.md](AUTH_AND_ACCESS_MODEL.md) §2b. Prior:
 > **AUDIT — M7A: product readiness & regression audit (DOCS ONLY).** See
 > **[docs/PRODUCT_READINESS_AUDIT_M7A.md](PRODUCT_READINESS_AUDIT_M7A.md)** —
 > full harness green (lint, 216-page build, `npm audit` 0 vulns, local DB

@@ -1,8 +1,10 @@
 import { notFound, redirect } from "next/navigation";
-import { LoginForm } from "@/components/auth/login-form";
+import { AuthPanel } from "@/components/auth/auth-panel";
 import { LogoMark } from "@/components/logo";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { authPrimaryMethod, emailFallbackVisible } from "@/lib/config/auth";
+import { devPhoneOtpEnabled } from "@/lib/auth/dev-otp";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode } from "@/lib/data";
 
@@ -17,7 +19,11 @@ function safeNext(value: string | undefined, locale: string): string | null {
   return value;
 }
 
-/** Supplier sign-in (Supabase mode only). Mock mode has no auth. */
+/**
+ * Supplier sign-in. Supabase mode: real phone-OTP (primary) / email fallback.
+ * Mock mode: normally has no auth (404) — but renders the phone-OTP UX when
+ * the fail-closed DEV fake-OTP path is explicitly enabled, for local testing.
+ */
 export default async function LoginPage({
   params,
   searchParams,
@@ -27,13 +33,20 @@ export default async function LoginPage({
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  if (getDataMode() !== "supabase") notFound();
+
+  const supabaseMode = getDataMode() === "supabase";
+  const devOtp = devPhoneOtpEnabled();
+  // Mock mode is authless; only render login there when the dev fake path is on.
+  if (!supabaseMode && !devOtp) notFound();
 
   const next = safeNext((await searchParams).next, locale);
 
-  const { userId, membership } = await getSessionContext();
-  if (userId && membership) redirect(next ?? `/${locale}/admin`);
-  if (userId && !membership) redirect(`/${locale}/onboarding`);
+  // Only Supabase mode has a real session to route on.
+  if (supabaseMode) {
+    const { userId, membership } = await getSessionContext();
+    if (userId && membership) redirect(next ?? `/${locale}/admin`);
+    if (userId && !membership) redirect(`/${locale}/onboarding`);
+  }
 
   const dict = getDictionary(locale);
   const t = dict.access.login;
@@ -64,7 +77,14 @@ export default async function LoginPage({
           </h1>
           <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
           <div className="mt-6">
-            <LoginForm locale={locale} dict={dict} next={next ?? undefined} />
+            <AuthPanel
+              locale={locale}
+              dict={dict}
+              next={next ?? undefined}
+              primaryMethod={authPrimaryMethod()}
+              emailFallbackVisible={emailFallbackVisible()}
+              devNotice={devOtp}
+            />
           </div>
         </div>
       </div>

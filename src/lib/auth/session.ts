@@ -37,6 +37,8 @@ export interface SessionContext {
   client: SupabaseClient<Database>;
   userId: string | null;
   email: string | null;
+  /** Phone (E.164) when the user signed in with phone OTP (M7B). */
+  phone: string | null;
   /** Every tenant the user belongs to (for the switcher). */
   memberships: Membership[];
   /** The currently-selected membership (verified), or null. */
@@ -75,6 +77,7 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
     client,
     userId: user?.id ?? null,
     email: user?.email ?? null,
+    phone: user?.phone ?? null,
     memberships,
     membership,
   };
