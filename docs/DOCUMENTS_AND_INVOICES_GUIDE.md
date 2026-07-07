@@ -30,6 +30,15 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > Numbering is **not legally active** — this is a skeleton, not production legal
 > numbering. Draft watermarks + "not a tax invoice" notices are untouched.
 
+> **M6D (provider sandbox/mock) also changes NONE of the above.** M6D added a
+> server-only provider abstraction with only a **NullProvider** (disabled) and a
+> **SandboxProvider** (deterministic mock, every response marked non-legal). No
+> real tax-authority integration, no real allocation number (מספר הקצאה), no
+> production provider mode, no credentials, no payments, no legal PDF. It changes
+> no `legal_documents` row, attaches no `legal_number`, sets no `issued`/
+> `provider_approved` status, and is wired to no UI/route. Draft watermarks +
+> "not a tax invoice" notices remain untouched.
+
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that
 implies legal issuance.

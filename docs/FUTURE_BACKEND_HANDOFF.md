@@ -4,6 +4,24 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M6D shipped: SANDBOX/MOCK provider adapter.** On top of M6C, M6D
+> added a **server-only** legal-invoice provider abstraction
+> (`src/lib/legal-invoicing/provider/`) with a **NullProvider** (disabled →
+> `unavailable`) and a **SandboxProvider** (deterministic MOCK from a SHA-256 of
+> the idempotency key — no network, no dependency, no credentials). Selected by
+> `MADAF_TAX_PROVIDER_MODE` (`disabled`|`sandbox`; **`production` clamped to
+> `disabled`**). Every result is `legal: false` with a loud non-legal notice;
+> mocks are obvious placeholders. It issues **NOTHING** (no invoice, allocation
+> number, real tax-authority/SHAAM call, `legal_number`, `issued`/
+> `provider_approved` status, PDF, or payment) and is **DORMANT** (no route/
+> action/UI imports it). Redacted, sandbox-marked log records are BUILT
+> (`buildProviderLog`/`redactPayload`) but **NOT persisted** — the M6B
+> `tax_authority_requests`/`_responses` tables stay service-role-only; a future
+> trusted-server writer (M6E) persists them. Idempotency/error model: per-call
+> `idempotencyKey`/`providerRequestId`/`providerResponseId`/`status`/`errorCode`/
+> `retryable` (no live retry/queue). **M6E** = real sandbox-first, then
+> flag-gated production issuing — after a professional tax/accounting/legal
+> review + official-source re-verification. Prior:
 > **STATUS — M6C shipped: DISABLED legal numbering skeleton.** On top of M6B,
 > M6C added ONE gated primitive — `draw_legal_document_number(...)`
 > (SECURITY DEFINER, owner/admin, atomic row-locked draw from

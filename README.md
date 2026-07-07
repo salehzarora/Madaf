@@ -5,6 +5,17 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6D — sandbox/mock provider adapter.** A server-only legal-invoice
+> provider abstraction (`src/lib/legal-invoicing/provider/`) with a
+> **NullProvider** (disabled) and a **SandboxProvider** (deterministic mock,
+> every response marked non-legal), selected by `MADAF_TAX_PROVIDER_MODE`
+> (`disabled`|`sandbox`; **`production` is clamped to `disabled`**). **No real
+> tax-authority integration, no allocation number, no credentials, no production
+> mode, no payments, no legal PDF** — it changes no document, attaches no
+> `legal_number`, sets no `issued` status, and is wired to no UI/route (dormant).
+> M6E adds real (sandbox-first, flag-gated) issuing after a professional review.
+> Built on:
+>
 > **Phase M6C — disabled legal numbering skeleton.** A `draw_legal_document_number`
 > RPC (owner/admin, atomic) that draws an **internal, non-legal preview**
 > (`DRAFT-LEGAL-YYYY-######`), **fail-closed behind two default-OFF gates** (a
