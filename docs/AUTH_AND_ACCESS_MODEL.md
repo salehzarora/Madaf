@@ -1,4 +1,13 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F · M6G)
+
+> **M6G (documentation-only review gate)** changed no permissions, RPCs, RLS,
+> grants, or runtime behavior. It added
+> [docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md),
+> which is REQUIRED before any future legal-effective work. M6B–M6F remain
+> sandbox / non-legal / default-safe; the legal tables stay RPC/service-role-only
+> for writes; no grants were widened. **Red lines (never allow):** a `NEXT_PUBLIC`
+> service-role key, provider credentials in a client bundle, direct authenticated
+> writes to the legal tables, and legal issuing from tokenized-customer routes.
 
 > **M6F (sandbox archival/signing) access posture.** The
 > `sandbox_archive_and_sign_legal_document` RPC is SECURITY DEFINER,

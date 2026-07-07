@@ -4,6 +4,14 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M6G shipped: production activation review gate (DOCS ONLY).** M6G
+> added **[docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md)**
+> and changed **no code, schema, or runtime behavior**. M6B–M6F remain
+> sandbox-only / non-legal / default-safe; no real issuing is enabled. That
+> checklist is REQUIRED before any future `legal_effective`-capable work —
+> production / legal issuing must not be enabled until a qualified Israeli
+> accountant / tax advisor + legal counsel review and approve against current
+> official sources, and every gate is signed. Prior:
 > **STATUS — M6F shipped: SANDBOX archival + signing (non-legal, disabled by
 > default).** On top of M6E, M6F added a write-once, NON-LEGAL archival + signing
 > layer (`src/lib/legal-invoicing/archival/`, DORMANT — no route/action/UI imports

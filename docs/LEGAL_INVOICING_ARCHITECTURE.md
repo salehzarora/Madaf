@@ -1,6 +1,19 @@
-# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox · M6E sandbox orchestration · M6F sandbox archival/signing)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox · M6E sandbox orchestration · M6F sandbox archival/signing · M6G review gate)
 
 > # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6G status (documentation-only review gate).** M6G added the
+> **[Production Activation Review Checklist](legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md)**
+> and changed **no code, schema, or runtime behavior**. M6B–M6F remain
+> **sandbox-only / non-legal / default-safe**; no real issuing is enabled. That
+> checklist is **REQUIRED** before any future `legal_effective`-capable work:
+> production / legal issuing must not be enabled until a qualified Israeli
+> accountant / tax advisor **and** legal counsel review and approve the
+> requirements against current official Israel Tax Authority / "חשבוניות ישראל"
+> sources, and every gate in the checklist is signed. Recommended standing
+> guardrails until then: keep `legal_effective = false`, keep production provider
+> mode clamped/disabled, keep provider credentials absent, and expose no customer
+> legal download until verified requirements exist.
 >
 > **M6F status (implemented, SANDBOX-ONLY, disabled by default):** M6F added a
 > write-once, **NON-LEGAL** archival + signing layer for the M6E sandbox

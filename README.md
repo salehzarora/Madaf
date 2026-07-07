@@ -5,6 +5,14 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6G — production activation review gate (docs only).** Added
+> [docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md)
+> — **no code, schema, or runtime change**. M6B–M6F remain sandbox / non-legal /
+> default-safe; **no real issuing is enabled**. That checklist is required before
+> any future legal-effective work: production / legal issuing must not be enabled
+> until a qualified Israeli accountant / tax advisor **and** legal counsel review
+> and approve against current official sources. Built on:
+>
 > **Phase M6F — sandbox archival & signing (non-legal, disabled by default).** A
 > write-once, **NON-LEGAL** archival + signing layer for M6E sandbox documents —
 > tamper-evidence placeholders only. `sandbox_archive_and_sign_legal_document`
