@@ -1,4 +1,18 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F)
+
+> **M6F (sandbox archival/signing) access posture.** The
+> `sandbox_archive_and_sign_legal_document` RPC is SECURITY DEFINER,
+> `search_path=''`, **owner/admin-only** (`authorize_tenant`; sales_rep/anon/
+> non-member/cross-tenant → 42501/denied), **fail-closed** behind the M6C DB kill
+> switch (`MDF70`), and validates the target is an M6E sandbox / non-legal
+> document (`MDF75`). It is the ONLY write path for the archival/signing rows;
+> `archival_records` stays **owner/admin READ-only**, `signing_records` stays
+> **service-role-only** (signature material never reaches a client) — direct
+> authenticated INSERT/UPDATE/DELETE denied, and both are **write-once**
+> (immutability trigger). It persists NO caller JSON (canonical payload + SHA-256
+> generated in SQL; idempotency key hashed). HARD CHECKs keep `legal_effective =
+> false` and force sandbox-placeholder signatures. No grants widened; no tokenized
+> customer path touches any of this.
 
 > **M6E (sandbox legal orchestration) access posture.** The
 > `sandbox_issue_legal_document` RPC is SECURITY DEFINER, `search_path=''`,

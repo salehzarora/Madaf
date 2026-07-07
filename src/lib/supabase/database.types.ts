@@ -14,30 +14,48 @@ export type Database = {
           archive_uri: string | null
           archived_at: string
           checksum: string | null
+          content_sha256: string | null
           created_at: string
           id: string
+          idempotency_key: string | null
           legal_document_id: string
+          legal_effective: boolean
+          non_legal_notice: string | null
+          provider_mode: string | null
           retention_until: string | null
+          sandbox: boolean
           tenant_id: string
         }
         Insert: {
           archive_uri?: string | null
           archived_at?: string
           checksum?: string | null
+          content_sha256?: string | null
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           legal_document_id: string
+          legal_effective?: boolean
+          non_legal_notice?: string | null
+          provider_mode?: string | null
           retention_until?: string | null
+          sandbox?: boolean
           tenant_id: string
         }
         Update: {
           archive_uri?: string | null
           archived_at?: string
           checksum?: string | null
+          content_sha256?: string | null
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           legal_document_id?: string
+          legal_effective?: boolean
+          non_legal_notice?: string | null
+          provider_mode?: string | null
           retention_until?: string | null
+          sandbox?: boolean
           tenant_id?: string
         }
         Relationships: [
@@ -51,7 +69,7 @@ export type Database = {
           {
             foreignKeyName: "archival_records_tenant_id_legal_document_id_fkey"
             columns: ["tenant_id", "legal_document_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "legal_documents"
             referencedColumns: ["tenant_id", "id"]
           },
@@ -1032,7 +1050,12 @@ export type Database = {
           cert_ref: string | null
           created_at: string
           id: string
+          idempotency_key: string | null
           legal_document_id: string
+          legal_effective: boolean
+          non_legal_notice: string | null
+          provider_mode: string | null
+          sandbox: boolean
           signature: string | null
           signed_at: string | null
           signed_hash: string | null
@@ -1043,7 +1066,12 @@ export type Database = {
           cert_ref?: string | null
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           legal_document_id: string
+          legal_effective?: boolean
+          non_legal_notice?: string | null
+          provider_mode?: string | null
+          sandbox?: boolean
           signature?: string | null
           signed_at?: string | null
           signed_hash?: string | null
@@ -1054,7 +1082,12 @@ export type Database = {
           cert_ref?: string | null
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           legal_document_id?: string
+          legal_effective?: boolean
+          non_legal_notice?: string | null
+          provider_mode?: string | null
+          sandbox?: boolean
           signature?: string | null
           signed_at?: string | null
           signed_hash?: string | null
@@ -1071,7 +1104,7 @@ export type Database = {
           {
             foreignKeyName: "signing_records_tenant_id_legal_document_id_fkey"
             columns: ["tenant_id", "legal_document_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "legal_documents"
             referencedColumns: ["tenant_id", "id"]
           },
@@ -1697,6 +1730,14 @@ export type Database = {
       revoke_tenant_invite: {
         Args: { p_invite_id: string; p_tenant_id: string }
         Returns: string
+      }
+      sandbox_archive_and_sign_legal_document: {
+        Args: {
+          p_idempotency_key: string
+          p_legal_document_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       sandbox_issue_legal_document: {
         Args: {
