@@ -1702,13 +1702,8 @@ export type Database = {
         Args: {
           p_document_type: Database["public"]["Enums"]["legal_document_type"]
           p_idempotency_key: string
-          p_mock_allocation_number?: string
-          p_non_legal_notice: string
           p_order_id?: string
           p_provider_mode?: string
-          p_provider_ref?: string
-          p_request_payload?: Json
-          p_response_payload?: Json
           p_tenant_id: string
         }
         Returns: Json

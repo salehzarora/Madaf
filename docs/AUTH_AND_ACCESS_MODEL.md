@@ -13,6 +13,17 @@
 > legally-effective or production row in M6E. No grants were widened; no tokenized
 > customer path touches any of this. Never trust a client `tenant_id`/status/
 > number.
+>
+> **M6E.1 hardening (the RPC is the security boundary).** Since the RPC is
+> EXECUTE-granted to authenticated, a direct owner/admin Data-API call must not be
+> able to bypass the app helper — so the RPC itself now enforces **tenant tax
+> readiness** (`tenant_tax_settings.legal_invoicing_ready=true`, else `MDF73`),
+> **calls the M6C numbering draw internally** (DB kill switch off fails the whole
+> call; a **duplicate idempotency key fails BEFORE any draw**, so it never
+> increments), and persists **NO caller-supplied JSON** (payloads are
+> SQL-generated + sandbox-marked; the idempotency key is hashed, never stored
+> raw). The old JSON-accepting overload was dropped. The app
+> `sandboxOrchestrationReadiness()` is UX only, not the security boundary.
 
 > **M6B (inert legal-invoicing foundation) access posture.** `tenant_tax_settings`
 > is deny-by-default RLS: **owner/admin** of the SELECTED tenant read (and write

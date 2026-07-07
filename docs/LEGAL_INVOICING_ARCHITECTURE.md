@@ -30,6 +30,18 @@
 > false until a future reviewed phase (M6F/M6G) — **relax only after
 > official-source verification + a professional tax/accounting/legal review.**
 >
+> **M6E.1 (RPC boundary hardening).** Because `sandbox_issue_legal_document` is
+> EXECUTE-granted to authenticated, EVERY write gate is now enforced **inside the
+> SQL function** (a direct owner/admin Data-API call cannot bypass the app): it
+> REQUIRES `tenant_tax_settings.legal_invoicing_ready = true` (`MDF73`); it CALLS
+> the M6C `draw_legal_document_number` **itself** (so the DB kill switch off fails
+> the whole call and a **duplicate idempotency key fails BEFORE any draw** — no
+> increment); and it persists **NO caller-supplied JSON** — the request/response
+> payloads are SQL-generated, minimal, and sandbox-marked, and the idempotency key
+> is **hashed** (never stored raw). The old JSON-accepting overload was **dropped**.
+> The app `sandboxOrchestrationReadiness()` is now **UX only, not the security
+> boundary**, and the app helper no longer draws a number (no double increment).
+>
 > **M6D status (implemented, SANDBOX/MOCK only):** M6D added a **server-only
 > provider abstraction** (`src/lib/legal-invoicing/provider/`) with only a
 > **`NullProvider`** (disabled — every call returns `unavailable`) and a

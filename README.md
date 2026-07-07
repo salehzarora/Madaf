@@ -15,7 +15,9 @@ WhatsApp photo albums.
 > **Nothing real is issued** — no tax invoice, allocation number, provider/tax-
 > authority call, payment, PDF, or customer legal download; `SandboxProvider`
 > verify hardened to accept only sandbox-shaped values. `legal_effective` stays
-> false until a future reviewed phase. Built on:
+> false until a future reviewed phase. (M6E.1 hardened the DB RPC so a direct call
+> cannot bypass the app — it enforces tenant tax readiness, draws the M6C number
+> itself, and persists no caller JSON.) Built on:
 >
 > **Phase M6D — sandbox/mock provider adapter.** A server-only legal-invoice
 > provider abstraction (`src/lib/legal-invoicing/provider/`) with a

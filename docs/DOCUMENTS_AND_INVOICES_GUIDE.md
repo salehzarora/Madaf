@@ -47,6 +47,10 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > document is IMPOSSIBLE in M6E. No real tax invoice, allocation number, provider
 > call, payment, PDF, or tokenized-customer legal download. The M5 `invoice_draft`
 > and every draft watermark / "not a tax invoice" notice remain untouched.
+> **M6E.1** hardened the RPC so a direct call cannot bypass the app: it enforces
+> tenant tax readiness, draws the M6C number itself (duplicate fails before draw),
+> and persists no caller JSON (SQL-generated sandbox payloads only). Still nothing
+> legal is issued; all draft warnings remain.
 
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that

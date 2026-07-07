@@ -24,7 +24,13 @@ everything here was built to be wired, not rebuilt.
 > sandbox logs are now persisted (RPC-only; no grants widened). **M6F/M6G**
 > (archival/signing, then real issuing) require official-source verification + a
 > professional tax/accounting/legal review before `legal_effective` may ever be
-> true. Prior:
+> true. **M6E.1** hardened the RPC boundary (EXECUTE-granted to authenticated →
+> all write gates enforced in SQL): requires `tenant_tax_settings.legal_invoicing_ready=true`
+> (`MDF73`), calls the M6C numbering draw INSIDE the RPC (duplicate idempotency
+> fails before draw → no increment; DB kill switch off fails the call), and
+> persists NO caller JSON (SQL-generated minimal sandbox payloads; idempotency
+> key hashed). The old JSON-accepting overload was dropped; app readiness is UX
+> only. Prior:
 > **STATUS — M6D shipped: SANDBOX/MOCK provider adapter.** On top of M6C, M6D
 > added a **server-only** legal-invoice provider abstraction
 > (`src/lib/legal-invoicing/provider/`) with a **NullProvider** (disabled →
