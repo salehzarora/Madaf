@@ -1,0 +1,53 @@
+name: CI
+
+# M7C — pre-merge gate. Runs the same harness a developer runs locally.
+# SAFE BY DESIGN: no secrets, no hosted Supabase, no deploy. The app builds in
+# MOCK mode with zero env, so nothing here needs credentials. The local
+# Supabase db lint/advisors are intentionally NOT run in CI (they need Docker +
+# the Supabase CLI) — run them locally before merging (see
+# docs/deployment/STAGING_DEPLOYMENT_M7C.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: lint · build · audit
+    runs-on: ubuntu-latest
+    # No `environment:` and no `secrets` — this job must never need credentials.
+    env:
+      # Force MOCK mode explicitly so the build never expects a backend.
+      NEXT_PUBLIC_MADAF_DATA_MODE: mock
+      # Fail the build on lint/type errors rather than warning.
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (mock mode, zero backend env)
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate

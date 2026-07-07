@@ -5,6 +5,15 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M7C — staging deployment readiness (docs + CI + safe config).**
+> Adds a [staging deployment guide](docs/deployment/STAGING_DEPLOYMENT_M7C.md)
+> and [runbook](docs/deployment/RUNBOOK_STAGING.md) (Vercel + hosted Supabase
+> checklists, env matrix, rollback, monitoring, demo data), a **secret-free CI**
+> workflow (lint + build + audit), and a pure server-only misconfig linter. It
+> **deploys nothing, commits no secrets, connects no hosted Supabase**, and
+> changes no runtime/RLS/schema — legal stays OFF, no payments, dev fake-OTP off
+> in staging. Built on:
+>
 > **Phase M7B (+ M7B.1) — phone-OTP sign-in (primary login method).**
 > Supplier/admin sign-in is now **phone-number OTP** (`signInWithOtp`/
 > `verifyOtp`), with email+password as a secondary fallback. **No tenant/RLS
