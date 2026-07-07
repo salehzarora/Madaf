@@ -4,6 +4,21 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M6F shipped: SANDBOX archival + signing (non-legal, disabled by
+> default).** On top of M6E, M6F added a write-once, NON-LEGAL archival + signing
+> layer (`src/lib/legal-invoicing/archival/`, DORMANT — no route/action/UI imports
+> it) via `sandbox_archive_and_sign_legal_document`: owner/admin only, fail-closed
+> behind the DB kill switch (`MDF70`), validates the target is an M6E sandbox /
+> non-legal `legal_documents` row (`MDF75`), accepts NO caller JSON (canonical
+> payload + SHA-256 generated in SQL; idempotency key hashed), and is write-once
+> (unique per document + `MDF74` + an immutability trigger). Signatures are
+> placeholders (`SANDBOX-SIGNATURE-…`); a HARD CHECK keeps `legal_effective=false`
+> on `archival_records`/`signing_records` (the latter stays service-role-only). It
+> is **NOT** a real archive/signature and is **NOT** tax-compliant — no tax
+> invoice, allocation number, provider call, production mode, payment, or legal
+> PDF; `legal_number`/`allocation_number`/status untouched. Real archival/signing/
+> issuance needs official-source verification + a professional review (M6G) first.
+> Prior:
 > **STATUS — M6E shipped: SANDBOX-ONLY legal orchestration (disabled by
 > default).** On top of M6D, M6E added a server-only, DORMANT orchestration
 > (`src/lib/legal-invoicing/orchestration/`) that wires tax settings + numbering

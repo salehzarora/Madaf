@@ -1,6 +1,30 @@
-# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox · M6E sandbox orchestration)
+# Legal Invoicing Architecture (M6A design · M6B inert foundation · M6C numbering skeleton · M6D provider sandbox · M6E sandbox orchestration · M6F sandbox archival/signing)
 
 > # ⚠️ STILL NO LEGAL TAX INVOICE IS ISSUED
+>
+> **M6F status (implemented, SANDBOX-ONLY, disabled by default):** M6F added a
+> write-once, **NON-LEGAL** archival + signing layer for the M6E sandbox
+> `legal_documents` — a tamper-evidence *placeholder*, **NOT** a real legal
+> archive, **NOT** a real digital signature, **NOT** tax-compliant. The
+> `sandbox_archive_and_sign_legal_document` RPC (server-only helper
+> `src/lib/legal-invoicing/archival/`, **DORMANT** — no route/action/UI imports
+> it) is owner/admin-only (`authorize_tenant`), **fail-closed** behind the M6C DB
+> kill switch (`MDF70`), and validates the TARGET is an M6E sandbox / non-legal
+> row (sandbox=true, legal_effective=false, provider_mode='sandbox', notice
+> present, NULL legal/allocation numbers, not issued/provider_approved; else
+> `MDF75`). It accepts **NO caller JSON** — it generates a canonical payload +
+> **SHA-256** in SQL, hashes the idempotency key, and is **write-once** (unique
+> per document + `MDF74` + an immutability trigger blocking UPDATE/DELETE).
+> Signatures are obvious placeholders (`SANDBOX-SIGNATURE-…`, algorithm
+> `SANDBOX-PLACEHOLDER-SHA256`, cert `SANDBOX-NO-CERT`), enforced by CHECK; a HARD
+> CHECK keeps `legal_effective = false` on both tables. `archival_records` stays
+> owner/admin-read; `signing_records` stays **service-role-only** (signature
+> material never reaches a client). **M6F issues NOTHING real:** no tax invoice,
+> allocation number, provider/tax-authority call, production mode, payment, or
+> legal PDF; it touches no `legal_number`/`allocation_number` and no
+> issued/provider_approved status. Real archival/signing/legal issuance requires
+> **official-source verification + a professional tax/accounting/legal review**
+> (M6G) before `legal_effective` may ever be true.
 >
 > **M6E status (implemented, SANDBOX-ONLY, disabled by default):** M6E wires M6B
 > (tax settings) + M6C (numbering) + M6D (sandbox provider) into a server-only

@@ -5,6 +5,17 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M6F — sandbox archival & signing (non-legal, disabled by default).** A
+> write-once, **NON-LEGAL** archival + signing layer for M6E sandbox documents —
+> tamper-evidence placeholders only. `sandbox_archive_and_sign_legal_document`
+> (server-only, **dormant**) is owner/admin-only, fail-closed behind the DB kill
+> switch, validates the target is an M6E sandbox non-legal row, generates a
+> canonical payload + SHA-256 in SQL (no caller JSON), and is write-once
+> (immutability trigger). Signatures are `SANDBOX-…` placeholders; a HARD CHECK
+> keeps `legal_effective=false`. **Not a real archive/signature, not
+> tax-compliant** — no tax invoice, allocation number, provider, production mode,
+> payment, or legal PDF. Built on:
+>
 > **Phase M6E — sandbox-only legal orchestration (disabled by default).** A
 > server-only, **dormant** orchestration (`src/lib/legal-invoicing/orchestration/`)
 > that wires tax settings + numbering + sandbox provider into a *simulation*

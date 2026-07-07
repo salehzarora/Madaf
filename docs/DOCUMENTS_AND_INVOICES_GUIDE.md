@@ -52,6 +52,15 @@ Approved wording (already in all three dictionaries under `docs.*`):
 > and persists no caller JSON (SQL-generated sandbox payloads only). Still nothing
 > legal is issued; all draft warnings remain.
 
+> **M6F (sandbox archival/signing) also changes NONE of the above.** M6F can, only
+> when the DB kill switch is on and the target is an M6E sandbox / non-legal
+> document, write **write-once, NON-LEGAL** archival + signing records —
+> tamper-evidence placeholders, not a real archive, not a real digital signature,
+> not tax-compliant. Signatures are `SANDBOX-…` placeholders; a HARD CHECK keeps
+> `legal_effective=false`. No real tax invoice, allocation number, provider call,
+> production mode, payment, or legal PDF; `legal_number`/status untouched; all
+> draft watermarks / "not a tax invoice" notices remain.
+
 Hebrew document UI may show: **הזמנה**, **תעודת משלוח**, **טיוטת חשבונית
 מס** — never plain "חשבונית מס" as a document title, and never wording that
 implies legal issuance.
