@@ -1,4 +1,4 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F · M6G · M7B)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F · M6G · M7B · M7B.1)
 
 > **M7B — phone-OTP sign-in (primary method).** Supplier/admin sign-in is now
 > **phone-number OTP** (`signInWithOtp({ phone })` → `verifyOtp({ phone, token,
@@ -13,10 +13,15 @@
 >
 > **Hosted phone OTP requires an SMS provider** configured in the Supabase
 > dashboard (or a Send SMS Hook) — **no provider secret is ever committed**
-> (`MADAF_AUTH_PRIMARY_METHOD` is the only app flag; Twilio/etc. creds live in
-> Supabase secrets). **Local Supabase testing** uses `supabase/config.toml`
-> `[auth.sms.test_otp]` (fake number→code, no SMS, but a REAL local session —
-> RLS intact). A separate **fail-closed DEV fake-OTP path**
+> (Twilio/etc. creds live in Supabase secrets). **Local Supabase testing**
+> (M7B.1) uses `supabase/config.toml`: a **dummy, non-secret** local SMS
+> provider (GoTrue needs one *enabled* or it disables phone login) **plus**
+> `[auth.sms.test_otp]` (`972500000001`/`2` → `123456`) — the test numbers
+> verify with **no network call** (`{"message_id":"test-otp"}`) and yield a
+> **REAL local session, RLS intact**; a real number just fails to send locally.
+> **M7B.1 also server-enforces the email/password policy:** `signInAction`/
+> `signUpAction` reject (not just hide the UI) unless `emailPasswordAuthAllowed()`
+> — i.e. email-primary, or `MADAF_EMAIL_AUTH_ENABLED=true`, or non-production. A separate **fail-closed DEV fake-OTP path**
 > (`src/lib/auth/dev-otp.ts`, `MADAF_DEV_PHONE_OTP_*`) exists for **mock mode
 > only**: disabled by default, HARD-off when `NODE_ENV=production` or against a
 > non-local Supabase URL, allow-listed numbers + a server-only code — it invents
@@ -178,9 +183,24 @@ email fallback in `src/components/auth/auth-panel.tsx`. The OTP is verified
 | Flag | Purpose | Default |
 | --- | --- | --- |
 | `MADAF_AUTH_PRIMARY_METHOD` | `phone` \| `email` — first method shown | `phone` |
+| `MADAF_EMAIL_AUTH_ENABLED` | allow email/password (UI **and** server) in phone-primary prod | `false` |
 | `MADAF_DEV_PHONE_OTP_ENABLED` | enable the mock/dev fake-OTP path | `false` |
 | `MADAF_DEV_PHONE_OTP_ALLOWED_NUMBERS` | comma list of fake E.164 numbers | — |
 | `MADAF_DEV_PHONE_OTP_CODE` | the fake code (server-only) | — |
+
+### Email/password fallback is SERVER-ENFORCED (M7B.1)
+
+`emailPasswordAuthAllowed()` (`src/lib/config/auth.ts`) is the **single policy
+source** used by BOTH the UI (`AuthPanel` fallback visibility) and the server
+actions `signInAction`/`signUpAction`. Email/password is allowed only when: it
+is the primary method (`MADAF_AUTH_PRIMARY_METHOD=email`), OR
+`MADAF_EMAIL_AUTH_ENABLED=true`, OR `NODE_ENV !== production`. So a
+**phone-primary production** deployment with no explicit opt-in has
+email/password **fully off** — hiding the UI *and* making `signInAction`/
+`signUpAction` reject a direct call with a generic error (no config leak), not
+just hiding the form. `resetPasswordForEmail` (client, `/reset-password`) is
+unchanged and only useful where email accounts exist. Server-only; never
+`NEXT_PUBLIC`; missing/blank reads as false.
 
 ### DEV / MOCK fake-OTP path — safe by construction
 
@@ -191,9 +211,24 @@ production` **and** the Supabase URL (if any) is local **and** a code is set
 **and** ≥1 number is allow-listed. Even when it "succeeds" it invents **no**
 session and grants **no** tenant access — mock admin is already open and has no
 DB/RLS — so it can never be a production bypass. In **Supabase** mode the app
-**always** uses real `signInWithOtp`/`verifyOtp`; for local Supabase testing,
-use `supabase/config.toml` `[auth.sms.test_otp]` (fake number→code, no SMS, but
-a REAL local session, RLS intact).
+**always** uses real `signInWithOtp`/`verifyOtp`.
+
+### Local Supabase phone OTP (M7B.1 fix)
+
+GoTrue **disables phone login entirely unless some SMS provider is "enabled"**
+(`WARN: no SMS provider is enabled. Disabling phone login`), so
+`[auth.sms.test_otp]` alone is not enough. `supabase/config.toml` therefore
+enables the Twilio provider with **obviously-fake, non-secret DUMMY** values
+**and** the `[auth.sms.test_otp]` map (`972500000001` / `972500000002` →
+`123456`). The test numbers are intercepted and verified with **no network
+call** (the `/auth/v1/otp` response is `{"message_id":"test-otp"}`); a non-test
+number just fails to send locally (the dummy creds can't authenticate to
+Twilio — probed: `sms_send_failed`). `verifyOtp` yields a **real local Supabase
+session with RLS intact** (probed: a non-member phone session sees zero tenant
+rows; adding a `tenant_users` membership makes the same session see its tenant
+data). This block governs the **local stack only**; hosted staging/production
+uses a **real provider (or Send SMS Hook) in the Supabase dashboard/secrets** —
+never in the repo.
 
 ### Hosted production/staging setup checklist
 
@@ -201,7 +236,9 @@ a REAL local session, RLS intact).
 - [ ] Configure an **SMS provider** (Twilio/MessageBird/Vonage/etc.) **or** a
       **Send SMS Hook** in the dashboard. **Never commit provider secrets** —
       they live in Supabase secrets, not this repo.
-- [ ] Set `MADAF_AUTH_PRIMARY_METHOD=phone` (email fallback then hidden in prod).
+- [ ] Set `MADAF_AUTH_PRIMARY_METHOD=phone`. Email/password is then OFF in prod
+      (UI **and** server actions) unless `MADAF_EMAIL_AUTH_ENABLED=true` — set
+      that only if you rely on email invites (see the limitation below).
 - [ ] Leave `MADAF_DEV_PHONE_OTP_ENABLED` unset/false (it is inert in prod anyway).
 - [ ] Configure **auth redirect / site URLs** for the staging/production domain.
 - [ ] Review **rate limits** (`auth.rate_limit.sms_sent`, `token_verifications`,
@@ -214,9 +251,10 @@ Team invites (M4B) are **email-based** and the accept RPC verifies the invited
 **email** against the caller's account. A **phone-only** account has no email
 and therefore **cannot accept an email invite yet**. M7B deliberately makes
 **no schema migration** here. Minimal safe behavior for now: invited teammates
-sign in with the **email** the invite was issued to (email fallback stays
-available in dev; enable it in prod via `MADAF_AUTH_PRIMARY_METHOD=email` for an
-invite-heavy deployment, or add phone-invite support in a follow-up). Owner/
+sign in with the **email** the invite was issued to (email auth stays available
+in dev; in a phone-primary **production** deployment set
+`MADAF_EMAIL_AUTH_ENABLED=true` — or `MADAF_AUTH_PRIMARY_METHOD=email` — to keep
+email invites working, or add phone-invite support in a follow-up). Owner/
 admin onboarding and tenant creation are **not** email-coupled (they key on the
 `auth.users` id) and work unchanged for phone users. Follow-up: phone-based
 invites (match on phone, or let a user add an email) — a separate, reviewed change.

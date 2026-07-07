@@ -5,14 +5,18 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
-> **Phase M7B — phone-OTP sign-in (primary login method).** Supplier/admin
-> sign-in is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`), with
-> email+password kept as a secondary dev/local fallback. **No tenant/RLS
+> **Phase M7B (+ M7B.1) — phone-OTP sign-in (primary login method).**
+> Supplier/admin sign-in is now **phone-number OTP** (`signInWithOtp`/
+> `verifyOtp`), with email+password as a secondary fallback. **No tenant/RLS
 > boundary changed** — sessions still bind to an `auth.users` id and
-> membership/roles/RLS come from `tenant_users`. Hosted phone OTP needs an SMS
-> provider configured in the Supabase dashboard (**no provider secret in the
-> repo**); local testing uses `config.toml` `[auth.sms.test_otp]` and a
-> fail-closed, default-off DEV fake-OTP path for mock mode. No legal/M6 change;
+> membership/roles/RLS come from `tenant_users`; **no migration**. Hosted phone
+> OTP needs an SMS provider configured in the Supabase dashboard (**no provider
+> secret in the repo**). **M7B.1** made local phone OTP actually work
+> (`config.toml` enables a **dummy, non-secret** local SMS provider + test-OTP
+> map → real local session, no SMS sent) and **server-enforces** the
+> email/password fallback (`signInAction`/`signUpAction` reject in phone-primary
+> production unless `MADAF_EMAIL_AUTH_ENABLED=true`), plus a fail-closed,
+> default-off DEV fake-OTP path for mock mode. No legal/M6 change;
 > `legal_effective` stays hard-false. See
 > [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md) §2b. Built on:
 >

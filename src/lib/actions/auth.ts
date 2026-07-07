@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 
 import { verifyDevPhoneOtp, isDevPhoneAllowed } from "@/lib/auth/dev-otp";
 import { normalizePhoneE164 } from "@/lib/auth/phone";
+import { emailPasswordAuthAllowed } from "@/lib/config/auth";
 import { getDataMode } from "@/lib/data";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
 
@@ -111,6 +112,9 @@ export async function signInAction(input: {
   password: string;
 }): Promise<AuthResult> {
   try {
+    // Server-enforced policy (M7B.1): email/password is OFF by default in
+    // phone-primary production. Reject with a generic error — no config leak.
+    if (!emailPasswordAuthAllowed()) return { ok: false };
     if (!isEmail(input.email)) return { ok: false };
     if (typeof input.password !== "string" || input.password.length < 6) {
       return { ok: false };
@@ -138,6 +142,8 @@ export async function signUpAction(input: {
   password: string;
 }): Promise<AuthResult> {
   try {
+    // Same server-enforced policy as signInAction (M7B.1).
+    if (!emailPasswordAuthAllowed()) return { ok: false };
     if (!isEmail(input.email)) return { ok: false };
     if (typeof input.password !== "string" || input.password.length < 8) {
       return { ok: false };

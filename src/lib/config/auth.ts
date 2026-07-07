@@ -24,12 +24,33 @@ export function authPrimaryMethod(): AuthMethod {
 }
 
 /**
- * Whether the email + password form should be offered as a fallback on the
- * login screen. Always available in non-production (the demo users are
- * email-based); in production it appears only when email is the primary
- * method. Phone-primary production deployments therefore show phone OTP only.
+ * Whether email + password authentication is permitted AT ALL. This is the
+ * SINGLE source of truth used by BOTH the UI (fallback visibility) and the
+ * server actions (`signInAction`/`signUpAction`), so the browser can never
+ * reach an endpoint the policy hides — M7B.1 blocker #2.
+ *
+ * Allowed when ANY of:
+ *  - email is the primary method (`MADAF_AUTH_PRIMARY_METHOD=email`), or
+ *  - explicitly enabled via the server-only `MADAF_EMAIL_AUTH_ENABLED=true`
+ *    (e.g. an email-invite-heavy phone-primary production deployment), or
+ *  - not a production build (dev/local: the seeded demo users are
+ *    email-based and the email-invite limitation needs email sign-in).
+ *
+ * So a **phone-primary production** deployment with no explicit opt-in has
+ * email/password fully OFF — the UI hides it AND the server actions reject it.
+ * Server-only; never `NEXT_PUBLIC` (a missing/blank flag reads as false).
+ */
+export function emailPasswordAuthAllowed(): boolean {
+  if (authPrimaryMethod() === "email") return true;
+  if (process.env.MADAF_EMAIL_AUTH_ENABLED === "true") return true;
+  return process.env.NODE_ENV !== "production";
+}
+
+/**
+ * Whether the email + password form should be shown on the login screen.
+ * Aliased to {@link emailPasswordAuthAllowed} so UI visibility and server
+ * enforcement can never diverge.
  */
 export function emailFallbackVisible(): boolean {
-  if (authPrimaryMethod() === "email") return true;
-  return process.env.NODE_ENV !== "production";
+  return emailPasswordAuthAllowed();
 }
