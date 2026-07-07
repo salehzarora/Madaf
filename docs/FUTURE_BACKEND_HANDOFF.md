@@ -4,6 +4,23 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STATUS — M7B: phone-OTP sign-in (primary method).** Supplier/admin login
+> is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`, server actions in
+> `src/lib/actions/auth.ts`), with **email+password kept as a secondary
+> dev/local fallback** (hidden in production unless `MADAF_AUTH_PRIMARY_METHOD=
+> email`). **No tenant/RLS/security boundary changed** — a session is still a
+> Supabase-Auth session bound to an `auth.users` id; membership/roles/RLS come
+> from `tenant_users` unchanged. **Hosted phone OTP needs an SMS provider set in
+> the Supabase dashboard (or a Send SMS Hook) — NO provider secret is committed.**
+> Local Supabase testing uses `config.toml` `[auth.sms.test_otp]` (fake
+> number→code, no SMS, REAL local session, RLS intact). A **fail-closed DEV
+> fake-OTP path** (`src/lib/auth/dev-otp.ts`, `MADAF_DEV_PHONE_OTP_*`) works in
+> **mock mode only**, disabled by default, HARD-off in production / non-local
+> URLs, invents no session, grants no tenant access. **Limitation:** email team
+> invites still verify the invited email, so a phone-only account can't accept
+> one yet (no schema migration in M7B — documented follow-up). No legal/M6
+> change; `legal_effective` stays hard-false. See
+> [docs/AUTH_AND_ACCESS_MODEL.md](AUTH_AND_ACCESS_MODEL.md) §2b. Prior:
 > **AUDIT — M7A: product readiness & regression audit (DOCS ONLY).** See
 > **[docs/PRODUCT_READINESS_AUDIT_M7A.md](PRODUCT_READINESS_AUDIT_M7A.md)** —
 > full harness green (lint, 216-page build, `npm audit` 0 vulns, local DB

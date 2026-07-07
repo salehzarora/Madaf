@@ -257,8 +257,11 @@ otp_expiry = 3600
 # content_path = "./templates/password_changed_notification.html"
 
 [auth.sms]
-# Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+# M7B: phone OTP is Madaf's primary supplier/admin sign-in. Locally we allow
+# SMS sign-ups so a phone number can create a user via OTP. (Hosted projects
+# configure this + a real SMS provider in the Supabase dashboard; NEVER commit
+# provider secrets — see .env.example and docs/AUTH_AND_ACCESS_MODEL.md.)
+enable_signup = true
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
@@ -266,9 +269,14 @@ template = "Your code is {{ `{{ .Code }}` }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
 max_frequency = "5s"
 
-# Use pre-defined map of phone number to OTP for testing.
-# [auth.sms.test_otp]
-# 4152127777 = "123456"
+# M7B: pre-defined phone→OTP map for LOCAL testing ONLY. These are obviously
+# fake numbers and a fake code; Supabase intercepts them and sends NO real SMS,
+# yet still issues a REAL local session (RLS fully intact — no bypass). This
+# file governs the LOCAL stack only; hosted projects never use it. Keep these
+# in sync with MADAF_DEV_PHONE_OTP_ALLOWED_NUMBERS in .env.example.
+[auth.sms.test_otp]
+972500000001 = "123456"
+972500000002 = "123456"
 
 # Configure logged in session timeouts.
 # [auth.sessions]

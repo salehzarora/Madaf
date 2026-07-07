@@ -5,6 +5,17 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+> **Phase M7B — phone-OTP sign-in (primary login method).** Supplier/admin
+> sign-in is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`), with
+> email+password kept as a secondary dev/local fallback. **No tenant/RLS
+> boundary changed** — sessions still bind to an `auth.users` id and
+> membership/roles/RLS come from `tenant_users`. Hosted phone OTP needs an SMS
+> provider configured in the Supabase dashboard (**no provider secret in the
+> repo**); local testing uses `config.toml` `[auth.sms.test_otp]` and a
+> fail-closed, default-off DEV fake-OTP path for mock mode. No legal/M6 change;
+> `legal_effective` stays hard-false. See
+> [docs/AUTH_AND_ACCESS_MODEL.md](docs/AUTH_AND_ACCESS_MODEL.md) §2b. Built on:
+>
 > **Phase M6G — production activation review gate (docs only).** Added
 > [docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md)
 > — **no code, schema, or runtime change**. M6B–M6F remain sandbox / non-legal /

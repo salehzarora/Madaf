@@ -1,5 +1,33 @@
-# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F · M6G)
+# Auth & Access Model (M4A · M4A.1 · M4B · M4C · M4D · M4D.1 · M4D.2 · M6B · M6E · M6F · M6G · M7B)
 
+> **M7B — phone-OTP sign-in (primary method).** Supplier/admin sign-in is now
+> **phone-number OTP** (`signInWithOtp({ phone })` → `verifyOtp({ phone, token,
+> type: "sms" })`), with email+password retained as a **secondary dev/local
+> fallback** (hidden in production unless email is primary). **This changed NO
+> tenant/RLS/security boundary:** Supabase Auth still issues a session bound to
+> an `auth.users` id, and membership/roles/RLS resolve from `tenant_users`
+> exactly as before — phone vs email only changes how the `auth.users` row is
+> created. New server actions `sendPhoneOtpAction`/`verifyPhoneOtpAction` (in
+> `src/lib/actions/auth.ts`) set the httpOnly session cookies; the OTP is
+> verified server-side and no token/code reaches client JS.
+>
+> **Hosted phone OTP requires an SMS provider** configured in the Supabase
+> dashboard (or a Send SMS Hook) — **no provider secret is ever committed**
+> (`MADAF_AUTH_PRIMARY_METHOD` is the only app flag; Twilio/etc. creds live in
+> Supabase secrets). **Local Supabase testing** uses `supabase/config.toml`
+> `[auth.sms.test_otp]` (fake number→code, no SMS, but a REAL local session —
+> RLS intact). A separate **fail-closed DEV fake-OTP path**
+> (`src/lib/auth/dev-otp.ts`, `MADAF_DEV_PHONE_OTP_*`) exists for **mock mode
+> only**: disabled by default, HARD-off when `NODE_ENV=production` or against a
+> non-local Supabase URL, allow-listed numbers + a server-only code — it invents
+> **no** session and grants **no** tenant access (mock admin is already open), so
+> it is **never** a production bypass. **Red lines (unchanged):** no
+> `NEXT_PUBLIC` service-role key, no `NEXT_PUBLIC` OTP code, no provider creds in
+> the repo/client bundle, no OTP/phone logging, no session invented outside
+> Supabase Auth in production. **Invite acceptance still verifies the invited
+> EMAIL** (M4B) — a phone-only account cannot accept an email invite yet; see the
+> M7B limitation note below.
+>
 > **M6G (documentation-only review gate)** changed no permissions, RPCs, RLS,
 > grants, or runtime behavior. It added
 > [docs/legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md](legal-invoicing/PRODUCTION_ACTIVATION_REVIEW_CHECKLIST.md),
@@ -106,7 +134,8 @@ storefront shows sample data. Everything below describes **supabase mode**.
 
 ## 2. Authentication
 
-- **Email/password**, via `@supabase/ssr` cookie-bound clients. The
+- **Phone-number OTP is the primary method (M7B; see §2b)**; **email/password**
+  is a secondary fallback. Both use `@supabase/ssr` cookie-bound clients. The
   session lives in **httpOnly cookies** — no access token ever reaches
   client JavaScript.
 - `src/lib/supabase/server-auth.ts` — `createServerAuthClient()`, the
@@ -120,6 +149,92 @@ storefront shows sample data. Everything below describes **supabase mode**.
 - Sign-in / sign-out are Server Actions (`src/lib/actions/auth.ts`);
   the browser never sees a service-role key (there is none in the client
   bundle) and never sees the session token.
+
+## 2b. Phone OTP sign-in (M7B — primary method)
+
+Phone-number OTP is the **primary** supplier/admin login. Email+password is a
+**secondary fallback** kept for the seeded demo users and hidden in production
+(unless `MADAF_AUTH_PRIMARY_METHOD=email`). **The tenant/RLS/security model is
+unchanged** — a session is still a Supabase-Auth session bound to an
+`auth.users` id, and membership/roles/RLS come from `tenant_users`. Phone vs
+email only changes how the `auth.users` row is created.
+
+**Flow (two steps, server actions in `src/lib/actions/auth.ts`):**
+
+1. `sendPhoneOtpAction({ phone })` → normalizes to E.164
+   (`src/lib/auth/phone.ts`) → `client.auth.signInWithOtp({ phone })`.
+2. `verifyPhoneOtpAction({ phone, token })` → `client.auth.verifyOtp({ phone,
+   token, type: "sms" })`, which sets the httpOnly session cookies. Existing
+   routing then applies: member → `/admin`, session-without-membership →
+   `/onboarding`.
+
+UI: `src/components/auth/phone-otp-form.tsx` (2-step, i18n he/ar/en + RTL,
+resend cooldown, change-number, clear errors, Ledger style), composed with the
+email fallback in `src/components/auth/auth-panel.tsx`. The OTP is verified
+**server-side**; no code/token is in the client bundle.
+
+**Config flags (server-only, never `NEXT_PUBLIC`):**
+
+| Flag | Purpose | Default |
+| --- | --- | --- |
+| `MADAF_AUTH_PRIMARY_METHOD` | `phone` \| `email` — first method shown | `phone` |
+| `MADAF_DEV_PHONE_OTP_ENABLED` | enable the mock/dev fake-OTP path | `false` |
+| `MADAF_DEV_PHONE_OTP_ALLOWED_NUMBERS` | comma list of fake E.164 numbers | — |
+| `MADAF_DEV_PHONE_OTP_CODE` | the fake code (server-only) | — |
+
+### DEV / MOCK fake-OTP path — safe by construction
+
+`src/lib/auth/dev-otp.ts` is a **fail-closed** testing convenience, consulted
+**only in mock mode** (`getDataMode() !== "supabase"`). It returns enabled only
+when ALL hold: `MADAF_DEV_PHONE_OTP_ENABLED=true` **and** `NODE_ENV !==
+production` **and** the Supabase URL (if any) is local **and** a code is set
+**and** ≥1 number is allow-listed. Even when it "succeeds" it invents **no**
+session and grants **no** tenant access — mock admin is already open and has no
+DB/RLS — so it can never be a production bypass. In **Supabase** mode the app
+**always** uses real `signInWithOtp`/`verifyOtp`; for local Supabase testing,
+use `supabase/config.toml` `[auth.sms.test_otp]` (fake number→code, no SMS, but
+a REAL local session, RLS intact).
+
+### Hosted production/staging setup checklist
+
+- [ ] Enable the **Phone** provider in the Supabase dashboard (Auth → Providers).
+- [ ] Configure an **SMS provider** (Twilio/MessageBird/Vonage/etc.) **or** a
+      **Send SMS Hook** in the dashboard. **Never commit provider secrets** —
+      they live in Supabase secrets, not this repo.
+- [ ] Set `MADAF_AUTH_PRIMARY_METHOD=phone` (email fallback then hidden in prod).
+- [ ] Leave `MADAF_DEV_PHONE_OTP_ENABLED` unset/false (it is inert in prod anyway).
+- [ ] Configure **auth redirect / site URLs** for the staging/production domain.
+- [ ] Review **rate limits** (`auth.rate_limit.sms_sent`, `token_verifications`,
+      `sign_in_sign_ups`) and provider spend caps before launch.
+- [ ] Confirm no `NEXT_PUBLIC` OTP/service-role/provider values ship to the client.
+
+### Invite / email compatibility (M7B limitation)
+
+Team invites (M4B) are **email-based** and the accept RPC verifies the invited
+**email** against the caller's account. A **phone-only** account has no email
+and therefore **cannot accept an email invite yet**. M7B deliberately makes
+**no schema migration** here. Minimal safe behavior for now: invited teammates
+sign in with the **email** the invite was issued to (email fallback stays
+available in dev; enable it in prod via `MADAF_AUTH_PRIMARY_METHOD=email` for an
+invite-heavy deployment, or add phone-invite support in a follow-up). Owner/
+admin onboarding and tenant creation are **not** email-coupled (they key on the
+`auth.users` id) and work unchanged for phone users. Follow-up: phone-based
+invites (match on phone, or let a user add an email) — a separate, reviewed change.
+
+### Rate limiting & abuse
+
+OTP send/verify are subject to Supabase's per-IP auth rate limits (config in
+`[auth.rate_limit]`) plus the provider's own limits. The app adds a client-side
+**resend cooldown** (UX only). Network/edge IP rate limiting remains infra work
+(see the M7A audit). Never log phone numbers or OTP codes (the actions log a
+generic failure string only).
+
+### Rollback / fallback
+
+Phone OTP is additive. To fall back to email-first, set
+`MADAF_AUTH_PRIMARY_METHOD=email` (email form shown first; phone remains
+available via the toggle). The email/password actions and reset-password flow
+are **retained**, so a full revert is a config change, not a code change.
 
 ## 3. Session & tenant context
 

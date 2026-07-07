@@ -474,6 +474,32 @@ export interface Dictionary {
       forgotPassword: string;
       noAccount: string;
       haveAccount: string;
+      /** Toggle between phone OTP and email/password (M7B). */
+      useEmail: string;
+      usePhone: string;
+      /** Phone-number OTP sign-in (M7B, primary method). */
+      phone: {
+        step1Subtitle: string;
+        label: string;
+        placeholder: string;
+        hint: string;
+        sendCode: string;
+        sendingCode: string;
+        step2Subtitle: string;
+        codeLabel: string;
+        codePlaceholder: string;
+        verify: string;
+        verifying: string;
+        resend: string;
+        /** Resend cooldown label; `{seconds}` is replaced with the count. */
+        resendCountdown: string;
+        changeNumber: string;
+        invalidPhone: string;
+        sendError: string;
+        verifyError: string;
+        /** DEV-only banner shown when the fake-OTP test path is enabled. */
+        devNotice: string;
+      };
     };
     tenant: {
       switch: string;
