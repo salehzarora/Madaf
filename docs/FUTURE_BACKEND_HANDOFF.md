@@ -4,6 +4,17 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **EXECUTION — M7D: supervised staging deploy (DOCS ONLY; not yet deployed).**
+> Adds **[docs/deployment/STAGING_EXECUTION_M7D.md](deployment/STAGING_EXECUTION_M7D.md)**
+> — the secret-free execution tracker for the supervised staging deploy. As of
+> this branch the hosted Supabase + Vercel staging environment is **NOT
+> provisioned**; every hosted step + the full smoke checklist is **PENDING
+> operator action** (recorded, never fabricated). Local baseline is green
+> (Node 22, lint, build 216/216, audit 0; local `supabase db` checks unchanged
+> since M7C — Docker was offline this session). No secrets committed; legal/
+> payment boundary unchanged (`legal_effective` hard-false, all M6 flags off).
+> Execute §3–§9 of that log against a **staging** (never production) project.
+> Prior:
 > **STAGING — M7C: staging deployment readiness (DOCS + CI + safe config).**
 > Adds **[docs/deployment/STAGING_DEPLOYMENT_M7C.md](deployment/STAGING_DEPLOYMENT_M7C.md)**
 > (services, Vercel env matrix + forbidden vars, Supabase/Vercel/first-tenant
