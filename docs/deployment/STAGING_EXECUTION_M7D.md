@@ -444,3 +444,25 @@ off).
 **Verdict:** no blocking app performance bug. Biggest real improvement is the
 **DB region**; secondary is optional loading skeletons. Tracked as P2 (§12 #3/#8)
 — do not over-optimize.
+
+---
+
+## 14c. Latency remediation (M7D.2 + M7D.3)
+
+- **M7D.2 — DB moved to Frankfurt (operator-done).** New staging project
+  `madaf-staging-frankfurt` in **`eu-central-1`** replaces the Singapore one;
+  migrations applied via `db push` (never reset), Vercel repointed at it. This
+  cut the DB round-trip distance.
+- **M7D.3 — pin Vercel Functions to Frankfurt (code).** Admin pages are
+  dynamic/authenticated SSR, so if Vercel **Functions** still run far from the
+  Frankfurt DB, each navigation still pays cross-region latency. Added
+  **`vercel.json`** `{ "regions": ["fra1"] }` — the project-wide default
+  function region (Vercel docs: *Configure Project Default Function Region*),
+  keeping the **Node** runtime (Edge not used; PDF route stays `nodejs`). No app
+  code / mock-build impact (`vercel.json` is read only by Vercel at deploy).
+- **M7D.3 — perceived responsiveness.** Added `src/app/[locale]/admin/loading.tsx`
+  — a lightweight, RTL-safe, no-data skeleton shown in the content area while an
+  admin page renders (AdminShell/sidebar persists via the layout).
+- **Smoke result: PENDING** a Vercel redeploy from `main` after this merges —
+  record the subjective per-navigation feel (before Singapore ~1–2s → after
+  Frankfurt DB + `fra1` functions) and any still-slow pages.
