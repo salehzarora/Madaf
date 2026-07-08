@@ -25,22 +25,47 @@ export interface DeploymentSafetyReport {
 
 type Env = Record<string, string | undefined>;
 
-/** Substrings that must NEVER appear in a NEXT_PUBLIC (client-exposed) var name. */
+/**
+ * Substrings that must NEVER appear in a non-allowlisted NEXT_PUBLIC
+ * (client-exposed) var name — a secret shipped to the browser is a leak.
+ * Deliberately broad (generic `TOKEN`/`OTP`/`CODE`/`KEY` variants + named
+ * SMS providers) so near-misses like `NEXT_PUBLIC_API_TOKEN` are caught.
+ */
 const CLIENT_SECRET_MARKERS = [
   "SERVICE_ROLE",
   "SECRET",
+  "TOKEN",
+  "OTP",
+  "CODE",
+  "SMS",
+  "PRIVATE",
+  "PASSWORD",
+  "API_KEY",
+  "ACCESS_KEY",
   "AUTH_TOKEN",
-  "PRIVATE_KEY",
-  "OTP_CODE",
+  "BEARER",
+  "JWT",
   "TWILIO",
-  "SMS_PROVIDER",
+  "VONAGE",
+  "MESSAGEBIRD",
+  "TEXTLOCAL",
+  "PROVIDER_KEY",
+  "PROVIDER_SECRET",
+  "SIGNING",
+  "CREDENTIAL",
 ];
 
-/** The public Supabase anon key is the one legitimate NEXT_PUBLIC credential. */
+/**
+ * The ONLY NEXT_PUBLIC vars Madaf legitimately exposes to the browser. Anything
+ * else is treated as suspicious: a secret-shaped name is an error, and any
+ * other unknown NEXT_PUBLIC var is a warning (keep the public surface tight).
+ */
 const ALLOWED_PUBLIC_KEYS = new Set([
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_MADAF_DATA_MODE",
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
 ]);
 
 function isLocalUrl(url: string): boolean {
@@ -62,13 +87,19 @@ export function assessDeploymentSafety(
   const warnings: string[] = [];
   const isDeploy = treatAsDeploy || env.NODE_ENV === "production";
 
-  // 1. No secret-shaped value may be client-exposed via NEXT_PUBLIC_* — ever.
+  // 1. Keep the NEXT_PUBLIC surface tight. A secret-shaped name is an ERROR
+  //    (it would ship a secret to the browser); any other unknown NEXT_PUBLIC
+  //    var is a WARNING (should be on the small allowlist).
   for (const key of Object.keys(env)) {
     if (!key.startsWith("NEXT_PUBLIC_")) continue;
     if (ALLOWED_PUBLIC_KEYS.has(key)) continue;
     if (CLIENT_SECRET_MARKERS.some((m) => key.includes(m))) {
       errors.push(
-        `${key} is a client-exposed NEXT_PUBLIC var whose name looks secret — remove it (secrets are server-only).`,
+        `${key} is a client-exposed NEXT_PUBLIC var whose name looks secret — remove it (secrets are server-only, never NEXT_PUBLIC).`,
+      );
+    } else {
+      warnings.push(
+        `${key} is a NEXT_PUBLIC var not on the known allowlist — confirm it is safe to expose to the browser.`,
       );
     }
   }
@@ -123,12 +154,13 @@ export function assessDeploymentSafety(
     );
   }
 
-  // 5. Trusted document storage: hosted 'enabled' needs a pinned project ref.
+  // 5. Trusted document storage: 'enabled' ALWAYS requires a pinned project ref
+  //    (regardless of whether a Supabase URL is present) — it is what stops the
+  //    trusted service-role client from ever targeting an arbitrary project.
   if (env.MADAF_TRUSTED_DOCUMENT_STORAGE === "enabled") {
-    const url = env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-    if (url && !isLocalUrl(url) && !env.MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF) {
+    if (!env.MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF?.trim()) {
       errors.push(
-        "MADAF_TRUSTED_DOCUMENT_STORAGE=enabled with a hosted URL requires MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF.",
+        "MADAF_TRUSTED_DOCUMENT_STORAGE=enabled requires MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF (non-blank) to pin the target project.",
       );
     }
   }

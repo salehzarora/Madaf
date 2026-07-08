@@ -21,7 +21,7 @@ Related: [../AUTH_AND_ACCESS_MODEL.md](../AUTH_AND_ACCESS_MODEL.md) ·
 
 | Service | Purpose | Notes |
 | --- | --- | --- |
-| **GitHub repo** | source + CI (`.github/workflows/ci.yml`) | CI runs lint/build/audit, no secrets |
+| **GitHub repo** | source + CI (`.github/workflows/ci.yml`) | CI runs lint/build/audit on **Node 22**, no secrets |
 | **Vercel project** | hosts the Next.js app | build = `next build`; framework auto-detected |
 | **Supabase staging project** | hosted Postgres + Auth + Storage | SEPARATE project from any future production |
 | **SMS provider** (Twilio/MessageBird/Vonage/…) **or Send SMS Hook** | phone-OTP delivery | credentials live in the **Supabase dashboard/secrets**, never in the repo/Vercel client env |
@@ -50,7 +50,7 @@ server-only.**
 | `MADAF_EMAIL_AUTH_ENABLED` | `false` (or `true` if email invites needed) | server | server-enforced email/password policy (M7B.1) |
 | `MADAF_DEV_PHONE_OTP_ENABLED` | **unset / `false`** | server | the fake-OTP path — must be OFF in staging |
 | `MADAF_TRUSTED_DOCUMENT_STORAGE` | `enabled` | server | to store PDFs on hosted Supabase |
-| `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF` | `<ref>` | server | pins storage to the staging project |
+| `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF` | `<ref>` | server | **required whenever storage is `enabled`** — pins storage to the staging project |
 | `MADAF_LEGAL_INVOICING_ENABLED` | **unset / `false`** | server | legal stays OFF |
 | `MADAF_TAX_PROVIDER_MODE` | **unset / `disabled`** | server | never `production` |
 | `MADAF_LEGAL_NUMBERING_ENABLED` | **unset / `false`** | server | legal numbering OFF |
@@ -188,10 +188,12 @@ server-only linter `assessDeploymentSafety()`
 - **Exact-path validation** — `set_document_storage` requires the object path to
   equal the DB-derived `<tenant>/documents/<order>/<type>/<id>_<locale>.pdf`
   (rejects mismatched tenant/order/type/id/locale, traversal, non-.pdf, blank).
-- **Hosted opt-in** — set `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
-  `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<ref>` (pins the storage client to
-  the staging project). If unset/misconfigured, the route **falls back to
-  streaming** the freshly-rendered PDF (no storage) — safe, never errors.
+- **Hosted opt-in** — set `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled`. When
+  enabled, `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<ref>` is **always
+  required** (the safety linter errors if it is missing/blank) — it pins the
+  service-role storage client so it can never target an arbitrary project. If
+  unset/misconfigured, the route **falls back to streaming** the freshly-
+  rendered PDF (no storage) — safe, never errors.
 - **Staging smoke** — place a test order, generate each draft document, confirm
   the signed-URL download works and the DRAFT/"not a tax invoice" markings show.
 
@@ -222,11 +224,19 @@ server-only linter `assessDeploymentSafety()`
 
 `src/lib/config/deployment-safety.ts` exports `assessDeploymentSafety(env,
 { treatAsDeploy })` — a **pure, non-throwing** check that returns `{ ok,
-errors, warnings }`. It flags a `NEXT_PUBLIC` secret, an enabled legal flag, a
-non-`disabled`/`sandbox` provider mode, an enabled dev fake-OTP path in a
-deploy, a local Supabase URL in a deploy, and missing Supabase/app-URL config.
-It is **not** run at build time (so the zero-env mock build never breaks); call
-it from an ops health check or a one-off script. Example (local):
+errors, warnings }`. It keeps the **`NEXT_PUBLIC` surface tight**: only a small
+allowlist (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_MADAF_DATA_MODE`, `NEXT_PUBLIC_APP_URL`/`NEXT_PUBLIC_SITE_URL`) is
+expected — any other `NEXT_PUBLIC_*` whose name looks secret (broad markers:
+`SERVICE_ROLE`/`SECRET`/`TOKEN`/`OTP`/`CODE`/`SMS`/`PRIVATE`/`PASSWORD`/`API_KEY`/
+`ACCESS_KEY`/`BEARER`/`JWT`/`TWILIO`/`VONAGE`/`MESSAGEBIRD`/`TEXTLOCAL`/…) is an
+**error**, and any other unknown `NEXT_PUBLIC_*` is a **warning**. It also flags
+an enabled legal flag, a non-`disabled`/`sandbox` provider mode, an enabled dev
+fake-OTP path in a deploy, a local Supabase URL in a deploy,
+`MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` **without a project ref** (always
+required), and missing Supabase/app-URL config. It is **not** run at build time
+(so the zero-env mock build never breaks); call it from an ops health check or a
+one-off script. Example (local):
 
 ```bash
 NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/deployment-safety.ts').then(m=>console.log(m.assessDeploymentSafety(process.env,{treatAsDeploy:true})))"

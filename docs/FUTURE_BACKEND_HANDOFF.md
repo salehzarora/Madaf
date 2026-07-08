@@ -17,7 +17,13 @@ everything here was built to be wired, not rebuilt.
 > unaffected). **Deploys nothing, commits no secrets, connects no hosted
 > Supabase, changes no runtime/RLS/schema.** Legal stays OFF (`legal_effective`
 > hard-false), no payments, dev fake-OTP disabled in staging, SMS provider
-> secrets live in the Supabase dashboard only. Prior:
+> secrets live in the Supabase dashboard only. **M7C.1** fixed three review
+> blockers: CI now runs on **Node 22** (the `@supabase` lockfile requires
+> `node >=22`); the safety linter's `NEXT_PUBLIC` detection is tightened to a
+> small allowlist + broad secret markers (`TOKEN`/`OTP`/`CODE`/`SMS`/`PRIVATE`/
+> `JWT`/named SMS providers/…), catching near-misses like
+> `NEXT_PUBLIC_API_TOKEN`; and `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` now
+> **always** requires `..._PROJECT_REF` (regardless of a Supabase URL). Prior:
 > **STATUS — M7B (+ M7B.1 hardening): phone-OTP sign-in (primary method).**
 > Supplier/admin login is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`,
 > server actions in `src/lib/actions/auth.ts`), with email+password as a
