@@ -10,12 +10,13 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import type { InventoryItem, Order, Product } from "@/lib/types";
 
-/** Localized product name with a safe fallback chain (locale → he → en). */
+/** Localized product name with a safe fallback chain (locale → he → en → ""). */
 export function productName(product: Product, locale: Locale): string {
   return (
     product.translations[locale]?.name ??
     product.translations.he?.name ??
-    product.translations.en.name
+    product.translations.en?.name ??
+    ""
   );
 }
 

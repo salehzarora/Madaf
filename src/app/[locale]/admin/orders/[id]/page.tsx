@@ -116,7 +116,9 @@ export default async function AdminOrderDetailPage({
                 {order.items.map((item) => {
                   const product = productById.get(item.productId);
                   if (!product) return null;
-                  const category = categoryById.get(product.categoryId)!;
+                  // May be undefined (category deleted / not in the tenant list);
+                  // ProductImage tolerates an undefined category.
+                  const category = categoryById.get(product.categoryId);
                   return (
                     <li
                       key={item.productId}

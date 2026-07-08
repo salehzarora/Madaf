@@ -514,3 +514,48 @@ draft document generation, order → warehouse, navigation speed (post-M7D.3).
 change (`legal_effective` hard-false, M6 flags off, drafts stay non-legal). New
 migration only touches order numbering (additive column + trigger + one RPC
 return value); no hosted `db reset`/`config push`.
+
+---
+
+## 16. M7E.1 — staging errors after M7E deploy (root cause = hosted state)
+
+Operator reported product-detail (`/he/product/<valid-uuid>`) and admin-order-
+detail (`/he/admin/orders/<valid-uuid>`) still throw a server error, and the
+shop success still shows the **sequential** `MDF-1004`.
+
+**Reproduction (local, supabase mode, real session):** hit all four pages with
+a logged-in owner — product detail, admin order detail (valid customer **and**
+NULL customer), and `/he/catalog` — **all returned HTTP 200, no error.** The
+current M7E code renders correctly, including null-customer orders (customer →
+`"—"`). The crash **does not reproduce with the current code**.
+
+**Root cause = hosted state, not code:**
+1. **The M7E migration is NOT applied to Frankfurt.** The success screen showing
+   the sequential `MDF-1004` proves `create_order_request_from_token` is still
+   the pre-M7E version → `20260716100000_order_public_ref` was never `db push`ed
+   to `xcfjxgdfjvsqkhuiczu`.
+2. **The Vercel deployment is very likely stale (pre-M7E guard).** A pre-M7E
+   build has the *unguarded* getters, so a **null-customer order** → `getCustomer("")`
+   → `.eq("id","")` on a uuid column → Postgres error → the exact server-error
+   page; a null-category product → `getCategory("")` likewise. The M7E `isUuid`
+   guard (already on `main`) fixes both, so a **current** deploy renders/notFounds
+   cleanly — matching the local 200s.
+
+**Operator actions to resolve (no code needed for the crashes):**
+- `supabase db push` to Frankfurt (confirm STAGING first; never reset/config push)
+  → applies `20260716100000` → customer then sees `MDF-XXXXXXXX`.
+- **Redeploy Vercel from `main` with build cache OFF** → serves the M7E guard.
+- Re-test the two URLs; if either still errors, capture the real error from
+  **Vercel → madaf → Deployments → (the 9e4e7ca deploy) → Runtime Logs / the
+  failing Function** (reproduce the URL, copy the message + `Digest`).
+
+**M7E.1 code (defensive hardening, low-risk):** `productName` now falls back to
+`""` if `translations.en` is missing; admin order detail drops a non-null
+assertion on the item category (`ProductImage` tolerates an undefined category).
+These make edge-case data render gracefully regardless of the above.
+
+**`/he/catalog` without a token = EXPECTED, not a bug.** The catalog is
+RLS-gated — an anonymous visitor gets zero tenant rows by design (the catalog is
+never globally public); `CatalogView` already shows an `EmptyState`. Customers
+order through their private `/shop/<token>` link, which is tied to their store.
+No code change.
