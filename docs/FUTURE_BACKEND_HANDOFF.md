@@ -4,6 +4,26 @@ For the coding/backend agent that connects Madaf to real infrastructure.
 Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
 everything here was built to be wired, not rebuilt.
 
+> **STAGING — M7C: staging deployment readiness (DOCS + CI + safe config).**
+> Adds **[docs/deployment/STAGING_DEPLOYMENT_M7C.md](deployment/STAGING_DEPLOYMENT_M7C.md)**
+> (services, Vercel env matrix + forbidden vars, Supabase/Vercel/first-tenant
+> checklists, phone-OTP + storage + legal-boundary readiness) and
+> **[docs/deployment/RUNBOOK_STAGING.md](deployment/RUNBOOK_STAGING.md)**
+> (monitoring, failure-mode triage, rollback/incident, demo-data plan). Adds a
+> secret-free **CI** workflow (`.github/workflows/ci.yml`: lint + build + audit
+> on PR/main, mock mode, no hosted services) and a **pure, non-throwing**
+> server-only misconfig linter (`src/lib/config/deployment-safety.ts`,
+> `assessDeploymentSafety()` — never run at build, so the zero-env mock build is
+> unaffected). **Deploys nothing, commits no secrets, connects no hosted
+> Supabase, changes no runtime/RLS/schema.** Legal stays OFF (`legal_effective`
+> hard-false), no payments, dev fake-OTP disabled in staging, SMS provider
+> secrets live in the Supabase dashboard only. **M7C.1** fixed three review
+> blockers: CI now runs on **Node 22** (the `@supabase` lockfile requires
+> `node >=22`); the safety linter's `NEXT_PUBLIC` detection is tightened to a
+> small allowlist + broad secret markers (`TOKEN`/`OTP`/`CODE`/`SMS`/`PRIVATE`/
+> `JWT`/named SMS providers/…), catching near-misses like
+> `NEXT_PUBLIC_API_TOKEN`; and `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` now
+> **always** requires `..._PROJECT_REF` (regardless of a Supabase URL). Prior:
 > **STATUS — M7B (+ M7B.1 hardening): phone-OTP sign-in (primary method).**
 > Supplier/admin login is now **phone-number OTP** (`signInWithOtp`/`verifyOtp`,
 > server actions in `src/lib/actions/auth.ts`), with email+password as a
