@@ -146,7 +146,7 @@ npm run dev        # → http://localhost:3000  (redirects to /he)
 Other commands: `npm run build` (production build), `npm run start`
 (serve build), `npm run lint`.
 
-Requirements: Node 20+ (developed on Node 22), npm.
+Requirements: Node 22+ (matches CI; the Supabase packages require Node >=22), npm.
 The app runs in **mock mode** by default — no database or env vars needed.
 
 ### Optional: Supabase mode with real auth (M4A, local dev only)
