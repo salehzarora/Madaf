@@ -132,6 +132,9 @@ const en: Dictionary = {
     resultsCount: "{count} products",
     noResults: "No products found",
     noResultsHint: "Try clearing the search or filters.",
+    privateTitle: "Private catalog",
+    privateBody:
+      "This catalog is private. Open the private shop link your supplier sent you to see products and place an order.",
     orderingFor: "Ordering for",
     selectShop: "Select shop",
     changeShop: "Change",

@@ -107,6 +107,9 @@ export interface Dictionary {
     resultsCount: string;
     noResults: string;
     noResultsHint: string;
+    /** Shown when /catalog is opened without an authenticated tenant/token. */
+    privateTitle: string;
+    privateBody: string;
     orderingFor: string;
     selectShop: string;
     changeShop: string;

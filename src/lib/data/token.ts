@@ -142,7 +142,9 @@ export async function getTokenCatalog(
 /**
  * Create an order for the token's linked customer (source =
  * remote_customer). Totals are computed server-side; the shop cannot set
- * tenant/customer. Returns the order number, or null on failure.
+ * tenant/customer. Returns the customer-facing PUBLIC reference
+ * (MDF-XXXXXXXX) — the RPC's `order_number` column carries public_ref, NOT
+ * the internal sequential number (M7E) — or null on failure.
  */
 export async function submitTokenOrder(
   rawToken: string,

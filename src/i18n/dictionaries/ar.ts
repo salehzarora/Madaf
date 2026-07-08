@@ -132,6 +132,9 @@ const ar: Dictionary = {
     resultsCount: "{count} منتج",
     noResults: "لم يتم العثور على منتجات",
     noResultsHint: "جرّب مسح البحث أو التصفية.",
+    privateTitle: "كتالوج خاص",
+    privateBody:
+      "هذا الكتالوج خاص. افتح رابط المحل الخاص المرسل من المورّد لرؤية المنتجات وتقديم طلب.",
     orderingFor: "الطلبية لصالح",
     selectShop: "اختيار المحل",
     changeShop: "تغيير",

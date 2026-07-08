@@ -114,6 +114,7 @@ export function ShopView({
             {orderNumber}
           </p>
         </div>
+        <p className="mt-2 max-w-sm text-xs text-ink-soft">{t.refHint}</p>
         <p className="mt-6 max-w-sm text-xs text-ink-soft">{t.disclaimer}</p>
       </main>
     );

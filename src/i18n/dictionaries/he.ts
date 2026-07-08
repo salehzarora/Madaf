@@ -132,6 +132,9 @@ const he: Dictionary = {
     resultsCount: "{count} מוצרים",
     noResults: "לא נמצאו מוצרים",
     noResultsHint: "נסו לנקות את החיפוש או הסינון.",
+    privateTitle: "קטלוג פרטי",
+    privateBody:
+      "הקטלוג הזה פרטי. פתחו את קישור החנות הפרטי שקיבלתם מהספק כדי לראות מוצרים ולהזמין.",
     orderingFor: "הזמנה עבור",
     selectShop: "בחירת חנות",
     changeShop: "החלפה",
