@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -852,6 +852,7 @@ export type Database = {
           id: string
           notes: string | null
           order_number: string
+          public_ref: string
           sales_rep_user_id: string | null
           source: Database["public"]["Enums"]["order_source"]
           status: Database["public"]["Enums"]["order_status"]
@@ -869,6 +870,7 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number: string
+          public_ref: string
           sales_rep_user_id?: string | null
           source?: Database["public"]["Enums"]["order_source"]
           status?: Database["public"]["Enums"]["order_status"]
@@ -886,6 +888,7 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number?: string
+          public_ref?: string
           sales_rep_user_id?: string | null
           source?: Database["public"]["Enums"]["order_source"]
           status?: Database["public"]["Enums"]["order_status"]
@@ -1472,6 +1475,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _gen_order_public_ref: { Args: never; Returns: string }
       _legal_numbering_enabled: { Args: never; Returns: boolean }
       _order_create_core: {
         Args: {
@@ -2096,4 +2100,5 @@ export const Constants = {
     },
   },
 } as const
+
 

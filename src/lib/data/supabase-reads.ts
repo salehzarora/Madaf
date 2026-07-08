@@ -55,6 +55,21 @@ function isTenantless(tenantId: string): boolean {
   return tenantId === NO_TENANT;
 }
 
+/**
+ * The domain types use `""` for a missing id (e.g. an order with no linked
+ * customer maps `customer_id: null → customerId: ""`). Passing `""` (or any
+ * non-UUID) to `.eq("<uuid col>", …)` makes Postgres raise
+ * `invalid input syntax for type uuid`, which would surface as a 500/error
+ * page instead of a clean "not found". Every single-row getter below guards
+ * on this and returns `undefined` WITHOUT querying — a blank/unknown id simply
+ * has no row.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(id: string): boolean {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
 function fail(what: string, message: string): never {
   throw new Error(`[madaf/data] supabase read failed (${what}): ${message}`);
 }
@@ -239,6 +254,7 @@ function mapOrder(row: OrderRow): Order {
   return {
     id: row.id,
     number: row.order_number,
+    publicRef: row.public_ref,
     customerId: row.customer_id ?? "",
     items: items.map((item) => ({
       productId: item.product_id ?? "",
@@ -319,7 +335,7 @@ export async function sbListProducts(
 
 export async function sbGetProduct(id: string): Promise<Product | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("products")
     .select(PRODUCT_SELECT)
@@ -350,7 +366,7 @@ export async function sbGetCategory(
   id: string,
 ): Promise<Category | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("categories")
     .select("*")
@@ -377,7 +393,7 @@ export async function sbGetManufacturer(
   id: string,
 ): Promise<Manufacturer | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("manufacturers")
     .select("*")
@@ -405,7 +421,7 @@ export async function sbGetCustomer(
   id: string,
 ): Promise<Customer | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("customers")
     .select("*")
@@ -432,7 +448,7 @@ export async function sbGetInventoryForProduct(
   productId: string,
 ): Promise<InventoryItem | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(productId)) return undefined;
   const { data, error } = await client
     .from("inventory_items")
     .select("*")
@@ -460,7 +476,7 @@ export async function sbListOrders(): Promise<Order[]> {
 
 export async function sbGetOrder(id: string): Promise<Order | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("orders")
     .select(ORDER_SELECT)
@@ -496,7 +512,7 @@ export async function sbGetDocument(
   id: string,
 ): Promise<OrderDocument | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(id)) return undefined;
   const { data, error } = await client
     .from("documents")
     .select("*")
@@ -511,7 +527,7 @@ export async function sbListDocumentsForOrder(
   orderId: string,
 ): Promise<OrderDocument[]> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return [];
+  if (isTenantless(tenantId) || !isUuid(orderId)) return [];
   const { data, error } = await client
     .from("documents")
     .select("*")
@@ -562,7 +578,7 @@ export async function sbGetOrderDocumentSource(
   orderId: string,
 ): Promise<OrderDocumentSource | undefined> {
   const { client, tenantId } = await getReadContext();
-  if (isTenantless(tenantId)) return undefined;
+  if (isTenantless(tenantId) || !isUuid(orderId)) return undefined;
   const { data, error } = await client
     .from("orders")
     .select(DOC_ORDER_SELECT)

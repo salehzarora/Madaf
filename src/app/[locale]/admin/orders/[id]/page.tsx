@@ -72,6 +72,14 @@ export default async function AdminOrderDetailPage({
           >
             {order.number}
           </span>
+          {order.publicRef ? (
+            <span
+              dir="ltr"
+              className="rounded-badge bg-surface-sunken px-2 py-0.5 font-mono text-xs text-ink-soft"
+            >
+              {t.customerRef}: {order.publicRef}
+            </span>
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-ink-muted">
           {t.placedOn} {formatDate(order.createdAt, locale)} ·{" "}

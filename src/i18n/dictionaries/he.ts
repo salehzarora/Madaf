@@ -346,6 +346,7 @@ const he: Dictionary = {
         previewDoc: "תצוגת מסמכים",
         placedOn: "התקבלה בתאריך",
         itemsCount: "{count} שורות",
+        customerRef: "אסמכתה ללקוח",
       },
     },
     inventory: {

@@ -466,3 +466,51 @@ off).
 - **Smoke result: PENDING** a Vercel redeploy from `main` after this merges —
   record the subjective per-navigation feel (before Singapore ~1–2s → after
   Frankfurt DB + `fra1` functions) and any still-slow pages.
+
+---
+
+## 15. M7E — staging smoke bugfix pass
+
+**Smoke PASS (operator):** email register/login, onboarding, add/edit product,
+draft document generation, order → warehouse, navigation speed (post-M7D.3).
+
+**Fixes shipped (branch `fix/M7E-staging-smoke-bugfixes`, not merged):**
+
+- **A/B — product-detail & admin-order-detail error pages (P1). FIXED.** Root
+  cause: the domain types use `""` for a missing id (an order with no linked
+  customer → `customerId: ""`; `orders.customer_id` is nullable). A `sbGet*("")`
+  then ran `.eq("id","")` on a UUID column → Postgres *"invalid input syntax for
+  type uuid"* → a thrown error (500/error page) instead of a clean not-found.
+  Fix: a `isUuid()` guard in every single-row `sb*` getter (`supabase-reads.ts`)
+  returns `undefined`/`[]` for a blank/invalid id **without** querying. Confirmed
+  at the DB (`''::uuid` errors) and the order-detail page now renders (customer
+  falls back to `"—"`/snapshot). No RLS change; anon still short-circuits.
+- **E — customer-facing public order reference. IMPLEMENTED.** Migration
+  `20260716100000_order_public_ref.sql`: adds `orders.public_ref` (random,
+  non-sequential `MDF-XXXXXXXX`, unambiguous alphabet), a `BEFORE INSERT` trigger
+  that assigns a per-tenant-unique ref to every order, a backfill for existing
+  rows, and a unique index. `create_order_request_from_token` now returns
+  `public_ref` (same signature) so the **private-shop success screen shows the
+  customer the random ref**, never the internal sequential `order_number`. Admin
+  keeps `order_number` (sorting/search unaffected) and the order-detail header
+  now also shows the customer ref for correlation (`mapOrder.publicRef`, i18n
+  `admin.orders.detail.customerRef`). DB-probed: format/uniqueness/not-null on
+  backfill + a fresh insert; db lint/advisors clean.
+- **C/D — stores/customers + known-store checkout. ASSESSED.** The **token
+  checkout already handles a known store correctly** — the private link is tied
+  to a customer, `ShopView` shows `catalog.customer.name` and submits via the
+  token (the DB derives the customer; the shopper never re-enters store
+  identity). So D is essentially already met for the customer flow. The broader
+  **C** UX-clarity ask (relabeling customers → "stores/customers", making the
+  "Add store" action + private-link creation more obvious) is a wider i18n/UI
+  change deferred to a focused follow-up to keep this pass on the P1 crashes +
+  order ref. (Open item.)
+- **F — image upload from device. SPLIT → M7F.** URL-only today. Device upload
+  needs an upload UI + a tenant-safe storage path (the `product-images` bucket is
+  private; uploads must go through a trusted server action, never a client
+  service-role). Sized as its own phase per the task's split allowance.
+
+**Boundary:** no RLS weakened, no service-role in client, no legal/payment
+change (`legal_effective` hard-false, M6 flags off, drafts stay non-legal). New
+migration only touches order numbering (additive column + trigger + one RPC
+return value); no hosted `db reset`/`config push`.
