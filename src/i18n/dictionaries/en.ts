@@ -346,6 +346,7 @@ const en: Dictionary = {
         previewDoc: "Preview documents",
         placedOn: "Placed on",
         itemsCount: "{count} lines",
+        customerRef: "Customer ref",
       },
     },
     inventory: {

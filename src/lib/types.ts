@@ -171,8 +171,14 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  /** Human-facing number, e.g. "MDF-1042". */
+  /** Internal sequential number, e.g. "MDF-1042" — admin/warehouse only. */
   number: string;
+  /**
+   * Customer-facing random reference, e.g. "MDF-A7K2P9QX" (M7E). Non-sequential
+   * so it never leaks order volume. Shown to customers instead of `number`;
+   * optional (supabase mode always sets it; mock orders may omit it).
+   */
+  publicRef?: string;
   customerId: string;
   items: OrderItem[];
   status: OrderStatus;
