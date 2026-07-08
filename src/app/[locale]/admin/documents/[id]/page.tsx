@@ -1,22 +1,13 @@
 import { notFound } from "next/navigation";
 import { DocumentView } from "@/components/document-view";
 import { isLocale } from "@/i18n/config";
-import {
-  getDataMode,
-  getDocument,
-  getOrder,
-  getSupplier,
-  listDocuments,
-} from "@/lib/data";
+import { getDocument, getOrder, getSupplier } from "@/lib/data";
 
-export async function generateStaticParams() {
-  // Build-time, no request — never touch cookies()/session. In supabase mode
-  // documents read through the cookie-bound client, so prebuild nothing and let
-  // dynamicParams render each document page on demand at request time.
-  if (getDataMode() === "supabase") return [];
-  const documents = await listDocuments();
-  return documents.map((doc) => ({ id: doc.id }));
-}
+// Reads authenticated, tenant-scoped document data through the cookie-bound
+// client, so it MUST render dynamically per request — never statically
+// generated or cached. No generateStaticParams (which would mark the route SSG);
+// force-dynamic. Legal/document wording is unchanged.
+export const dynamic = "force-dynamic";
 
 /**
  * Hebrew-first document preview. The DocumentView client component owns
