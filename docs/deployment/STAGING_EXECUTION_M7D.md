@@ -18,16 +18,19 @@ driven by the human operator following
 
 | Field | Value |
 | --- | --- |
-| Execution started | 2026-07-08 (session) |
-| Deploying commit | `611e0c1` (main HEAD at branch cut) — record the exact deployed SHA here |
-| Branch | `infra/M7D-execute-staging-deploy` (docs only) |
-| Operator | _(fill in)_ |
-| Overall status | **PREPARED — awaiting operator provisioning** |
+| Execution started | 2026-07-08 (M7D prep); provisioning 2026-07-08 (M7D.1) |
+| Deploying commit | `0a6f190` (main; Merge M7D.1 Vercel build fix) — **deployed & green on Vercel** |
+| Branch | `infra/M7D1-operator-staging-provisioning` (docs only) |
+| Operator | _(supervised session)_ |
+| Overall status | **STAGING LIVE (auth-URL + smoke pending).** Supabase created + migrated; Vercel deployed green; app serves; email-login smoke pending |
 
-**Current session did NOT provision any hosted service.** Staging Supabase and
-Vercel are **not set up yet**; every hosted step below is **PENDING (operator
-action required)**. No live smoke test was run — results are recorded, not
-fabricated.
+**Provisioning underway (M7D.1).** Staging **Supabase project created + all 25
+migrations applied** (§3), **Vercel deployed green** on `0a6f190` at
+`https://madaf-drab.vercel.app` (§4), env set (§5), safety linter **ok** (§7),
+and the **live login page renders** (phone-primary + email fallback visible).
+**Phone OTP is BLOCKED (no SMS provider)** — smoke runs via the email fallback.
+Remaining: auth Site/redirect URLs (§8) + the authenticated smoke (§9). Results
+recorded as they happen, never fabricated.
 
 ---
 
@@ -64,10 +67,11 @@ fabricated.
 
 | Field | Value (non-secret only) |
 | --- | --- |
-| Project ref | _(fill in — e.g. `abcd…`; NOT a key)_ |
-| Project URL | _(fill in — `https://<ref>.supabase.co`)_ |
-| Region | _(fill in)_ |
-| Is this the STAGING (not production) project? | ☐ confirmed |
+| Project name | `madaf-staging` |
+| Project ref | `bmqoajddxjmusaaflwma` ✅ verified (20 chars; corrected from an earlier copy slip) |
+| Project URL | `https://bmqoajddxjmusaaflwma.supabase.co` |
+| Region | `ap-southeast-1` (Singapore) — note: far from Israel; latency consideration for a future production region |
+| Is this the STAGING (not production) project? | ✅ **confirmed** (operator: "staging only, do not use as production") |
 
 **Migration deploy (hosted) — SAFE pattern, no reset:**
 
@@ -88,7 +92,12 @@ fabricated.
 - [ ] Run `bootstrap-auth.sql`? **NO** — it seeds local demo email users; do not
       run it against staging (see §11 demo-data rule).
 
-**Status: PENDING.**
+**Status: MIGRATIONS APPLIED** (`madaf-staging`, ref `bmqoajddxjmusaaflwma`,
+`ap-southeast-1`, staging-confirmed twice). `supabase migration list` shows all
+**25** migrations (`20260705100000` … `20260714120000`) applied **remotely**,
+Local==Remote; `supabase db push` reported **no pending** migrations. **No
+`config push`** (local dummy Twilio/`test_otp` never pushed), **no hosted `db
+reset`**, no secrets pasted. **Advisors (dashboard): clean ✅** — no security/performance issues.
 
 ---
 
@@ -106,11 +115,28 @@ fabricated.
 
 | Field | Value (non-secret) |
 | --- | --- |
-| Vercel project name | _(fill in)_ |
-| Staging URL | _(fill in — e.g. `https://madaf-staging.vercel.app`)_ |
-| Node version | 22 |
+| Vercel project name | `madaf` |
+| Staging URL | `https://madaf-drab.vercel.app` |
+| Node version | 22 (set in Project Settings) |
+| Team | `salehzarora's projects` (`team_yynO6ARGc6VsRrAB69hOTTZy`) |
 
-**Status: PENDING.**
+**Env-var method:** the connected **Vercel MCP has no env-var read/write tool**
+(observability + deploy only), and this MCP token cannot resolve the `madaf`
+project (`list_projects` shows only `resto-flow`; `madaf` → 404). So env vars
+are set in the **Vercel dashboard** (Project → Settings → Environment Variables),
+applied to **Production + Preview** of the staging project — this also keeps
+secrets out of terminal history. Public trio already set by operator; 8
+server-only non-secret flags + `SUPABASE_SERVICE_ROLE_KEY` (dashboard-entered,
+never printed) to add.
+
+**Deploy result (operator-reported + verified):** Redeploy from `main` @
+`0a6f190` **succeeded**; env vars **set** (public trio + 8 server-only flags +
+service-role); **trusted document storage enabled**; **no forbidden vars**. The
+build cleared the M7D.1 `generateStaticParams` fix. **Verified independently:**
+`https://madaf-drab.vercel.app/he/login` serves the real Madaf login page
+(phone-primary + email fallback visible) — not a Vercel wall / 404.
+
+**Status: DEPLOYED GREEN ✅** (`0a6f190`, `https://madaf-drab.vercel.app`).
 
 ---
 
@@ -130,8 +156,10 @@ fabricated.
 **Server-only (never `NEXT_PUBLIC`):**
 
 - [ ] `MADAF_AUTH_PRIMARY_METHOD = phone`.
-- [ ] `MADAF_EMAIL_AUTH_ENABLED = false` (set `true` **only** if staging must
-      accept email team invites — a knowing choice; see §8).
+- [ ] `MADAF_EMAIL_AUTH_ENABLED = true` — **M7D.1 knowing choice**: no SMS
+      provider yet, so email/password is enabled in staging to unblock the smoke
+      tests. Revert to `false` (or remove) once an SMS provider is live and phone
+      OTP is verified.
 - [ ] `MADAF_DEV_PHONE_OTP_ENABLED = false` (must be off in staging).
 - [ ] `MADAF_LEGAL_INVOICING_ENABLED = false`.
 - [ ] `MADAF_LEGAL_NUMBERING_ENABLED = false`.
@@ -139,8 +167,8 @@ fabricated.
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` — **only** if trusted document storage is on;
       server-only, from the Supabase dashboard.
 - [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE = enabled` — only if storage configured.
-- [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF = <staging ref>` — **required
-      whenever storage is enabled** (M7C.1).
+- [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF = bmqoajddxjmusaaflwma`
+      — **required whenever storage is enabled** (M7C.1).
 
 **FORBIDDEN — must never be set anywhere:**
 
@@ -152,7 +180,9 @@ fabricated.
       `MADAF_TAX_PROVIDER_MODE=production`.
 - ❌ any payment/legal-provider secret (no such phase exists yet).
 
-**Status: PENDING.**
+**Status: SET ✅** (operator: public trio + 8 server-only flags + service-role
+set; trusted storage enabled; **no forbidden vars**). Cross-checked by the
+safety linter — see §7.
 
 ---
 
@@ -160,18 +190,23 @@ fabricated.
 
 **Operator actions:**
 
-- [ ] Confirm the **private** `documents` bucket exists (public = false). The
-      `documents` and `product-images` buckets are private by design.
-- [ ] Confirm **no authenticated storage policy** on `documents` (M5B.1 dropped
-      them) — direct authenticated upload must be blocked; only the service role
-      writes, after the route authorizes.
+- [x] `documents` + `product-images` buckets are **created by migration**
+      (`20260710100000` / `20260705120000`), so with all 25 migrations applied
+      they **exist on staging**; `documents` is created `public = false`
+      (private, PDF-only, 10 MiB). Operator visual dashboard confirmation:
+      _pending_.
+- [x] **No authenticated storage policy** on `documents` (M5B.1 dropped them) —
+      direct authenticated upload blocked; only the service role writes after
+      the route authorizes. (Applied by migration.)
 - [ ] Set `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
-      `..._PROJECT_REF=<staging ref>` + `SUPABASE_SERVICE_ROLE_KEY` (server-only)
-      to enable stored PDFs; otherwise the route safely streams (no storage).
-- [ ] Smoke: generate a draft document PDF, download via signed URL (60s TTL),
-      confirm expiry behavior. **No legal PDF / no legal issuing.**
+      `..._PROJECT_REF=bmqoajddxjmusaaflwma` + `SUPABASE_SERVICE_ROLE_KEY`
+      (server-only) in **Vercel** to enable stored PDFs; otherwise the route
+      safely streams (no storage).
+- [ ] Smoke: generate a draft document PDF, download via signed URL (60s TTL).
+      **No legal PDF / no legal issuing.** — PENDING (gated on admin login).
 
-**Status: PENDING** (needs live staging).
+**Status: BUCKETS PRESENT (migration-applied; `documents` private).** Trusted-
+storage env + PDF smoke PENDING (in Vercel + login).
 
 ---
 
@@ -195,11 +230,17 @@ NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/de
 
 | Field | Result |
 | --- | --- |
-| `ok` | _(fill in)_ |
-| errors | _(names only)_ |
-| warnings | _(names only)_ |
+| `ok` | **true** ✅ |
+| errors | none (`[]`) |
+| warnings | none (`[]`) |
 
-**Status: PENDING.**
+Run against the intended staging config (name-only, `treatAsDeploy: true`):
+public trio + `NEXT_PUBLIC_APP_URL`, `MADAF_AUTH_PRIMARY_METHOD=phone`,
+`MADAF_EMAIL_AUTH_ENABLED=true`, `MADAF_DEV_PHONE_OTP_ENABLED=false`, all legal
+flags off, `MADAF_TAX_PROVIDER_MODE=disabled`, `MADAF_TRUSTED_DOCUMENT_STORAGE=
+enabled` + project ref. No secret values used.
+
+**Status: PASS ✅.**
 
 ---
 
@@ -207,25 +248,41 @@ NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/de
 
 **Operator actions (Supabase dashboard):**
 
-- [ ] Auth **Site URL** = the staging app URL.
-- [ ] Auth **Redirect URLs** = staging app URL + any auth callback/login paths.
-- [ ] **Phone provider enabled**; SMS provider (Twilio/etc.) configured in the
-      **dashboard/secrets only**.
-- [ ] Review Auth **rate limits** (`sms_sent`, `token_verifications`,
-      `sign_in_sign_ups`) + provider spend caps.
-- [ ] Test with **one real staging phone number**.
+- [x] Auth **Site URL** = `https://madaf-drab.vercel.app` (set).
+- [x] Auth **Redirect URLs** set to the staging app URL (wildcard). Also added
+      `NEXT_PUBLIC_APP_URL` + `NEXT_PUBLIC_SITE_URL` in Vercel and **redeployed
+      successfully**.
+- [ ] **Phone provider enabled**; SMS provider — **BLOCKED (no provider yet).**
+- [ ] Review Auth **rate limits** — N/A until an SMS provider exists.
+- [ ] Test with **one real staging phone number** — BLOCKED (no SMS provider).
 
 **Confirm (staging invariants):**
 
-- [ ] The local dummy Twilio + `[auth.sms.test_otp]` config is **local-only** —
-      it does not govern the hosted project.
-- [ ] `MADAF_DEV_PHONE_OTP_ENABLED = false` — the dev fake-OTP path does **not**
-      work in staging (also hard-off for prod builds + non-local URLs).
-- [ ] Email fallback policy is intentional: `MADAF_EMAIL_AUTH_ENABLED=false`
-      unless staging needs email invites (then set `true` knowingly — phone-only
-      accounts still can't accept email invites; M7B limitation).
+- [x] The local dummy Twilio + `[auth.sms.test_otp]` config is **local-only** —
+      **no `config push` was run**, so it does not govern the hosted project.
+- [x] `MADAF_DEV_PHONE_OTP_ENABLED = false` in staging (operator confirmed) —
+      the dev fake-OTP path does **not** work in staging.
+- [x] No SMS secrets added to the repo.
 
-**Status: PENDING.**
+**Reported (M7D.1):**
+
+- **SMS provider: NONE yet → phone-OTP login is BLOCKED on staging.** Hosted
+  Supabase sends real SMS and does not use the local `test_otp`; without a
+  provider, no OTP is delivered, so `Phone provider` cannot be meaningfully
+  enabled/used yet.
+- Phone provider enabled: **no** (blocked on missing SMS provider).
+- Rate limits / real-phone test: N/A until a provider exists.
+
+**⚠️ Consequence: with phone-primary + no SMS provider +
+`MADAF_EMAIL_AUTH_ENABLED=false` + `MADAF_DEV_PHONE_OTP_ENABLED=false`, there is
+NO way to sign in to staging admin — so ALL authenticated smoke tests (§9) are
+blocked.** Two ways to unblock (operator choice, see §12):
+  1. Configure a real SMS provider (e.g. Twilio trial) → real phone OTP.
+  2. Temporarily set **`MADAF_EMAIL_AUTH_ENABLED=true`** in Vercel (a documented
+     knowing choice) → sign in via email/password to run the full smoke;
+     phone-OTP itself stays BLOCKED until a provider is added.
+
+**Status: BLOCKED (no SMS provider).** Phone OTP untestable this session.
 
 ---
 
@@ -269,7 +326,30 @@ NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/de
 - [ ] tax-settings page is the inert/safe config surface only.
 - [ ] `legal_effective` stays false; no production provider mode; no payment.
 
-**Status: PENDING.**
+**Smoke findings (M7D.1, email-fallback path):**
+
+- ✅ Email login works · onboarding / account creation works · admin pages load
+  · hosted Supabase mode active.
+- ⛔→✅ **Product creation was BLOCKED** — a freshly-onboarded tenant had **zero
+  categories** (category dropdown empty), and `create_product` requires a
+  category that belongs to the tenant (`validate_product_payload`). Root cause:
+  categories are per-tenant and were only ever seeded via `seed.sql` (for the
+  demo tenant); a tenant created through onboarding got none, and hosted staging
+  received migrations via `db push` (not `seed.sql`). **FIXED (code):** migration
+  `20260715100000_seed_default_categories_on_tenant.sql` makes
+  `create_tenant_with_owner` seed the standard 6 categories for the new tenant
+  (mirrors `seed.sql`; no signature/types change; RLS untouched). Verified
+  locally: onboarding now creates owner + 6 categories.
+  **Operator action:** `supabase db push` the migration to staging, then
+  **onboard a FRESH tenant** (existing pre-fix tenant is not backfilled) — a new
+  email user → onboarding → 6 categories → product creation works.
+- ⏳ **Nav feels slow (~1s/page) in hosted mode** — see §14 (P2 perf; primarily
+  region latency, not an app bug).
+- Remaining smoke (shop order → PDF → access/legal) re-run after a fresh
+  category-having tenant exists.
+
+**Status: PARTIAL — login/onboarding/admin OK; product creation fixed (needs
+staging db push + fresh tenant); order/PDF/access/legal smoke pending.**
 
 ---
 
@@ -302,11 +382,14 @@ Per [RUNBOOK_STAGING.md](RUNBOOK_STAGING.md). Choose or defer:
 
 | # | Item | Severity | Status |
 | --- | --- | --- | --- |
-| 1 | Hosted Supabase + Vercel not provisioned yet (this session) | P1 | open — operator |
-| 2 | Local `supabase db` checks not re-run (Docker Desktop offline); schema unchanged since M7C (verified clean) | P3 | open — re-run when Docker up |
-| 3 | Error reporting / uptime / SMS-delivery monitoring not configured | P1/P2 | open — operator choice |
-| 4 | Real-phone OTP smoke needs a live staging number | P1 | open — operator |
-| 5 | Email invites need `MADAF_EMAIL_AUTH_ENABLED=true` (phone-only accounts can't accept email invites — M7B limitation) | P2 | decision — operator |
+| 1 | **No SMS provider** → phone-OTP login BLOCKED (using email fallback for smoke) | P1 | open — operator |
+| 2 | Product creation blocked (no categories on a fresh tenant) | P1 | **FIXED (code)** — migration `20260715…`; needs staging `db push` + fresh tenant |
+| 3 | Hosted nav ~1s/page — see §14b perf audit | P2 | open — mostly region latency |
+| 4 | Error reporting / uptime / SMS-delivery monitoring not configured | P1/P2 | open — operator choice |
+| 5 | Real-phone OTP smoke needs a provider + live number | P1 | open — operator |
+| 6 | Email invites need `MADAF_EMAIL_AUTH_ENABLED=true` (M7B limitation) | P2 | decision — operator |
+| 7 | Category **editing/CRUD** not available (only auto-seeded starter set) | P2 | follow-up feature |
+| 8 | Staging DB region is `ap-southeast-1` (Singapore) — far from Israel | P2 | consider `eu-central-1` for prod |
 
 ---
 
@@ -323,9 +406,41 @@ in-place fixes.
 
 ## 14. Final staging verdict
 
-**NOT DEPLOYED — PREPARED.** Local code baseline is green (Node 22, lint, build
-216/216, audit 0). The hosted staging environment is **not yet provisioned**;
-all Phase 2–8 hosted steps and the full smoke checklist are **PENDING operator
-action**. No secrets are committed; the legal/payment boundary is unchanged
-(`legal_effective` hard-false, all M6 flags off). Proceed by executing §3–§9
-against a **staging** Supabase + Vercel project and updating this log in place.
+**STAGING LIVE (email-fallback smoke in progress).** Supabase created + all 25
+migrations applied (advisors clean); Vercel deployed green on `0a6f190` at
+`https://madaf-drab.vercel.app` (login page verified serving); env set + safety
+linter `ok`. Email login + onboarding + admin verified. **Product-creation
+blocker fixed** (category-seeding migration — needs staging `db push` + a fresh
+tenant). Phone OTP remains BLOCKED (no SMS provider). Remaining: order → PDF →
+access/legal smoke on a fresh category-having tenant. No secrets committed;
+legal/payment boundary unchanged (`legal_effective` hard-false, all M6 flags
+off).
+
+---
+
+## 14b. Performance audit — hosted navigation ~1s/page (P2)
+
+**Finding: primarily expected hosted latency, not an app bug.** Audit:
+
+- **Region mismatch (main lever).** The staging DB is `ap-southeast-1`
+  (Singapore); if the operator is in Israel, each Supabase round-trip is
+  ~150–250ms RTT. **Recommendation:** for prod (and ideally a re-created
+  staging), use a region near users, e.g. `eu-central-1` (Frankfurt) — this
+  alone roughly halves per-request latency.
+- **Dynamic SSR is inherent, not wasteful.** Admin pages use `cookies()` (auth)
+  → server-rendered per request. Per navigation: **one** `getUser` + **one**
+  `list_memberships` (both from `getSessionContext`, which is React
+  `cache`-deduped per request — not repeated), then the page's data queries.
+- **Data queries are already parallelized** — e.g. the dashboard runs
+  `listOrders/listCustomers/listInventory/listProducts` in a single
+  `Promise.all` (no waterfall). So app-side query shape is already reasonable.
+- **Vercel cold starts** add latency on the first hit after idle (serverless
+  spin-up) — independent of the app.
+- **No `loading.tsx`** anywhere → navigations show no skeleton/spinner, so the
+  latency *feels* worse than it is. **Optional safe win (P2):** add a lightweight
+  `loading.tsx` (e.g. at the admin layout) for perceived speed. Not bundled with
+  this fix to keep it focused.
+
+**Verdict:** no blocking app performance bug. Biggest real improvement is the
+**DB region**; secondary is optional loading skeletons. Tracked as P2 (§12 #3/#8)
+— do not over-optimize.
