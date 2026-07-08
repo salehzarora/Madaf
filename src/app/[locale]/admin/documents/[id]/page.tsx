@@ -1,9 +1,19 @@
 import { notFound } from "next/navigation";
 import { DocumentView } from "@/components/document-view";
 import { isLocale } from "@/i18n/config";
-import { getDocument, getOrder, getSupplier, listDocuments } from "@/lib/data";
+import {
+  getDataMode,
+  getDocument,
+  getOrder,
+  getSupplier,
+  listDocuments,
+} from "@/lib/data";
 
 export async function generateStaticParams() {
+  // Build-time, no request — never touch cookies()/session. In supabase mode
+  // documents read through the cookie-bound client, so prebuild nothing and let
+  // dynamicParams render each document page on demand at request time.
+  if (getDataMode() === "supabase") return [];
   const documents = await listDocuments();
   return documents.map((doc) => ({ id: doc.id }));
 }

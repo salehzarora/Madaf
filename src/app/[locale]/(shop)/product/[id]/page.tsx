@@ -12,6 +12,7 @@ import { packageLabel, productName } from "@/lib/catalog-helpers";
 import { categoryDot } from "@/lib/category-style";
 import {
   getCategory,
+  getDataMode,
   getManufacturer,
   getProduct,
   listProducts,
@@ -19,6 +20,12 @@ import {
 import { formatCurrency } from "@/lib/format";
 
 export async function generateStaticParams() {
+  // Runs at BUILD time with no HTTP request — it must never touch
+  // cookies()/headers()/session. In supabase mode the data layer reads through
+  // the cookie-bound client, so prebuild NOTHING here and let dynamicParams
+  // render each product page on demand at request time (where the page's own
+  // cookies() usage makes it dynamic anyway). Mock data is static/request-free.
+  if (getDataMode() === "supabase") return [];
   const products = await listProducts();
   return products.map((product) => ({ id: product.id }));
 }
