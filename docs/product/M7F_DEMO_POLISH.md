@@ -49,12 +49,19 @@ only removed the create-mode limitation.
 - **Mock mode**: shows a local `URL.createObjectURL` preview and persists
   nothing.
 
-**Known limitation (deferred → M7G):** the anonymous `/shop/<token>` page
-cannot sign private-bucket objects, so **uploaded** product images fall back
-to the placeholder there; **external image URLs** still render for shops. To
-show uploaded images to customers we need to sign product-image paths in the
-`get_token_catalog` path with a trusted server client (mirroring the M5C
-document-storage pattern). See "Deferred" below.
+**Uploaded images in the private shop (M7F.4):** the anonymous
+`/shop/<token>` page now renders uploaded product images via short-lived
+(30 min) **signed** URLs. After `get_token_catalog` validates the token,
+`signTokenProductImages` (in `src/lib/data/token.ts`) resolves the token's
+**authoritative tenant_id** server-side (trusted service-role client, by
+`token_hash` — never from the client, never inferred from the path), signs
+**only** objects under `<tenant_id>/products/` in the private
+`product-images` bucket, and returns the signed URLs to `ShopView`. It reuses
+the existing fail-closed trusted client (`getTrustedDocumentStorageClient`,
+M5C) — **no new bucket, no policy change, no new env var, no service_role in
+the client**. External `http(s)` URLs still pass through; any missing config
+or signing error falls back to the placeholder (never a crash, never a
+cross-tenant leak).
 
 ## Stores/customers & private links (P2)
 
@@ -117,7 +124,14 @@ M7F adds a "keep this reference" hint and clarifying comments only.
   today. Reuse the product pattern (same bucket under
   `<tenant_id>/manufacturers/…`, or a dedicated bucket) + a
   `sbUploadManufacturerLogo` action with the same validation.
-- **Anon-shop display of uploaded product images** — sign private paths in
-  the token catalog path with a trusted server client (M5C pattern). External
-  URLs already work on shops.
 - **Company/supplier image** — net-new (no column/field today).
+
+## Update — M7F.4 (uploaded images in the private shop)
+
+Resolved the earlier limitation: uploaded (private-bucket) product images now
+render on the anonymous `/shop/<token>` page via short-lived signed URLs. See
+"Uploaded images in the private shop (M7F.4)" above for the model. On hosted
+staging this uses the **same** `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
+project-ref config the document PDFs already require — no new operator setup.
+If that trusted client is not configured, shops gracefully show placeholders
+for uploaded images (external URLs still render).

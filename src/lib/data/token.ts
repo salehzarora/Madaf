@@ -20,10 +20,17 @@ import type {
   Product,
 } from "@/lib/types";
 
+import { getTrustedDocumentStorageClient } from "./trusted-document-storage";
+
 /** SHA-256 hex of the raw token — only the hash is ever stored/sent to SQL. */
 export function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken, "utf8").digest("hex");
 }
+
+const PRODUCT_IMAGE_BUCKET = "product-images";
+/** Signed for a single anonymous shop session; long enough to browse+order,
+ * short enough that a copied URL expires soon. */
+const SHOP_SIGNED_URL_TTL_SECONDS = 1800; // 30 min
 
 export interface TokenCatalog {
   tenantName: { ar: string; he: string; en: string };
@@ -44,8 +51,101 @@ function deriveAvailability(qty: unknown, threshold: unknown): Availability {
   return "inStock";
 }
 
+/**
+ * Resolve a raw token-catalog `image_url` to a DISPLAY url for the anon shop:
+ *   - external http(s) URL → passthrough,
+ *   - a private storage path we signed → the signed URL,
+ *   - anything else → undefined (placeholder). Never crashes.
+ */
+function resolveShopImageUrl(
+  raw: unknown,
+  signedByPath: Map<string, string>,
+): string | undefined {
+  if (isExternalUrl(raw)) return raw;
+  if (typeof raw === "string" && signedByPath.has(raw)) {
+    return signedByPath.get(raw);
+  }
+  return undefined;
+}
+
+/**
+ * M7F.4 — sign uploaded product images for a VALIDATED private shop token.
+ *
+ * The token was already validated by get_token_catalog (it returned a
+ * catalog), which scopes every product to the token's tenant. To render the
+ * private `product-images` objects to the anonymous shop we:
+ *   1. resolve the token's AUTHORITATIVE tenant_id server-side (trusted
+ *      client, by token_hash — never from the client / never from the path
+ *      itself),
+ *   2. sign ONLY paths under `<tenant_id>/products/` (strict prefix — a value
+ *      that isn't an own-tenant product-image path is never signed, so images
+ *      can't leak across tenants),
+ *   3. return a path→signedUrl map. External URLs are handled by the caller.
+ *
+ * Fail-closed: any missing config / lookup / signing error returns an empty
+ * map, so those products fall back to the placeholder — never a crash and
+ * never a service_role leak (the trusted client is server-only).
+ *
+ * Exported for the M7F.4 local probe; server-only (this module imports
+ * "server-only"), so it can never reach the client bundle.
+ */
+export async function signTokenProductImages(
+  rawToken: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  products: any[],
+): Promise<Map<string, string>> {
+  const empty = new Map<string, string>();
+  // Distinct, non-external storage paths present in the catalog.
+  const candidatePaths = [
+    ...new Set(
+      products
+        .map((p) => p?.image_url)
+        .filter(
+          (v): v is string => typeof v === "string" && !isExternalUrl(v),
+        ),
+    ),
+  ];
+  if (candidatePaths.length === 0) return empty;
+
+  try {
+    const client = getTrustedDocumentStorageClient();
+
+    // Authoritative tenant for this token (server-only; never sent to client).
+    const { data: link } = await client
+      .from("customer_access_links")
+      .select("tenant_id")
+      .eq("token_hash", hashToken(rawToken))
+      .is("revoked_at", null)
+      .maybeSingle();
+    const tenantId = link?.tenant_id;
+    if (!tenantId) return empty;
+
+    // Strict: only this tenant's product-image objects are signable.
+    const prefix = `${tenantId}/products/`;
+    const ownPaths = candidatePaths.filter((p) => p.startsWith(prefix));
+    if (ownPaths.length === 0) return empty;
+
+    const { data, error } = await client.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .createSignedUrls(ownPaths, SHOP_SIGNED_URL_TTL_SECONDS);
+    if (error || !data) return empty;
+
+    const out = new Map<string, string>();
+    data.forEach((row, i) => {
+      if (row.signedUrl) out.set(ownPaths[i], row.signedUrl);
+    });
+    return out;
+  } catch (error) {
+    console.error("[madaf/shop] product image signing skipped:", error);
+    return empty;
+  }
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function mapTokenProduct(p: any): Product {
+function mapTokenProduct(
+  p: any,
+  signedByPath: Map<string, string>,
+): Product {
   return {
     id: p.id,
     sku: p.sku ?? "",
@@ -63,9 +163,10 @@ function mapTokenProduct(p: any): Product {
     wholesalePrice: p.wholesale_price,
     availability: deriveAvailability(p.quantity_available, p.low_stock_threshold),
     trackExpiry: p.track_expiry || undefined,
-    // Anon can't sign private storage objects, so only external image URLs
-    // render for the shop; storage-path images fall back to the gradient.
-    imageUrl: isExternalUrl(p.image_url) ? p.image_url : undefined,
+    // External URLs pass through; uploaded private-bucket images are shown via
+    // short-lived signed URLs (M7F.4, signTokenProductImages); anything else
+    // falls back to the gradient placeholder.
+    imageUrl: resolveShopImageUrl(p.image_url, signedByPath),
     vatRate: p.vat_rate,
     isActive: true,
   };
@@ -119,6 +220,9 @@ export async function getTokenCatalog(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     manufacturers: any[];
   };
+  // Token is valid (RPC returned a catalog) → sign this tenant's uploaded
+  // product images for the anon shop. Fail-closed to placeholders.
+  const signedByPath = await signTokenProductImages(rawToken, blob.products);
   return {
     tenantName: {
       ar: blob.tenant.name_ar,
@@ -133,7 +237,7 @@ export async function getTokenCatalog(
         en: blob.customer.city_en ?? "",
       },
     },
-    products: blob.products.map(mapTokenProduct),
+    products: blob.products.map((p) => mapTokenProduct(p, signedByPath)),
     categories: blob.categories.map(mapTokenCategory),
     manufacturers: blob.manufacturers.map(mapTokenManufacturer),
   };
