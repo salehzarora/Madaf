@@ -221,6 +221,7 @@ const en: Dictionary = {
       activeProducts: "Active products",
       lowStock: "Low stock items",
       activeShops: "Active shops",
+      todayOrders: "Today's orders",
     },
     recentOrders: "Recent orders",
     lowStockTitle: "Low stock",
@@ -256,6 +257,8 @@ const en: Dictionary = {
       activate: "Activate",
       deactivate: "Deactivate",
       inactiveBadge: "Inactive",
+      filterStatus: "Status",
+      statusActive: "Active",
       new: {
         title: "New product",
         subtitle: "Add a product to the catalog.",
@@ -336,6 +339,8 @@ const en: Dictionary = {
       colTotal: "Total",
       colStatus: "Status",
       colDate: "Placed",
+      colRef: "Reference",
+      searchPlaceholder: "Search by number, reference or shop…",
       detail: {
         title: "Order",
         itemsTitle: "Items",

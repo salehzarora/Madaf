@@ -221,6 +221,7 @@ const he: Dictionary = {
       activeProducts: "מוצרים פעילים",
       lowStock: "פריטים במלאי נמוך",
       activeShops: "חנויות פעילות",
+      todayOrders: "הזמנות היום",
     },
     recentOrders: "הזמנות אחרונות",
     lowStockTitle: "מלאי נמוך",
@@ -256,6 +257,8 @@ const he: Dictionary = {
       activate: "הפעלה",
       deactivate: "השבתה",
       inactiveBadge: "לא פעיל",
+      filterStatus: "סטטוס",
+      statusActive: "פעיל",
       new: {
         title: "מוצר חדש",
         subtitle: "הוספת מוצר לקטלוג.",
@@ -336,6 +339,8 @@ const he: Dictionary = {
       colTotal: "סה״כ",
       colStatus: "סטטוס",
       colDate: "התקבלה",
+      colRef: "אסמכתה",
+      searchPlaceholder: "חיפוש לפי מספר, אסמכתה או חנות…",
       detail: {
         title: "הזמנה",
         itemsTitle: "פריטים",

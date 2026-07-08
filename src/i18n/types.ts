@@ -194,6 +194,7 @@ export interface Dictionary {
       activeProducts: string;
       lowStock: string;
       activeShops: string;
+      todayOrders: string;
     };
     recentOrders: string;
     lowStockTitle: string;
@@ -231,6 +232,8 @@ export interface Dictionary {
       activate: string;
       deactivate: string;
       inactiveBadge: string;
+      filterStatus: string;
+      statusActive: string;
       new: {
         title: string;
         subtitle: string;
@@ -313,6 +316,8 @@ export interface Dictionary {
       colTotal: string;
       colStatus: string;
       colDate: string;
+      colRef: string;
+      searchPlaceholder: string;
       detail: {
         title: string;
         itemsTitle: string;

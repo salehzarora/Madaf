@@ -221,6 +221,7 @@ const ar: Dictionary = {
       activeProducts: "منتجات فعّالة",
       lowStock: "أصناف بمخزون منخفض",
       activeShops: "محلات نشطة",
+      todayOrders: "طلبيات اليوم",
     },
     recentOrders: "أحدث الطلبيات",
     lowStockTitle: "مخزون منخفض",
@@ -256,6 +257,8 @@ const ar: Dictionary = {
       activate: "تفعيل",
       deactivate: "إيقاف",
       inactiveBadge: "غير مفعّل",
+      filterStatus: "الحالة",
+      statusActive: "مفعّل",
       new: {
         title: "منتج جديد",
         subtitle: "إضافة منتج إلى الكتالوج.",
@@ -336,6 +339,8 @@ const ar: Dictionary = {
       colTotal: "المجموع",
       colStatus: "الحالة",
       colDate: "تاريخ الاستلام",
+      colRef: "المرجع",
+      searchPlaceholder: "ابحث بالرقم أو المرجع أو المحل…",
       detail: {
         title: "طلبية",
         itemsTitle: "الأصناف",
