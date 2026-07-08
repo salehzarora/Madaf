@@ -320,9 +320,16 @@ export async function uploadProductImageAction(
   formData: FormData,
 ): Promise<UploadImageResult> {
   try {
-    const productId = formData.get("productId");
+    const rawProductId = formData.get("productId");
+    // Edit mode passes a product id (must be plausible); create mode omits it
+    // (empty string / null) and uploads to a tenant-scoped staging path.
+    const hasProductId =
+      typeof rawProductId === "string" && rawProductId.length > 0;
+    if (hasProductId && !isPlausibleId(rawProductId)) {
+      return { ok: false, reason: "failed" };
+    }
+    const productId = hasProductId ? (rawProductId as string) : undefined;
     const file = formData.get("file");
-    if (!isPlausibleId(productId)) return { ok: false, reason: "failed" };
     if (!(file instanceof File) || file.size === 0) {
       return { ok: false, reason: "failed" };
     }
@@ -340,7 +347,7 @@ export async function uploadProductImageAction(
       return { ok: false, reason: "type" };
     }
     const result = await uploadProductImage({
-      productId,
+      ...(productId ? { productId } : {}),
       fileName: file.name || "image",
       contentType: sniffed,
       bytes,

@@ -1,15 +1,18 @@
-import { Link2, ShoppingBag, Store } from "lucide-react";
+import { Link2, Plus, ShoppingBag, Store } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listCustomers, listOrders } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import { getDataMode, listCustomers, listOrders } from "@/lib/data";
 import { formatDate, formatNumber } from "@/lib/format";
 
-/** Shops list — with per-shop order stats and a "start order" deep link. */
+/** Shops list — with per-shop order stats, an "add store" CTA and a
+ * "start order" deep link. */
 export default async function AdminCustomersPage({
   params,
 }: {
@@ -24,6 +27,12 @@ export default async function AdminCustomersPage({
     listCustomers(),
     listOrders(),
   ]);
+
+  // Creating a store is owner/admin-only (enforced by create_customer). In
+  // mock mode it's the open demo, so the CTA always shows.
+  const isSupabase = getDataMode() === "supabase";
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  const canAddCustomer = !isSupabase || role === "owner" || role === "admin";
 
   const stats = new Map(
     customers.map((customer) => {
@@ -41,16 +50,47 @@ export default async function AdminCustomersPage({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
-          {dict.nav.admin}
-        </p>
-        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
-          {t.title}
-        </h1>
-        <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+              {dict.nav.admin}
+            </p>
+            <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+              {t.title}
+            </h1>
+            <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
+          </div>
+          {canAddCustomer ? (
+            <Link
+              href={`/${locale}/admin/customers/new`}
+              className="inline-flex h-11 items-center gap-1.5 rounded-field bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <Plus className="size-4" strokeWidth={2.5} aria-hidden />
+              {t.addCustomer}
+            </Link>
+          ) : null}
+        </div>
         <ShelfRule className="mt-4" />
       </div>
 
+      {customers.length === 0 ? (
+        <EmptyState
+          icon={<Store />}
+          title={t.empty}
+          hint={t.emptyHint}
+          action={
+            canAddCustomer ? (
+              <Link
+                href={`/${locale}/admin/customers/new`}
+                className="inline-flex h-11 items-center gap-1.5 rounded-field bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              >
+                <Plus className="size-4" strokeWidth={2.5} aria-hidden />
+                {t.addCustomer}
+              </Link>
+            ) : undefined
+          }
+        />
+      ) : (
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
@@ -131,6 +171,7 @@ export default async function AdminCustomersPage({
           </tbody>
         </table>
       </Card>
+      )}
     </div>
   );
 }

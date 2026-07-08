@@ -223,6 +223,8 @@ function mapCustomer(row: Row<"customers">): Customer {
     },
     phone: row.phone ?? "",
     contactName: row.contact_name ?? "",
+    address: row.address ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 

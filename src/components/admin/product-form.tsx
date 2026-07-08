@@ -3,7 +3,7 @@
 import { CheckCircle2, ImageIcon, Loader2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -21,13 +21,15 @@ import { cn } from "@/lib/utils";
 
 /**
  * Shared admin product form — create and edit.
- * - Mock mode: shows the demo confirmation, persists nothing.
+ * - Mock mode: shows the demo confirmation, persists nothing (device upload
+ *   shows a local, client-only preview so the flow is demonstrable).
  * - Supabase mode: submits through the product Server Actions (real
  *   create/update + inventory; the DB validates everything).
  *
- * Image upload needs an existing product id (tenant-scoped storage path),
- * so file upload is offered in EDIT mode only; create mode accepts an
- * image URL.
+ * Device image upload works in BOTH create and edit (M7F.1): create mode
+ * uploads to a tenant-scoped staging path (no product id needed) and the
+ * returned object path is persisted by create_product on save. An image URL
+ * remains an optional fallback.
  */
 export function ProductForm({
   locale,
@@ -60,14 +62,32 @@ export function ProductForm({
   const [saved, setSaved] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Holds a mock-mode object URL so it can be revoked when replaced/unmounted.
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   async function onUpload(file: File) {
-    if (!product) return;
     setUploadError(null);
+    // Mock mode never persists — show a local, client-only preview so the
+    // upload flow is demonstrable in the zero-env default. Never persist the
+    // blob URL (imageUrl stays empty).
+    if (!live) {
+      const localUrl = URL.createObjectURL(file);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = localUrl;
+      setPreview(localUrl);
+      return;
+    }
     setUploading(true);
     try {
       const fd = new FormData();
-      fd.set("productId", product.id);
+      // Edit mode passes the product id; create mode omits it (staging path).
+      if (product) fd.set("productId", product.id);
       fd.set("file", file);
       const result = await uploadProductImageAction(fd);
       if (result.ok && result.path && result.previewUrl) {
@@ -350,9 +370,9 @@ export function ProductForm({
             </div>
           </div>
 
-          {/* File upload — edit mode only (needs a product id for the path) */}
-          {isEdit && live ? (
-            <div>
+          {/* Device upload — works in create & edit (M7F.1); mock mode shows a
+              local, client-only preview (see onUpload). */}
+          <div>
               <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={(e) => {
@@ -381,8 +401,7 @@ export function ProductForm({
                   {uploadError}
                 </p>
               ) : null}
-            </div>
-          ) : null}
+          </div>
         </CardContent>
       </Card>
 

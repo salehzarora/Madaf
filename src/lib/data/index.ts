@@ -26,7 +26,13 @@ export {
   type ManufacturerWriteInput,
   type ProductWriteInput,
 } from "./products";
-export { getCustomer, listCustomers } from "./customers";
+export {
+  createCustomer,
+  getCustomer,
+  listCustomers,
+  updateCustomer,
+  type CustomerWriteInput,
+} from "./customers";
 export {
   getOrderDocumentSource,
   recordOrderDocument,
