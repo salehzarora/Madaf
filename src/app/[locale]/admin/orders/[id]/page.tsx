@@ -15,19 +15,14 @@ import {
   getOrder,
   listCategories,
   listDocumentsForOrder,
-  listOrders,
   listProducts,
 } from "@/lib/data";
 import { formatCurrency, formatDate } from "@/lib/format";
 
-export async function generateStaticParams() {
-  // Build-time, no request — never touch cookies()/session. In supabase mode
-  // orders read through the cookie-bound client, so prebuild nothing and let
-  // dynamicParams render each order page on demand at request time.
-  if (getDataMode() === "supabase") return [];
-  const orders = await listOrders();
-  return orders.map((order) => ({ id: order.id }));
-}
+// Reads authenticated, tenant-scoped order data through the cookie-bound client,
+// so it MUST render dynamically per request — never statically generated or
+// cached. No generateStaticParams (which would mark the route SSG); force-dynamic.
+export const dynamic = "force-dynamic";
 
 export default async function AdminOrderDetailPage({
   params,
