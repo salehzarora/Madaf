@@ -223,6 +223,141 @@ export type Database = {
           },
         ]
       }
+      customer_signup_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          label: string | null
+          last_used_at: string | null
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_signup_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_signup_requests: {
+        Row: {
+          address: string | null
+          approved_at: string | null
+          approved_customer_id: string | null
+          city_ar: string | null
+          city_en: string | null
+          city_he: string | null
+          contact_name: string | null
+          created_at: string
+          email: string | null
+          id: string
+          link_id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          rejected_at: string | null
+          reviewed_by: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          approved_at?: string | null
+          approved_customer_id?: string | null
+          city_ar?: string | null
+          city_en?: string | null
+          city_he?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          link_id: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          rejected_at?: string | null
+          reviewed_by?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          approved_at?: string | null
+          approved_customer_id?: string | null
+          city_ar?: string | null
+          city_en?: string | null
+          city_he?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          link_id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          rejected_at?: string | null
+          reviewed_by?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_signup_requests_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "customer_signup_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_signup_requests_tenant_id_approved_customer_id_fkey"
+            columns: ["tenant_id", "approved_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "customer_signup_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null
@@ -1494,6 +1629,13 @@ export type Database = {
         Args: { p_fingerprint: string; p_purpose: string }
         Returns: undefined
       }
+      _resolve_signup_token: {
+        Args: { p_raw_token: string }
+        Returns: {
+          link_id: string
+          tenant_id: string
+        }[]
+      }
       _resolve_token: {
         Args: { p_raw_token: string }
         Returns: {
@@ -1511,6 +1653,10 @@ export type Database = {
         Returns: undefined
       }
       accept_tenant_invite: { Args: { p_token: string }; Returns: string }
+      approve_customer_signup_request: {
+        Args: { p_request_id: string; p_tenant_id: string }
+        Returns: string
+      }
       assert_service_role: { Args: { p_fn: string }; Returns: undefined }
       assign_customer_to_rep: {
         Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }
@@ -1705,6 +1851,16 @@ export type Database = {
         }
         Returns: string
       }
+      insert_customer_signup_link: {
+        Args: {
+          p_expires_at?: string
+          p_label?: string
+          p_tenant_id: string
+          p_token_hash: string
+          p_token_preview?: string
+        }
+        Returns: string
+      }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
       list_memberships: {
         Args: never
@@ -1738,11 +1894,19 @@ export type Database = {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined
       }
+      reject_customer_signup_request: {
+        Args: { p_request_id: string; p_tenant_id: string }
+        Returns: string
+      }
       remove_tenant_member: {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined
       }
       revoke_customer_access_link: {
+        Args: { p_link_id: string; p_tenant_id: string }
+        Returns: string
+      }
+      revoke_customer_signup_link: {
         Args: { p_link_id: string; p_tenant_id: string }
         Returns: string
       }
@@ -1785,6 +1949,21 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      submit_customer_signup_request: {
+        Args: {
+          p_address?: string
+          p_city_ar?: string
+          p_city_en?: string
+          p_city_he?: string
+          p_contact_name?: string
+          p_email?: string
+          p_name: string
+          p_notes?: string
+          p_phone?: string
+          p_token: string
+        }
+        Returns: boolean
       }
       unassign_customer_from_rep: {
         Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }
