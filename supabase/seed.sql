@@ -342,7 +342,7 @@ insert into public.documents
 select
   ('df000000-0000-4000-8000-000000' || replace(o.order_number, 'MDF-', '') || '01')::uuid,
   o.tenant_id, o.id, 'order_request',
-  'DOC-' || replace(o.order_number, 'MDF-', '') || '-O',
+  'DOC-' || replace(o.public_ref, 'MDF-', '') || '-O',
   'he', 'draft', '',
   jsonb_build_object(
     'subtotal', o.subtotal, 'vat_total', o.vat_total, 'total', o.total,
@@ -357,7 +357,7 @@ insert into public.documents
 select
   ('df000000-0000-4000-8000-000000' || replace(o.order_number, 'MDF-', '') || '02')::uuid,
   o.tenant_id, o.id, 'delivery_note',
-  'DOC-' || replace(o.order_number, 'MDF-', '') || '-D',
+  'DOC-' || replace(o.public_ref, 'MDF-', '') || '-D',
   'he', 'draft', '',
   -- Delivery notes render without prices (docs guide); the snapshot still
   -- records the totals for reconciliation.
@@ -375,7 +375,7 @@ insert into public.documents
 select
   ('df000000-0000-4000-8000-000000' || replace(o.order_number, 'MDF-', '') || '03')::uuid,
   o.tenant_id, o.id, 'invoice_draft',
-  'DOC-' || replace(o.order_number, 'MDF-', '') || '-I',
+  'DOC-' || replace(o.public_ref, 'MDF-', '') || '-I',
   'he', 'draft',
   'אינה חשבונית מס כחוק. זוהי טיוטה לתצוגה בלבד — מסמך כחוק יופק רק לאחר הגדרת מסים וחיבור ספק הפקת חשבוניות.',
   jsonb_build_object(
@@ -392,8 +392,15 @@ insert into public.audit_events (tenant_id, event_type, entity_type, entity_id, 
   ('11111111-1111-4111-8111-111111111111', 'seed.demo_data_loaded', 'tenant', '11111111-1111-4111-8111-111111111111',
    '{"source": "supabase/seed.sql", "note": "M1 demo dataset mirroring src/lib/mock"}'),
   ('11111111-1111-4111-8111-111111111111', 'order.delivered', 'order', 'ee000000-0000-4000-8000-000000001043',
-   '{"order_number": "MDF-1043"}'),
-  ('11111111-1111-4111-8111-111111111111', 'document.created', 'document', 'df000000-0000-4000-8000-000000104303',
-   '{"document_number": "DOC-1043-I", "document_type": "invoice_draft"}');
+   '{"order_number": "MDF-1043"}');
+
+-- Document example derives its number from the REAL seeded row (public_ref
+-- based since M8A.2 — never the internal sequence).
+insert into public.audit_events (tenant_id, event_type, entity_type, entity_id, metadata)
+select d.tenant_id, 'document.created', 'document', d.id,
+       jsonb_build_object('document_number', d.document_number,
+                          'document_type', d.document_type)
+from public.documents d
+where d.id = 'df000000-0000-4000-8000-000000104303';
 
 commit;
