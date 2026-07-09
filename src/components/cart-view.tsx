@@ -83,7 +83,8 @@ export function CartView({
           {items.map((item) => {
             const product = productById.get(item.productId);
             if (!product) return null;
-            const category = categoryById.get(product.categoryId)!;
+            // Optional for ProductImage — never crash on a missing category (M8A).
+            const category = categoryById.get(product.categoryId);
             return (
               <div key={item.productId} className="flex items-center gap-4 p-4">
                 <ProductImage

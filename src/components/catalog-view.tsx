@@ -25,7 +25,16 @@ import { useCart } from "@/lib/cart-context";
 import { formatCurrency } from "@/lib/format";
 import { productName } from "@/lib/catalog-helpers";
 import { useShopData } from "@/lib/shop-data-context";
+import type { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** Used when a product references a missing category row (M8A - never crash). */
+const FALLBACK_CATEGORY: Category = {
+  id: "misc",
+  name: { ar: "", he: "", en: "" },
+  icon: "📦",
+  hue: 0,
+};
 
 type SortKey = "featured" | "priceAsc" | "priceDesc" | "name";
 
@@ -324,7 +333,9 @@ export function CatalogView({
                 <ProductCard
                   key={product.id}
                   product={product}
-                  category={categoryById.get(product.categoryId)!}
+                  category={
+                    categoryById.get(product.categoryId) ?? FALLBACK_CATEGORY
+                  }
                   manufacturer={manufacturerById.get(product.manufacturerId)}
                   locale={locale}
                   dict={dict}

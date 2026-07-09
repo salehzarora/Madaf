@@ -339,6 +339,8 @@ export interface Dictionary {
         itemsCount: string;
         customerRef: string;
         internalRef: string;
+        /** Fallback line label when an order item's product row is gone (M8A). */
+        unavailableProduct: string;
         /** Shown when reserving stock on confirm/preparing is blocked (M7I). */
         statusInsufficientStock: string;
         /** Informational: stock returned after a reserved order is cancelled. */

@@ -192,7 +192,9 @@ export function ProductsTable({
             </thead>
             <tbody>
               {filtered.map((product) => {
-                const category = categoryById.get(product.categoryId)!;
+                // May be undefined (missing category row) — ProductImage
+                // tolerates it; never crash the table (M8A).
+                const category = categoryById.get(product.categoryId);
                 const manufacturer = manufacturerById.get(
                   product.manufacturerId,
                 );
@@ -228,7 +230,7 @@ export function ProductsTable({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-ink-soft">
-                      {category.name[locale]}
+                      {category?.name[locale] ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-ink-soft">
                       {manufacturer?.name[locale] ?? "—"}
