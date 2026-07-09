@@ -670,3 +670,41 @@ Then redeploy Vercel with **build cache OFF**; confirm the detail + token routes
 
 No RLS weakened, no service_role in client, no legal/payment change,
 `legal_effective` stays false.
+
+## 20. M7I — guest showcase ordering, inventory reservation, order editing
+
+Full detail in `docs/product/M7I_GUEST_SHOWCASE_ORDERING_INVENTORY.md`.
+
+- **A — Guest ordering:** `/showcase/<token>` is now ORDERABLE — an unknown
+  store browses, adds to cart, and submits an order request with its store
+  details (no login). Lands as `customer_id NULL` + `customer_snapshot`
+  (`guest=true`), source `remote_customer`. Admin can **Create shop from this
+  order** or keep it one-time. New RPCs `create_order_from_showcase_token`
+  (anon, rate-limited) and `create_customer_from_order` (owner/admin).
+- **B — Shop images (REAL fix, corrects §19-D):** the failure was CODE, not
+  config — image signing borrowed the documents-PDF client (fail-closed behind
+  `MADAF_TRUSTED_DOCUMENT_STORAGE` + host pin). New dedicated server-only
+  service-role image client needs ONLY `SUPABASE_SERVICE_ROLE_KEY`. Verified
+  end-to-end locally (`PROBE_PASS`; edit- and create-mode paths both sign,
+  cross-tenant excluded).
+- **C — Inventory reservation (corrects §19-E):** stock is reserved on
+  **confirm/preparing**, not on delivery; insufficient stock blocks the
+  transition with a clear error; cancel restores once. Ledger-guarded
+  (`order_reserved` / `order_reservation_released`).
+- **D — Order editing:** `update_order_items` (owner/admin) edits lines/notes
+  with inventory reconciliation when reserved; delivered/cancelled locked.
+- **E — Searchable shop picker** (name/contact/phone/city/address).
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260721100000_inventory_reservation_lifecycle.sql`
+2. `20260721110000_showcase_guest_order.sql`
+3. `20260721120000_update_order_items.sql`
+
+**Vercel envs:** no new envs. For shop/showcase images, `SUPABASE_SERVICE_ROLE_KEY`
+(server-only) is now the ONLY requirement — `MADAF_TRUSTED_DOCUMENT_STORAGE*`
+stays for documents-PDF only and no longer affects images. Redeploy with **build
+cache OFF**; confirm token/detail routes render `ƒ`.
+
+No RLS weakened, no service_role in client, no legal/payment change,
+`legal_effective` stays false. No hosted db reset, no config push.

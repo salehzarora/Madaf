@@ -137,6 +137,8 @@ const en: Dictionary = {
       "This catalog is private. Open the private shop link your supplier sent you to see products and place an order.",
     orderingFor: "Ordering for",
     selectShop: "Select shop",
+    searchShops: "Search by name, contact, phone or city…",
+    noShopsFound: "No shops match your search.",
     changeShop: "Change",
     noShop: "No shop selected",
     addToCart: "Add",
@@ -356,6 +358,39 @@ const en: Dictionary = {
         itemsCount: "{count} lines",
         customerRef: "Customer ref",
         internalRef: "Internal (warehouse)",
+        statusInsufficientStock:
+          "Not enough stock to complete the order. Adjust the stock or reduce the quantity.",
+        stockRestored: "Stock was returned after the order was cancelled.",
+        guest: {
+          title: "New store (guest order)",
+          badge: "Guest",
+          hint: "This order came from a showcase link, with no shop account. Create a shop to save these details for next time, or keep it as a one-time order.",
+          oneTime: "One-time order",
+          email: "Email",
+          create: "Create shop from this order",
+          creating: "Creating…",
+          createError: "Couldn't create the shop — please try again.",
+          created: "Shop created and linked to this order.",
+        },
+        edit: {
+          button: "Edit order",
+          title: "Edit order",
+          addProduct: "Add product to order",
+          searchProduct: "Search products…",
+          noneToAdd: "All products are already on the order.",
+          remove: "Remove",
+          empty: "An order needs at least one item.",
+          reservedHint:
+            "Stock is reserved for this order — saving will adjust the reserved amount to match.",
+          lockedHint: "Delivered and cancelled orders can't be edited.",
+          save: "Save changes",
+          saving: "Saving…",
+          cancel: "Cancel",
+          error: "Couldn't save the changes — please try again.",
+          insufficientStock:
+            "Not enough stock to complete the order. Adjust the stock or reduce the quantity.",
+          success: "Order updated.",
+        },
       },
     },
     inventory: {
@@ -711,16 +746,30 @@ const en: Dictionary = {
       disclaimer: "This sends an order request to the supplier. It is not an invoice and no payment happens here.",
     },
     showcase: {
-      viewOnly: "View only",
+      browseOrder: "Browse & order",
       intro:
-        "Browse the supplier's products. To place orders, request a store account from the supplier.",
+        "Browse the supplier's products and send an order request. The supplier will review it, confirm pricing and get in touch.",
       empty: "No products to show yet.",
-      requestAccess: "Request store access",
-      requestAccessBody:
-        "To place orders, contact the supplier and ask for your store's private ordering link. They'll open an account for you and send an ordering link.",
-      ctaHint: "Want to order? Request store access.",
+      reviewOrder: "Review order",
+      estimatedTotal: "Estimated total",
+      checkoutTitle: "Your store details",
+      checkoutIntro:
+        "Tell the supplier who's ordering so they can confirm your request and get in touch.",
+      backToProducts: "Back to products",
+      submit: "Send order request",
+      submitting: "Sending…",
+      vatNote: "Prices exclude VAT. Final totals are confirmed by the supplier.",
+      disclaimer:
+        "This is an order request, not a confirmed order. The supplier reviews every request before it's fulfilled.",
+      error: "Couldn't send the request — check the details and try again.",
+      successTitle: "Order request sent",
+      successBody:
+        "The supplier received your request and will get in touch to confirm.",
+      orderNumberLabel: "Request number",
+      refHint: "Keep this number to follow up with the supplier.",
       invalidTitle: "Link not valid",
-      invalidBody: "This product-view link has expired or was revoked. Ask the supplier for a new one.",
+      invalidBody:
+        "This link has expired or was revoked. Ask the supplier for a new one.",
     },
     signup: {
       title: "New store signup",

@@ -18,8 +18,20 @@
  */
 import { revalidatePath } from "next/cache";
 
-import { createOrderRequest, updateOrderStatus } from "@/lib/data";
+import {
+  createCustomerFromOrder,
+  createOrderRequest,
+  updateOrderItems,
+  updateOrderStatus,
+} from "@/lib/data";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
+
+/** Maps the DB insufficient-stock error (MDF30) to a UI reason. */
+function isInsufficientStock(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes("insufficient stock")
+  );
+}
 
 const MAX_LINES = 200;
 const MAX_QUANTITY = 9999;
@@ -97,6 +109,16 @@ export async function submitOrderAction(input: {
 export interface UpdateStatusResult {
   ok: boolean;
   status?: OrderStatus;
+  /** "insufficient_stock" when reserving on confirm/preparing was blocked. */
+  reason?: "insufficient_stock";
+}
+
+function revalidateOrder(locale: string, orderId: string): void {
+  if (typeof locale !== "string" || !/^[a-z]{2}$/.test(locale)) return;
+  revalidatePath(`/${locale}/admin/orders`);
+  revalidatePath(`/${locale}/admin/orders/${orderId}`);
+  revalidatePath(`/${locale}/admin`);
+  revalidatePath(`/${locale}/admin/inventory`);
 }
 
 export async function updateOrderStatusAction(input: {
@@ -114,15 +136,80 @@ export async function updateOrderStatusAction(input: {
     }
 
     const result = await updateOrderStatus(input.orderId, input.nextStatus);
-
-    if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
-      revalidatePath(`/${input.locale}/admin/orders`);
-      revalidatePath(`/${input.locale}/admin/orders/${input.orderId}`);
-      revalidatePath(`/${input.locale}/admin`);
-    }
+    revalidateOrder(input.locale, input.orderId);
     return { ok: true, status: result.newStatus };
   } catch (error) {
+    if (isInsufficientStock(error)) {
+      return { ok: false, reason: "insufficient_stock" };
+    }
     console.error("[madaf/actions] updateOrderStatusAction failed:", error);
+    return { ok: false };
+  }
+}
+
+export interface EditOrderResult {
+  ok: boolean;
+  reason?: "insufficient_stock" | "locked";
+}
+
+/** M7I.3 — owner/admin edit an order's lines (+ notes). */
+export async function updateOrderItemsAction(input: {
+  orderId: string;
+  items: { productId: string; quantity: number }[];
+  notes?: string;
+  locale: string;
+}): Promise<EditOrderResult> {
+  try {
+    if (!isPlausibleId(input.orderId)) return { ok: false };
+    const items = Array.isArray(input.items) ? input.items : [];
+    if (items.length === 0 || items.length > MAX_LINES) return { ok: false };
+    for (const item of items) {
+      if (
+        !isPlausibleId(item.productId) ||
+        !Number.isInteger(item.quantity) ||
+        item.quantity < 1 ||
+        item.quantity > MAX_QUANTITY
+      ) {
+        return { ok: false };
+      }
+    }
+    const notes =
+      typeof input.notes === "string"
+        ? input.notes.slice(0, MAX_NOTES_LENGTH)
+        : undefined;
+    await updateOrderItems(
+      input.orderId,
+      items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      notes,
+    );
+    revalidateOrder(input.locale, input.orderId);
+    return { ok: true };
+  } catch (error) {
+    if (isInsufficientStock(error)) return { ok: false, reason: "insufficient_stock" };
+    if (error instanceof Error && error.message.includes("cannot be edited")) {
+      return { ok: false, reason: "locked" };
+    }
+    console.error("[madaf/actions] updateOrderItemsAction failed:", error);
+    return { ok: false };
+  }
+}
+
+/** M7I.1 — owner/admin create a permanent customer from a guest order. */
+export async function createCustomerFromOrderAction(input: {
+  orderId: string;
+  locale: string;
+}): Promise<{ ok: boolean; customerId?: string }> {
+  try {
+    if (!isPlausibleId(input.orderId)) return { ok: false };
+    const result = await createCustomerFromOrder(input.orderId);
+    revalidateOrder(input.locale, input.orderId);
+    if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
+      revalidatePath(`/${input.locale}`, "layout");
+      revalidatePath(`/${input.locale}/admin/customers`);
+    }
+    return { ok: true, customerId: result.customerId };
+  } catch (error) {
+    console.error("[madaf/actions] createCustomerFromOrderAction failed:", error);
     return { ok: false };
   }
 }

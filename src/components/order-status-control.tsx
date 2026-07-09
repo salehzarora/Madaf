@@ -34,6 +34,10 @@ export function OrderStatusControl({
 }) {
   const [status, setStatus] = useState<OrderStatus>(initialStatus);
   const [failed, setFailed] = useState(false);
+  // Distinct message when reserving stock on confirm/preparing is blocked (M7I).
+  const [outOfStock, setOutOfStock] = useState(false);
+  // Info note when cancelling a reserved order returns its stock (M7I).
+  const [restored, setRestored] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const pipeline: OrderStatus[] = ["new", "confirmed", "preparing", "delivered"];
@@ -48,6 +52,11 @@ export function OrderStatusControl({
     }
     if (!allowed.includes(next)) return;
     setFailed(false);
+    setOutOfStock(false);
+    setRestored(false);
+    // Cancelling an order whose stock was reserved (confirmed/preparing) returns
+    // it — surface that once the transition lands.
+    const wasReserved = status === "confirmed" || status === "preparing";
     startTransition(async () => {
       try {
         const result = await updateOrderStatusAction({
@@ -57,6 +66,11 @@ export function OrderStatusControl({
         });
         if (result.ok && result.status) {
           setStatus(result.status);
+          if (result.status === "cancelled" && wasReserved) setRestored(true);
+          return;
+        }
+        if (result.reason === "insufficient_stock") {
+          setOutOfStock(true);
           return;
         }
       } catch {
@@ -148,6 +162,21 @@ export function OrderStatusControl({
       >
         {dict.status.cancelled}
       </button>
+
+      {outOfStock ? (
+        <p
+          role="alert"
+          className="rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-warning"
+        >
+          {dict.admin.orders.detail.statusInsufficientStock}
+        </p>
+      ) : null}
+
+      {restored ? (
+        <p className="rounded-field bg-info-soft px-3 py-2 text-sm font-medium text-info">
+          {dict.admin.orders.detail.stockRestored}
+        </p>
+      ) : null}
 
       {failed ? (
         <p

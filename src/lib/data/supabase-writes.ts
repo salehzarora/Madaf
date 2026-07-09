@@ -90,6 +90,38 @@ export async function sbUpdateOrderStatus(
   };
 }
 
+/** M7I.3 — owner/admin edit an order's lines (+ notes), reconciling inventory. */
+export async function sbUpdateOrderItems(
+  orderId: string,
+  items: { productId: string; quantity: number }[],
+  notes?: string,
+): Promise<{ orderId: string }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client
+    .rpc("update_order_items", {
+      p_tenant_id: tenantId,
+      p_order_id: orderId,
+      p_items: items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
+      ...(notes !== undefined ? { p_notes: notes } : {}),
+    })
+    .single();
+  if (error) fail("updateOrderItems", error.message);
+  return { orderId: data.order_id };
+}
+
+/** M7I.1 — owner/admin promote a guest order's store to a permanent customer. */
+export async function sbCreateCustomerFromOrder(
+  orderId: string,
+): Promise<{ customerId: string }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("create_customer_from_order", {
+    p_tenant_id: tenantId,
+    p_order_id: orderId,
+  });
+  if (error) fail("createCustomerFromOrder", error.message);
+  return { customerId: data as string };
+}
+
 // ── M5A: document generation ──────────────────────────────────────────────
 
 /**

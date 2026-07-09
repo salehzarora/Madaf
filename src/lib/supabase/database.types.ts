@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       archival_records: {
@@ -1797,6 +1822,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_customer_from_order: {
+        Args: { p_order_id: string; p_tenant_id: string }
+        Returns: string
+      }
       create_manufacturer: {
         Args: {
           p_logo_url?: string
@@ -1838,6 +1867,24 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      create_order_from_showcase_token: {
+        Args: {
+          p_address?: string
+          p_city_ar?: string
+          p_city_en?: string
+          p_city_he?: string
+          p_contact_name?: string
+          p_email?: string
+          p_items: Json
+          p_notes?: string
+          p_phone?: string
+          p_store_name: string
+          p_token: string
+        }
+        Returns: {
+          order_number: string
+        }[]
       }
       create_order_request: {
         Args: {
@@ -2121,6 +2168,18 @@ export type Database = {
         }
         Returns: string
       }
+      update_order_items: {
+        Args: {
+          p_items: Json
+          p_notes?: string
+          p_order_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          order_id: string
+          order_number: string
+        }[]
+      }
       update_order_status: {
         Args: {
           p_new_status: Database["public"]["Enums"]["order_status"]
@@ -2392,6 +2451,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       base_unit: [
