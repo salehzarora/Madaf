@@ -64,9 +64,11 @@ export default async function AdminOrderDetailPage({
           <span
             dir="ltr"
             className="font-mono text-lg font-semibold text-brand-700"
+            title={t.internalRef}
           >
             {order.number}
           </span>
+          <span className="text-xs text-ink-muted">{t.internalRef}</span>
           {order.publicRef ? (
             <span
               dir="ltr"

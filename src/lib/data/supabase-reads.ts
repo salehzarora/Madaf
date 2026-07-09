@@ -548,6 +548,7 @@ export async function sbListDocumentsForOrder(
 
 interface DocOrderData {
   order_number: string;
+  public_ref: string | null;
   created_at: string;
   notes: string | null;
   customer_snapshot: unknown;
@@ -568,7 +569,7 @@ interface DocOrderData {
 }
 
 const DOC_ORDER_SELECT =
-  "order_number, created_at, notes, customer_snapshot, subtotal, vat_total, total, currency, " +
+  "order_number, public_ref, created_at, notes, customer_snapshot, subtotal, vat_total, total, currency, " +
   "order_items (id, product_name_snapshot, package_unit_snapshot, package_quantity_snapshot, quantity, unit_price_snapshot, line_subtotal, created_at)";
 
 function localizedFrom(value: unknown): { ar: string; he: string; en: string } {
@@ -620,6 +621,9 @@ export async function sbGetOrderDocumentSource(
   return {
     supplier,
     orderNumber: row.order_number,
+    // Customer-facing ref; never fall back to the internal number (M7G). A
+    // supabase order always has public_ref (M7E NOT NULL + backfill).
+    publicRef: row.public_ref ?? "",
     orderDate: row.created_at,
     notes: row.notes ?? undefined,
     customer: snap

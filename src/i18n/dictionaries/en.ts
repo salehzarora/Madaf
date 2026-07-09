@@ -355,6 +355,7 @@ const en: Dictionary = {
         placedOn: "Placed on",
         itemsCount: "{count} lines",
         customerRef: "Customer ref",
+        internalRef: "Internal (warehouse)",
       },
     },
     inventory: {

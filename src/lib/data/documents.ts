@@ -46,7 +46,10 @@ const DOC_SUFFIX: Record<DocumentType, string> = {
  */
 export async function recordOrderDocument(input: {
   orderId: string;
+  /** Internal warehouse number — admin-only; NOT used for the document number. */
   orderNumber: string;
+  /** Customer-facing public ref — the document number is derived from THIS. */
+  publicRef: string;
   orderDate: string;
   type: DocumentType;
   locale: Locale;
@@ -65,7 +68,9 @@ export async function recordOrderDocument(input: {
       legalNotice: input.legalNotice,
     });
   }
-  const serial = input.orderNumber.replace("MDF-", "");
+  // Customer-facing document number from the public ref (M7G) — never the
+  // internal sequential order number.
+  const serial = (input.publicRef || input.orderNumber).replace("MDF-", "");
   return {
     documentId: `doc-${serial}-${DOC_SUFFIX[input.type].toLowerCase()}`,
     documentNumber: `DOC-${serial}-${DOC_SUFFIX[input.type]}`,
@@ -169,6 +174,9 @@ function mockOrderDocumentSource(
   return {
     supplier,
     orderNumber: order.number,
+    // Mock has no separate internal sequence, so the demo order number doubles
+    // as the customer ref (supabase always has a real public_ref).
+    publicRef: order.publicRef ?? order.number,
     orderDate: order.createdAt,
     notes: order.notes,
     customer: customer

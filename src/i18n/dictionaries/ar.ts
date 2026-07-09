@@ -354,7 +354,8 @@ const ar: Dictionary = {
         previewDoc: "معاينة المستندات",
         placedOn: "استُلمت بتاريخ",
         itemsCount: "{count} سطر",
-        customerRef: "مرجع العميل",
+        customerRef: "رقم الطلب للزبون",
+        internalRef: "رقم داخلي (المخزن)",
       },
     },
     inventory: {

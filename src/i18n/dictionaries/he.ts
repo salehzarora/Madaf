@@ -355,6 +355,7 @@ const he: Dictionary = {
         placedOn: "התקבלה בתאריך",
         itemsCount: "{count} שורות",
         customerRef: "אסמכתה ללקוח",
+        internalRef: "מספר פנימי (מחסן)",
       },
     },
     inventory: {

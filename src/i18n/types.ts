@@ -335,6 +335,7 @@ export interface Dictionary {
         /** `{count}` — number of lines in the order */
         itemsCount: string;
         customerRef: string;
+        internalRef: string;
       };
     };
     inventory: {

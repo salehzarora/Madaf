@@ -157,7 +157,10 @@ export function DocumentView({
             <p className="text-sm text-ink-soft">
               {t.orderRef}:{" "}
               <span dir="ltr" className="font-mono font-semibold ps-1">
-                {order.number}
+                {/* Customer-facing document → public ref, never the internal
+                    sequential number (M7G). Supabase always has publicRef;
+                    mock has no internal sequence so its number doubles as it. */}
+                {order.publicRef ?? order.number}
               </span>
             </p>
             <p className="text-sm text-ink-soft">

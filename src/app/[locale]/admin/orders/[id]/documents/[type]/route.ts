@@ -84,6 +84,7 @@ export async function GET(
     record = await recordOrderDocument({
       orderId: id,
       orderNumber: source.orderNumber,
+      publicRef: source.publicRef,
       orderDate: source.orderDate,
       type,
       locale: docLocale,
