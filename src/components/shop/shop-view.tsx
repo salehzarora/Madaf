@@ -46,7 +46,8 @@ export function ShopView({
   const [cart, setCart] = useState<Map<string, number>>(new Map());
   const [notes, setNotes] = useState("");
   const [pending, startTransition] = useTransition();
-  const [orderNumber, setOrderNumber] = useState<string | null>(null);
+  // Customer-facing PUBLIC ref (MDF-XXXXXXXX), never the internal number.
+  const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   const categoryById = useMemo(
@@ -86,8 +87,8 @@ export function ShopView({
         items,
         notes: notes.trim() || undefined,
       });
-      if (result.ok && result.orderNumber) {
-        setOrderNumber(result.orderNumber);
+      if (result.ok && result.publicRef) {
+        setPublicRef(result.publicRef);
         setCart(new Map());
         setNotes("");
       } else {
@@ -98,7 +99,7 @@ export function ShopView({
 
   const tenantName = catalog.tenantName[locale] || catalog.tenantName.he;
 
-  if (orderNumber) {
+  if (publicRef) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-4 py-16 text-center">
         <CheckCircle2 className="size-14 text-success" aria-hidden />
@@ -111,7 +112,7 @@ export function ShopView({
             {t.orderNumberLabel}
           </p>
           <p className="mt-0.5 font-mono text-lg font-bold text-ink" dir="ltr">
-            {orderNumber}
+            {publicRef}
           </p>
         </div>
         <p className="mt-2 max-w-sm text-xs text-ink-soft">{t.refHint}</p>

@@ -6,7 +6,10 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 
-/** Post-checkout confirmation. Order number arrives via ?n= (mock). */
+/**
+ * Post-checkout confirmation. The CUSTOMER-FACING public ref arrives via ?n=
+ * (checkout passes result.publicRef, never the internal sequential number).
+ */
 export default async function OrderSuccessPage({
   params,
   searchParams,
@@ -18,7 +21,7 @@ export default async function OrderSuccessPage({
   if (!isLocale(locale)) notFound();
   const { n } = await searchParams;
   const dict = getDictionary(locale);
-  const orderNumber = n ?? "MDF-1048";
+  const publicRef = n ?? "MDF-DEMO0000";
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-14 text-center sm:px-6">
@@ -41,7 +44,7 @@ export default async function OrderSuccessPage({
           className="mt-1 font-mono text-2xl font-bold tracking-wide text-brand-700"
           dir="ltr"
         >
-          {orderNumber}
+          {publicRef}
         </p>
         <ShelfRule className="mt-4" />
       </Card>

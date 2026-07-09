@@ -605,3 +605,33 @@ objects; external URLs pass through; failures fall back to placeholders.
 **Operator:** no new steps beyond §17. If uploaded shop images should appear on
 staging, ensure the trusted-storage env vars are set (already required for
 document PDFs). No DB push needed for M7F.4.
+
+## 18. M7G — customer order privacy + new-store signup
+
+Full detail in `docs/product/M7G_CUSTOMER_ORDER_PRIVACY_STORE_SIGNUP.md`.
+
+- **Customer order privacy (A):** customers now see ONLY the public ref
+  (`MDF-XXXXXXXX`), never the internal sequential `order_number`. Fixed the
+  draft-document order-ref (preview + PDF), the regular-checkout success page,
+  and the document NUMBER (now `DOC-<publicRef>-X`). Documents stay non-legal
+  drafts.
+- **public_ref uniqueness (B):** re-verified sufficient (NOT NULL, unique per
+  tenant, retry-on-collision, every path covered) — probed at 400 orders. No
+  migration.
+- **New-store signup (C):** owner/admin issue a tokenized `/[locale]/join/<token>`
+  link; a store submits its details (no login, no catalog); the request lands
+  PENDING on `/admin/customers/signup`; approve creates the customer.
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260718100000_customer_facing_document_number.sql` — doc number from
+   `public_ref` + a `(tenant_id, order_id, document_type)` unique.
+2. `20260719100000_store_signup_links.sql` — `customer_signup_links` +
+   `customer_signup_requests` tables + six RPCs (RLS owner/admin read, RPC-only
+   writes, anon submit via token + rate limiter, no anon table access).
+
+Then redeploy Vercel from the merged branch with **build cache OFF**; confirm
+the three detail routes still render `ƒ`.
+
+No RLS weakened (new tables are owner/admin-read + RPC-write only), no
+service_role in client, no legal/payment change, `legal_effective` stays false.
