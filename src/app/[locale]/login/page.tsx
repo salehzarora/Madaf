@@ -45,7 +45,10 @@ export default async function LoginPage({
   if (supabaseMode) {
     const { userId, membership } = await getSessionContext();
     if (userId && membership) redirect(next ?? `/${locale}/admin`);
-    if (userId && !membership) redirect(`/${locale}/onboarding`);
+    // Membershipless users still honor a validated `next` (M8A): an invite
+    // return path must reach the invite page, not lose it to onboarding. A
+    // next they can't use (e.g. /admin) bounces back to onboarding there.
+    if (userId && !membership) redirect(next ?? `/${locale}/onboarding`);
   }
 
   const dict = getDictionary(locale);

@@ -6,6 +6,14 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getDataMode } from "@/lib/data";
 import { getShowcaseCatalog } from "@/lib/data/catalog-showcase";
 
+import type { Metadata } from "next";
+
+// The raw token in the URL IS the credential — a leaked link must not
+// become search-indexable (M8A).
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
 /**
  * Product showcase / guest ordering (M7H.3 → M7I.1). A prospective customer
  * opens the supplier's tokenized "view products" link with NO login, browses

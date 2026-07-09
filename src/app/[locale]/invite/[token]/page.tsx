@@ -10,6 +10,14 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode } from "@/lib/data";
 
+import type { Metadata } from "next";
+
+// The raw token in the URL IS the credential — a leaked link must not
+// become search-indexable (M8A).
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
 /**
  * Tenant-team invite acceptance (Supabase mode only). Logged out → prompt to
  * sign in with the invited email (returning here). Logged in → accept; the

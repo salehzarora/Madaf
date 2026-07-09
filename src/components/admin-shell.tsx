@@ -198,6 +198,19 @@ export function AdminShell({
           <aside className="absolute inset-y-0 start-0 flex w-72 flex-col bg-band shadow-float">
             {bandTop}
             {navList}
+            {/* Drawer footer (M8A): mobile previously had NO locale switcher
+                and NO logout — both lived only in the desktop top bar. */}
+            <div className="flex items-center gap-2.5 border-t border-band-muted/15 p-4">
+              <LocaleSwitcher current={locale} />
+              {session ? (
+                <span className="ms-auto">
+                  <LogoutButton
+                    locale={locale}
+                    label={dict.access.session.logout}
+                  />
+                </span>
+              ) : null}
+            </div>
           </aside>
         </div>
       ) : null}

@@ -121,10 +121,12 @@ export function OrderItemsEditor({
     }
     setErrorKey(null);
     startTransition(async () => {
+      // Always send the (trimmed) string — an EMPTY value must reach the RPC
+      // so clearing notes actually clears them (undefined = keep old; M8A).
       const result = await updateOrderItemsAction({
         orderId: order.id,
         items,
-        notes: notes.trim() || undefined,
+        notes: notes.trim(),
         locale,
       });
       if (result.ok) {

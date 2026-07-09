@@ -6,6 +6,14 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getDataMode } from "@/lib/data";
 import { getTokenCatalog } from "@/lib/data/token";
 
+import type { Metadata } from "next";
+
+// The raw token in the URL IS the credential — a leaked link must not
+// become search-indexable (M8A).
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
 /**
  * Tokenized shop — a customer opens their private link with NO login. The
  * token is the credential; the server resolves it to a tenant-scoped

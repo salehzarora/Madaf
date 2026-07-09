@@ -37,8 +37,11 @@ export function LoginForm({
       if (mode === "signup") {
         const result = await signUpAction({ email, password });
         if (result.ok) {
-          // A fresh account has no membership → onboarding.
-          router.replace(`/${locale}/onboarding`);
+          // Honor a validated return path first (M8A): an email-invited
+          // teammate signing up must land back on the invite page, not be
+          // derailed into creating their own tenant. Without one, a fresh
+          // account has no membership → onboarding.
+          router.replace(next ?? `/${locale}/onboarding`);
           router.refresh();
           return;
         }
