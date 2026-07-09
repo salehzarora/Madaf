@@ -398,10 +398,11 @@ translation tables). Full DDL: `supabase/migrations/`.
 | `ProductTranslation` | *(columns on `products`)* | `name_*` + `description_*` |
 | `Customer` | `customers` | shop `name` (proper noun, single column), `city_*` per locale, `customer_type`, `contact_name`, plus optional `address` + `notes` surfaced since M7F.2 (writes via `create_customer`/`update_customer`) |
 | `InventoryItem` | `inventory_items` | `stockPackages`→`quantity_available`, `location`→`warehouse_location`, `nearestExpiry`→`expiry_date`, per-row `low_stock_threshold` (mock global const = 10) |
-| `Order` | `orders` | `number`→`order_number` via `next_order_number(tenant_id)` (atomic counter, `MDF-1048…`); `status` enum = `OrderStatus`; denormalized `subtotal`/`vat_total`/`total`; `currency` (ILS), `source` |
+| `Order` | `orders` | `number`→`order_number` (internal sequential `MDF-N` via atomic counter — **admin/warehouse only**); `publicRef`→`public_ref` (random `MDF-XXXXXXXX`, NOT NULL, unique per tenant — the ONLY order id shown to customers, M7E/M7G); `status` enum = `OrderStatus`; denormalized `subtotal`/`vat_total`/`total`; `currency` (ILS), `source` |
 | `OrderItem` | `order_items` | price/VAT/name/package **snapshots** (`product_name_snapshot` is jsonb `{ar,he,en}` so documents re-render in any language after product edits) |
 | — | `order_status_history` | append-only; written automatically by an `orders` trigger — do not insert from app code |
-| `OrderDocument` | `documents` | type enum: `order`→`order_request`, `delivery`→`delivery_note`, `invoiceDraft`→`invoice_draft`; `legal_notice` NOT NULL for invoice drafts (CHECK); `totals_snapshot` jsonb; voided, never deleted |
+| `OrderDocument` | `documents` | type enum: `order`→`order_request`, `delivery`→`delivery_note`, `invoiceDraft`→`invoice_draft`; `document_number` derived from the order **public_ref** (M7G, customer-facing); `legal_notice` NOT NULL for invoice drafts (CHECK); `totals_snapshot` jsonb; voided, never deleted |
+| `SignupLink`/`SignupRequest` | `customer_signup_links` / `customer_signup_requests` | M7G new-store self-signup: owner/admin issue a `token_hash`-only link; anon submit via `submit_customer_signup_request` (token + rate limiter, per-link pending cap); owner/admin `approve_customer_signup_request` (→ a `customers` row) / `reject`. RLS: owner/admin read only; RPC-only writes; no anon table access |
 | — | `audit_events` | append-only generic trail |
 
 Enums created: `order_status`, `order_source`, `document_type`,

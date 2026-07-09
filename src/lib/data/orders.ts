@@ -34,7 +34,11 @@ export interface CreateOrderInput {
 
 export interface CreateOrderResult {
   orderId: string;
+  /** Internal warehouse/admin number (MDF-N). */
   orderNumber: string;
+  /** Customer-facing public ref (MDF-XXXXXXXX). Same value as orderNumber in
+   * mock mode (no separate internal sequence there). */
+  publicRef: string;
 }
 
 export async function listOrders(): Promise<Order[]> {
@@ -90,9 +94,11 @@ export async function createOrderRequest(
   if (getDataMode() === "supabase") {
     return (await import("./supabase-writes")).sbCreateOrderRequest(input);
   }
+  const demoNumber = `MDF-${1048 + Math.floor(Math.random() * 40)}`;
   return {
     orderId: "demo-order",
-    orderNumber: `MDF-${1048 + Math.floor(Math.random() * 40)}`,
+    orderNumber: demoNumber,
+    publicRef: demoNumber,
   };
 }
 

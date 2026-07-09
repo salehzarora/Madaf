@@ -238,7 +238,9 @@ export function renderOrderDocumentPdf(
     color: COLOR.inkSoft,
     align: "end",
   });
-  yE = text(`${t.orderRef}: ${source.orderNumber}`, endBox.x, yE, endBox.w, {
+  // Customer-facing document → the PUBLIC order ref, never the internal
+  // sequential number (M7G). Falls back to "—" if somehow absent.
+  yE = text(`${t.orderRef}: ${source.publicRef || "—"}`, endBox.x, yE, endBox.w, {
     size: 9,
     color: COLOR.inkSoft,
     align: "end",

@@ -36,7 +36,8 @@ function isPlausibleId(value: string): boolean {
 
 export interface SubmitOrderResult {
   ok: boolean;
-  orderNumber?: string;
+  /** Customer-facing public ref (MDF-XXXXXXXX) — shown on the success page. */
+  publicRef?: string;
 }
 
 export async function submitOrderAction(input: {
@@ -84,7 +85,9 @@ export async function submitOrderAction(input: {
       revalidatePath(`/${input.locale}/admin/orders`);
       revalidatePath(`/${input.locale}/admin`);
     }
-    return { ok: true, orderNumber: result.orderNumber };
+    // Customer-facing success page shows the public ref, never the internal
+    // sequential number (M7G).
+    return { ok: true, publicRef: result.publicRef };
   } catch (error) {
     console.error("[madaf/actions] submitOrderAction failed:", error);
     return { ok: false };

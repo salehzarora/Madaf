@@ -63,7 +63,11 @@ export interface DocumentLineItem {
  */
 export interface OrderDocumentSource {
   supplier: Supplier;
+  /** Internal warehouse/admin order number (MDF-N). NOT shown to customers. */
   orderNumber: string;
+  /** Customer-facing public order reference (MDF-XXXXXXXX) — shown on the
+   * document instead of the internal sequential number (M7G). */
+  publicRef: string;
   /** ISO date the order was placed. */
   orderDate: string;
   notes?: string;

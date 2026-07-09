@@ -23,7 +23,9 @@ function isPlausibleId(value: unknown): value is string {
 
 export interface ShopOrderResult {
   ok: boolean;
-  orderNumber?: string;
+  /** Customer-facing public order ref (MDF-XXXXXXXX) — never the internal
+   * sequential number (the token RPC returns public_ref). */
+  publicRef?: string;
 }
 
 export async function submitShopOrderAction(input: {
@@ -52,13 +54,13 @@ export async function submitShopOrderAction(input: {
         ? input.notes.slice(0, MAX_NOTES)
         : undefined;
 
-    const orderNumber = await submitTokenOrder(
+    const publicRef = await submitTokenOrder(
       input.token,
       items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       notes,
     );
-    if (!orderNumber) return { ok: false };
-    return { ok: true, orderNumber };
+    if (!publicRef) return { ok: false };
+    return { ok: true, publicRef };
   } catch (error) {
     console.error("[madaf/actions] submitShopOrderAction failed:", error);
     return { ok: false };

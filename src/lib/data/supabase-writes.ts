@@ -41,7 +41,7 @@ export async function sbCreateOrderRequest(input: {
   items: { productId: string; quantity: number }[];
   notes?: string;
   source: OrderSource;
-}): Promise<{ orderId: string; orderNumber: string }> {
+}): Promise<{ orderId: string; orderNumber: string; publicRef: string }> {
   const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .rpc("create_order_request", {
@@ -56,7 +56,18 @@ export async function sbCreateOrderRequest(input: {
     })
     .single();
   if (error) fail("createOrderRequest", error.message);
-  return { orderId: data.order_id, orderNumber: data.order_number };
+  // Read back the customer-facing public ref (the RPC returns only the
+  // internal number). The just-created order is RLS-accessible to the caller.
+  const { data: refRow } = await client
+    .from("orders")
+    .select("public_ref")
+    .eq("id", data.order_id)
+    .maybeSingle();
+  return {
+    orderId: data.order_id,
+    orderNumber: data.order_number,
+    publicRef: refRow?.public_ref ?? "",
+  };
 }
 
 export async function sbUpdateOrderStatus(

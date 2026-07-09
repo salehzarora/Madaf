@@ -76,10 +76,10 @@ export function CheckoutView({
         notes: typeof notes === "string" && notes.trim() ? notes : undefined,
         locale,
       });
-      if (result.ok && result.orderNumber) {
+      if (result.ok && result.publicRef) {
         clear();
         router.push(
-          `/${locale}/order-success?n=${encodeURIComponent(result.orderNumber)}`,
+          `/${locale}/order-success?n=${encodeURIComponent(result.publicRef)}`,
         );
         return;
       }

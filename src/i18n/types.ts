@@ -335,6 +335,7 @@ export interface Dictionary {
         /** `{count}` — number of lines in the order */
         itemsCount: string;
         customerRef: string;
+        internalRef: string;
       };
     };
     inventory: {
@@ -399,6 +400,51 @@ export interface Dictionary {
         mockNotice: string;
         liveNotice: string;
         backToList: string;
+      };
+      /** M7G — new-store self-signup management (owner/admin). */
+      signup: {
+        navLabel: string;
+        title: string;
+        subtitle: string;
+        createLink: string;
+        creating: string;
+        createdTitle: string;
+        createdHint: string;
+        copy: string;
+        copied: string;
+        expiry: string;
+        expiryNever: string;
+        /** `{count}` days */
+        expiryDays: string;
+        linksTitle: string;
+        colLink: string;
+        colStatus: string;
+        colToken: string;
+        colExpires: string;
+        statusActive: string;
+        statusRevoked: string;
+        statusExpired: string;
+        revoke: string;
+        noLinks: string;
+        requestsTitle: string;
+        requestsSubtitle: string;
+        colStore: string;
+        colContact: string;
+        colSubmitted: string;
+        approve: string;
+        approving: string;
+        reject: string;
+        rejecting: string;
+        statusPending: string;
+        statusApproved: string;
+        statusRejected: string;
+        viewStore: string;
+        noRequests: string;
+        /** `{count}` pending requests — header badge/CTA */
+        pendingBadge: string;
+        error: string;
+        never: string;
+        none: string;
       };
     };
     documents: {
@@ -642,6 +688,25 @@ export interface Dictionary {
       invalidBody: string;
       vatNote: string;
       disclaimer: string;
+    };
+    /** M7G — anonymous new-store signup form (opened via a supplier link). */
+    signup: {
+      title: string;
+      intro: string;
+      storeName: string;
+      contactName: string;
+      phone: string;
+      email: string;
+      city: string;
+      address: string;
+      notes: string;
+      submit: string;
+      submitting: string;
+      successTitle: string;
+      successBody: string;
+      error: string;
+      invalidTitle: string;
+      invalidBody: string;
     };
     team: {
       title: string;
