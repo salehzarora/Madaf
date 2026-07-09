@@ -708,3 +708,39 @@ cache OFF**; confirm token/detail routes render `ƒ`.
 
 No RLS weakened, no service_role in client, no legal/payment change,
 `legal_effective` stays false. No hosted db reset, no config push.
+
+## 21. M8A — full product QA, stabilization & route guard
+
+Full detail in `docs/product/M8A_FULL_QA_STABILIZATION.md`.
+
+- **Audit:** multi-agent QA over 10 areas. 0 P0; 2 P1 root causes (both
+  fixed here); P2/P3 catalogued (top P2s fixed, rest = M8B backlog).
+- **P1a — rate limiter restored:** M7E had silently dropped the M4D
+  anonymous-token rate limiter from `create_order_request_from_token` (the
+  only anon WRITE endpoint). Restored with the public_ref return intact.
+- **P1b — inactive-product crash class:** deactivating a tracked product
+  crashed `/admin/inventory` and could 500 `/admin`. All non-null-asserted
+  lookups guarded; admin pages use includeInactive lookup maps.
+- **P2 batch:** document-number backfill (pre-M7G rows leaked the internal
+  sequence; stale stored PDFs cleared), product-edit no longer wipes
+  barcode/descriptions, frozen demo clocks removed (month KPI, expiring-soon),
+  per-row low-stock threshold honored, invite `?next=` kept through email
+  signup, `/join` dead links show an invalid screen at GET time, order-editor
+  notes clear properly, regenerate keeps link expiry, mobile admin gains
+  locale+logout, token pages are `noindex`, stale "view-only" showcase copy
+  fixed in ar/he/en.
+- **Guard:** `npm run build` now fails if any critical detail/token route
+  becomes SSG (`scripts/check-dynamic-routes.mjs`).
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260722100000_restore_shop_order_rate_limit.sql`
+2. `20260722110000_backfill_document_numbers.sql` (renumbers pre-M7G docs,
+   clears their stale stored PDFs — regenerated on next download)
+3. `20260722120000_preserve_descriptions_on_product_update.sql`
+
+**Vercel:** no new envs. Redeploy with **build cache OFF**; the build output
+must end with the route-guard OK line.
+
+No RLS weakened, no service_role in client, no legal/payment change,
+`legal_effective` stays false. No hosted db reset, no config push.
