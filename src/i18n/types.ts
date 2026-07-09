@@ -445,6 +445,10 @@ export interface Dictionary {
         error: string;
         never: string;
         none: string;
+        showcaseTitle: string;
+        showcaseSubtitle: string;
+        showcaseCreate: string;
+        showcaseNoLinks: string;
       };
     };
     documents: {
@@ -683,11 +687,24 @@ export interface Dictionary {
       successBody: string;
       orderNumberLabel: string;
       refHint: string;
+      /** M7H — the store is fixed by the link and cannot be changed. */
+      storeLocked: string;
       error: string;
       invalidTitle: string;
       invalidBody: string;
       vatNote: string;
       disclaimer: string;
+    };
+    /** M7H — anonymous VIEW-ONLY product showcase (opened via a supplier link). */
+    showcase: {
+      viewOnly: string;
+      intro: string;
+      empty: string;
+      requestAccess: string;
+      requestAccessBody: string;
+      ctaHint: string;
+      invalidTitle: string;
+      invalidBody: string;
     };
     /** M7G — anonymous new-store signup form (opened via a supplier link). */
     signup: {

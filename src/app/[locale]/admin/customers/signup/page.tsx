@@ -1,12 +1,14 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ShowcaseLinkManager } from "@/components/admin/showcase-link-manager";
 import { SignupManager } from "@/components/admin/signup-manager";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode } from "@/lib/data";
+import { listShowcaseLinks } from "@/lib/data/catalog-showcase";
 import {
   listSignupLinks,
   listSignupRequests,
@@ -30,9 +32,10 @@ export default async function CustomerSignupPage({
 
   const dict = getDictionary(locale);
   const t = dict.admin.customers.signup;
-  const [links, requests] = await Promise.all([
+  const [links, requests, showcaseLinks] = await Promise.all([
     listSignupLinks(),
     listSignupRequests(),
+    listShowcaseLinks(),
   ]);
 
   return (
@@ -56,6 +59,12 @@ export default async function CustomerSignupPage({
         dict={dict}
         initialLinks={links}
         initialRequests={requests}
+      />
+      <ShelfRule />
+      <ShowcaseLinkManager
+        locale={locale}
+        dict={dict}
+        initialLinks={showcaseLinks}
       />
     </div>
   );

@@ -463,6 +463,11 @@ const en: Dictionary = {
         error: "That didn't work — try again.",
         never: "Never",
         none: "—",
+        showcaseTitle: "Product view links",
+        showcaseSubtitle:
+          "Send a prospective customer a link to browse products only (no ordering).",
+        showcaseCreate: "Create view link",
+        showcaseNoLinks: "No view links yet.",
       },
     },
     documents: {
@@ -668,7 +673,7 @@ const en: Dictionary = {
       revoke: "Revoke",
       regenerate: "New link",
       regenerating: "Generating…",
-      regenerateHint: "Revokes the current link and issues a new one. The new link is shown only once.",
+      regenerateHint: "Revokes ALL of the store's active links and issues a new one. Every old link stops working immediately.",
       colLabel: "Label",
       colStatus: "Status",
       colToken: "Token",
@@ -698,11 +703,24 @@ const en: Dictionary = {
       successBody: "The supplier received your order and will confirm it soon.",
       orderNumberLabel: "Order number",
       refHint: "Keep this reference to follow up on your order with the supplier.",
+      storeLocked: "The store for this link can't be changed",
       error: "Sending the order failed — please try again.",
       invalidTitle: "Link no longer valid",
       invalidBody: "This order link has expired or been revoked. Ask the supplier for a new one.",
       vatNote: "Prices exclude VAT. Final VAT and totals appear on the supplier's document.",
       disclaimer: "This sends an order request to the supplier. It is not an invoice and no payment happens here.",
+    },
+    showcase: {
+      viewOnly: "View only",
+      intro:
+        "Browse the supplier's products. To place orders, request a store account from the supplier.",
+      empty: "No products to show yet.",
+      requestAccess: "Request store access",
+      requestAccessBody:
+        "To place orders, contact the supplier and ask for your store's private ordering link. They'll open an account for you and send an ordering link.",
+      ctaHint: "Want to order? Request store access.",
+      invalidTitle: "Link not valid",
+      invalidBody: "This product-view link has expired or was revoked. Ask the supplier for a new one.",
     },
     signup: {
       title: "New store signup",
