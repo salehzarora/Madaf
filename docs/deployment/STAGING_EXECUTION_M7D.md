@@ -635,3 +635,38 @@ the three detail routes still render `ƒ`.
 
 No RLS weakened (new tables are owner/admin-read + RPC-write only), no
 service_role in client, no legal/payment change, `legal_effective` stays false.
+
+## 19. M7H — shop link security, buying UX, showcase links, inventory
+
+Full detail in `docs/product/M7H_SHOP_LINK_INVENTORY.md`.
+
+- **A — Link regenerate fix:** a store now keeps exactly ONE live link;
+  create/regenerate revoke ALL of the store's active links first, so old copied
+  URLs die immediately.
+- **B — Shop UX:** `/shop/<token>` gains search/filters, a read-only "Ordering
+  for" banner, and a clearer cart.
+- **C — Showcase links:** view-only `/showcase/<token>` (no ordering) with a
+  "request store access" CTA; admin manages them on `/admin/customers/signup`.
+- **D — Shop images:** the signing code was correct — hosted failure is the
+  fail-closed trusted client. Set the envs below; added an actionable log.
+- **E — Inventory:** delivering an order deducts stock once (ledger-guarded);
+  insufficient stock blocks delivery; cancel doesn't deduct.
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260720100000_revoke_links_for_customer.sql`
+2. `20260720110000_deduct_inventory_on_delivery.sql`
+3. `20260720120000_catalog_showcase_links.sql`
+
+**Required Vercel envs for shop/showcase images (server-only):**
+`MADAF_TRUSTED_DOCUMENT_STORAGE=enabled`,
+`MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=xcfjxgdfjvsqkhuiczu`,
+`SUPABASE_SERVICE_ROLE_KEY=<service_role key>` (never NEXT_PUBLIC). Same envs the
+document PDFs already require; if unset, images show placeholders (external URLs
+still render).
+
+Then redeploy Vercel with **build cache OFF**; confirm the detail + token routes
+(incl. `showcase/[token]`) render `ƒ`.
+
+No RLS weakened, no service_role in client, no legal/payment change,
+`legal_effective` stays false.
