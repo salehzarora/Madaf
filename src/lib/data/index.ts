@@ -40,12 +40,14 @@ export {
   storeDocumentPdf,
 } from "./documents";
 export {
+  createCustomerFromOrder,
   createOrderRequest,
   getDocument,
   getOrder,
   listDocuments,
   listDocumentsForOrder,
   listOrders,
+  updateOrderItems,
   updateOrderStatus,
   type CreateOrderInput,
   type CreateOrderResult,

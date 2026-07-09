@@ -129,3 +129,30 @@ export async function updateOrderStatus(
   }
   return { orderId, oldStatus: order.status, newStatus: nextStatus };
 }
+
+/** M7I.3 — owner/admin edit an order's lines (+ notes). Supabase-only; the RPC
+ * re-snapshots items, recomputes totals and reconciles reserved inventory. */
+export async function updateOrderItems(
+  orderId: string,
+  items: { productId: string; quantity: number }[],
+  notes?: string,
+): Promise<{ orderId: string }> {
+  if (getDataMode() !== "supabase") {
+    throw new Error("[madaf/data] updateOrderItems is a Supabase-only write.");
+  }
+  return (await import("./supabase-writes")).sbUpdateOrderItems(
+    orderId,
+    items,
+    notes,
+  );
+}
+
+/** M7I.1 — owner/admin promote a guest order's store to a permanent customer. */
+export async function createCustomerFromOrder(
+  orderId: string,
+): Promise<{ customerId: string }> {
+  if (getDataMode() !== "supabase") {
+    throw new Error("[madaf/data] createCustomerFromOrder is a Supabase-only write.");
+  }
+  return (await import("./supabase-writes")).sbCreateCustomerFromOrder(orderId);
+}

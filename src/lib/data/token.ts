@@ -20,7 +20,7 @@ import type {
   Product,
 } from "@/lib/types";
 
-import { getTrustedDocumentStorageClient } from "./trusted-document-storage";
+import { getProductImageStorageClient } from "./product-image-storage";
 
 /** SHA-256 hex of the raw token — only the hash is ever stored/sent to SQL. */
 export function hashToken(rawToken: string): string {
@@ -68,30 +68,32 @@ function resolveShopImageUrl(
   return undefined;
 }
 
-/** One-line, non-secret diagnostic for the most common hosted cause of missing
- * shop images: the trusted (service-role) storage client is fail-closed unless
- * its envs are set. Logged server-side only. */
-function logTrustedStorageUnavailable(context: string, error: unknown): void {
-  console.error(
-    `[madaf/${context}] uploaded product images will show as PLACEHOLDERS — ` +
-      "the trusted storage client is not configured. On hosted set (server-" +
-      "only): MADAF_TRUSTED_DOCUMENT_STORAGE=enabled, " +
-      "MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<your project ref>, " +
-      "SUPABASE_SERVICE_ROLE_KEY. External image URLs are unaffected. Detail:",
-    error instanceof Error ? error.message : error,
+/** Safe, non-secret diagnostic counts for product-image signing (M7I). Never
+ * logs tokens, tenant ids, signed URLs, or the service-role key. */
+function logImageSigning(
+  context: string,
+  attempted: number,
+  signed: number,
+  skipReason: string,
+): void {
+  console.info(
+    `[madaf/${context}] product-image signing: attempted=${attempted} ` +
+      `signed=${signed} skipped=${attempted - signed} skipReason=${skipReason}`,
   );
 }
 
 /**
  * Sign uploaded product-image paths for an ALREADY-authorized anonymous viewer
- * of `tenantId` (M7F.4 / M7H). Signs ONLY objects under `<tenantId>/products/`
- * in the private product-images bucket (strict prefix — a value that isn't an
- * own-tenant product-image path is NEVER signed, so images can't leak across
- * tenants). External URLs are handled by the caller.
+ * of `tenantId` (M7F.4 / M7H; M7I decoupled from the documents-PDF client).
+ * Signs ONLY objects under `<tenantId>/products/` in the private product-images
+ * bucket (strict prefix — a value that isn't an own-tenant product-image path
+ * is NEVER signed, so images can't leak across tenants). External URLs are
+ * handled by the caller.
  *
- * Fail-closed: missing config / signing error → empty map (placeholder
- * fallback) with a safe diagnostic — never a crash, never a service_role leak
- * (the trusted client is server-only). Shared by the shop + showcase loaders.
+ * Fail-closed: a missing service-role key / signing error → empty map
+ * (placeholder fallback) with a safe count-only diagnostic — never a crash,
+ * never a service_role leak (the client is server-only). Shared by the shop +
+ * showcase loaders.
  */
 export async function signOwnTenantPaths(
   context: string,
@@ -100,7 +102,10 @@ export async function signOwnTenantPaths(
   products: any[],
 ): Promise<Map<string, string>> {
   const empty = new Map<string, string>();
-  if (!tenantId) return empty;
+  if (!tenantId) {
+    logImageSigning(context, 0, 0, "no-tenant");
+    return empty;
+  }
   const prefix = `${tenantId}/products/`;
   const ownPaths = [
     ...new Set(
@@ -112,13 +117,21 @@ export async function signOwnTenantPaths(
         .filter((v) => !/^https?:\/\//i.test(v) && v.startsWith(prefix)),
     ),
   ];
-  if (ownPaths.length === 0) return empty;
+  if (ownPaths.length === 0) {
+    logImageSigning(context, 0, 0, "no-own-paths");
+    return empty;
+  }
 
   let storage;
   try {
-    storage = getTrustedDocumentStorageClient().storage;
+    storage = getProductImageStorageClient().storage;
   } catch (error) {
-    logTrustedStorageUnavailable(context, error);
+    logImageSigning(
+      context,
+      ownPaths.length,
+      0,
+      `service-role-key-missing:${error instanceof Error ? error.message : "unknown"}`,
+    );
     return empty;
   }
   try {
@@ -126,24 +139,30 @@ export async function signOwnTenantPaths(
       .from(PRODUCT_IMAGE_BUCKET)
       .createSignedUrls(ownPaths, SHOP_SIGNED_URL_TTL_SECONDS);
     if (error || !data) {
-      console.error(`[madaf/${context}] product image signing failed:`, error?.message);
+      logImageSigning(context, ownPaths.length, 0, `sign-error:${error?.message ?? "no-data"}`);
       return empty;
     }
     const out = new Map<string, string>();
     data.forEach((row, i) => {
       if (row.signedUrl) out.set(ownPaths[i], row.signedUrl);
     });
+    logImageSigning(context, ownPaths.length, out.size, out.size ? "ok" : "no-signed-urls");
     return out;
   } catch (error) {
-    console.error(`[madaf/${context}] product image signing error:`, error);
+    logImageSigning(
+      context,
+      ownPaths.length,
+      0,
+      `sign-throw:${error instanceof Error ? error.message : "unknown"}`,
+    );
     return empty;
   }
 }
 
 /**
  * Sign product images for a VALIDATED private shop token. Resolves the token's
- * AUTHORITATIVE tenant_id server-side (trusted client, by token_hash — never
- * from the client / never from the path), then signs own-tenant paths.
+ * AUTHORITATIVE tenant_id server-side (service-role client, by token_hash —
+ * never from the client / never from the path), then signs own-tenant paths.
  * Exported for the local probe; server-only.
  */
 export async function signTokenProductImages(
@@ -154,9 +173,14 @@ export async function signTokenProductImages(
   const empty = new Map<string, string>();
   let client;
   try {
-    client = getTrustedDocumentStorageClient();
+    client = getProductImageStorageClient();
   } catch (error) {
-    logTrustedStorageUnavailable("shop", error);
+    logImageSigning(
+      "shop",
+      0,
+      0,
+      `service-role-key-missing:${error instanceof Error ? error.message : "unknown"}`,
+    );
     return empty;
   }
   const { data: link } = await client

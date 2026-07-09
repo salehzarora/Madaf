@@ -29,6 +29,7 @@ import type {
   InventoryItem,
   Manufacturer,
   Order,
+  OrderCustomerSnapshot,
   OrderDocument,
   Product,
   Supplier,
@@ -258,6 +259,7 @@ function mapOrder(row: OrderRow): Order {
     number: row.order_number,
     publicRef: row.public_ref,
     customerId: row.customer_id ?? "",
+    customerSnapshot: mapCustomerSnapshot(row.customer_snapshot),
     items: items.map((item) => ({
       productId: item.product_id ?? "",
       quantity: item.quantity,
@@ -267,6 +269,31 @@ function mapOrder(row: OrderRow): Order {
     createdAt: row.created_at,
     notes: row.notes ?? undefined,
   };
+}
+
+/** Guest-order buyer snapshot (M7I). Free-form jsonb → typed, string-guarded;
+ * only surfaced when the order has no linked customer. */
+function mapCustomerSnapshot(raw: unknown): OrderCustomerSnapshot | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const s = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const cityRaw =
+    s.city && typeof s.city === "object"
+      ? (s.city as Record<string, unknown>)
+      : undefined;
+  const snap: OrderCustomerSnapshot = {
+    name: str(s.name),
+    contactName: str(s.contact_name),
+    phone: str(s.phone),
+    email: str(s.email),
+    address: str(s.address),
+    city: cityRaw
+      ? { ar: str(cityRaw.ar), he: str(cityRaw.he), en: str(cityRaw.en) }
+      : undefined,
+    guest: s.guest === true,
+  };
+  // Nothing meaningful → treat as absent (sales-visit / shop orders).
+  return snap.name || snap.guest ? snap : undefined;
 }
 
 const DOCUMENT_TYPE_FROM_DB: Record<

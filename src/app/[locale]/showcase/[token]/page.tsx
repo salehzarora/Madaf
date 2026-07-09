@@ -7,10 +7,11 @@ import { getDataMode } from "@/lib/data";
 import { getShowcaseCatalog } from "@/lib/data/catalog-showcase";
 
 /**
- * VIEW-ONLY product showcase (M7H.3). A prospective customer opens the
- * supplier's tokenized "view products" link with NO login and browses the
- * catalog — but CANNOT order (no cart, no customer). The token is validated by
- * a SECURITY DEFINER RPC; no catalog is exposed without it. Supabase mode only.
+ * Product showcase / guest ordering (M7H.3 → M7I.1). A prospective customer
+ * opens the supplier's tokenized "view products" link with NO login, browses
+ * the catalog, and can submit an ORDER REQUEST with their store details (no
+ * customer account). The token is validated by SECURITY DEFINER RPCs — no
+ * catalog is exposed and no order is created without it. Supabase mode only.
  */
 export default async function ShowcaseTokenPage({
   params,
@@ -37,5 +38,7 @@ export default async function ShowcaseTokenPage({
     );
   }
 
-  return <ShowcaseView locale={locale} dict={dict} catalog={catalog} />;
+  return (
+    <ShowcaseView locale={locale} dict={dict} token={token} catalog={catalog} />
+  );
 }

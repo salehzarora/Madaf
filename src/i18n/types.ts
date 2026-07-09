@@ -112,6 +112,9 @@ export interface Dictionary {
     privateBody: string;
     orderingFor: string;
     selectShop: string;
+    /** Search box in the shop picker (M7I) — name / contact / phone / city. */
+    searchShops: string;
+    noShopsFound: string;
     changeShop: string;
     noShop: string;
     addToCart: string;
@@ -336,6 +339,40 @@ export interface Dictionary {
         itemsCount: string;
         customerRef: string;
         internalRef: string;
+        /** Shown when reserving stock on confirm/preparing is blocked (M7I). */
+        statusInsufficientStock: string;
+        /** Informational: stock returned after a reserved order is cancelled. */
+        stockRestored: string;
+        /** M7I — guest (showcase) order store details + promote-to-customer. */
+        guest: {
+          title: string;
+          badge: string;
+          hint: string;
+          oneTime: string;
+          email: string;
+          create: string;
+          creating: string;
+          createError: string;
+          created: string;
+        };
+        /** M7I — owner/admin order line editing. */
+        edit: {
+          button: string;
+          title: string;
+          addProduct: string;
+          searchProduct: string;
+          noneToAdd: string;
+          remove: string;
+          empty: string;
+          reservedHint: string;
+          lockedHint: string;
+          save: string;
+          saving: string;
+          cancel: string;
+          error: string;
+          insufficientStock: string;
+          success: string;
+        };
       };
     };
     inventory: {
@@ -695,14 +732,25 @@ export interface Dictionary {
       vatNote: string;
       disclaimer: string;
     };
-    /** M7H — anonymous VIEW-ONLY product showcase (opened via a supplier link). */
+    /** M7H → M7I — anonymous product showcase + guest ordering (supplier link). */
     showcase: {
-      viewOnly: string;
+      browseOrder: string;
       intro: string;
       empty: string;
-      requestAccess: string;
-      requestAccessBody: string;
-      ctaHint: string;
+      reviewOrder: string;
+      estimatedTotal: string;
+      checkoutTitle: string;
+      checkoutIntro: string;
+      backToProducts: string;
+      submit: string;
+      submitting: string;
+      vatNote: string;
+      disclaimer: string;
+      error: string;
+      successTitle: string;
+      successBody: string;
+      orderNumberLabel: string;
+      refHint: string;
       invalidTitle: string;
       invalidBody: string;
     };

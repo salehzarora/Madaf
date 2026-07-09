@@ -44,7 +44,12 @@ export function OrdersTable({
       .filter((order) => {
         if (!q) return true;
         const customer = customerById.get(order.customerId);
-        return [order.number, order.publicRef ?? "", customer?.name ?? ""]
+        return [
+          order.number,
+          order.publicRef ?? "",
+          customer?.name ?? "",
+          order.customerSnapshot?.name ?? "",
+        ]
           .join(" ")
           .toLowerCase()
           .includes(q);
@@ -125,7 +130,18 @@ export function OrdersTable({
                       {order.publicRef ?? "—"}
                     </td>
                     <td className="px-4 py-3.5 font-medium text-ink">
-                      {customer?.name ?? "—"}
+                      {customer ? (
+                        customer.name
+                      ) : order.customerSnapshot?.name ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {order.customerSnapshot.name}
+                          <span className="rounded-badge bg-accent-wash px-1.5 py-0.5 text-[10px] font-bold text-warning">
+                            {t.detail.guest.badge}
+                          </span>
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-end tabular-nums text-ink-soft">
                       {interpolate(t.detail.itemsCount, {

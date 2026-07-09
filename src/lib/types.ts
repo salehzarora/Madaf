@@ -173,6 +173,22 @@ export interface OrderItem {
   unitPrice: number;
 }
 
+/**
+ * Free-form buyer snapshot (DB `orders.customer_snapshot`). Present for GUEST
+ * showcase orders (M7I) — the order has NO linked customer (`customerId` is
+ * empty) and `guest` is true. Sales-visit / shop orders leave this undefined
+ * (their customer is a real row). Never a pricing/authorization source.
+ */
+export interface OrderCustomerSnapshot {
+  name?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: { ar?: string; he?: string; en?: string };
+  guest?: boolean;
+}
+
 export interface Order {
   id: string;
   /** Internal sequential number, e.g. "MDF-1042" — admin/warehouse only. */
@@ -184,6 +200,8 @@ export interface Order {
    */
   publicRef?: string;
   customerId: string;
+  /** M7I — guest store details when `customerId` is empty (guest showcase order). */
+  customerSnapshot?: OrderCustomerSnapshot;
   items: OrderItem[];
   status: OrderStatus;
   /** ISO date-time the order request was placed. */

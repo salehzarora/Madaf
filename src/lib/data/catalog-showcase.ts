@@ -13,7 +13,7 @@ import { getDataContext } from "@/lib/auth/session";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
 import type { Availability, Category, Manufacturer, Product } from "@/lib/types";
 
-import { getTrustedDocumentStorageClient } from "./trusted-document-storage";
+import { getProductImageStorageClient } from "./product-image-storage";
 import { hashToken, signOwnTenantPaths } from "./token";
 
 export type ShowcaseLinkStatus = "active" | "revoked" | "expired";
@@ -115,9 +115,9 @@ async function signShowcaseImages(
   const empty = new Map<string, string>();
   let client;
   try {
-    client = getTrustedDocumentStorageClient();
+    client = getProductImageStorageClient();
   } catch {
-    return signOwnTenantPaths("showcase", null, products); // logs the config hint
+    return signOwnTenantPaths("showcase", null, products); // logs the diagnostic
   }
   const { data: link } = await client
     .from("catalog_showcase_links")
@@ -177,6 +177,46 @@ function mapShowcaseManufacturer(m: any): Manufacturer {
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+export interface GuestStoreInput {
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  cityAr?: string;
+  cityHe?: string;
+  cityEn?: string;
+  address?: string;
+}
+
+/** Anon guest order via a showcase token → the customer-facing PUBLIC ref
+ * (MDF-XXXXXXXX), or null on any failure. Tenant + store snapshot are handled
+ * server-side; the visitor never sets tenant/customer. */
+export async function submitShowcaseGuestOrder(
+  rawToken: string,
+  items: { productId: string; quantity: number }[],
+  store: GuestStoreInput,
+  notes?: string,
+): Promise<string | null> {
+  const client = await createServerAuthClient();
+  const { data, error } = await client
+    .rpc("create_order_from_showcase_token", {
+      p_token: rawToken,
+      p_items: items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
+      p_store_name: store.name,
+      ...(store.contactName ? { p_contact_name: store.contactName } : {}),
+      ...(store.phone ? { p_phone: store.phone } : {}),
+      ...(store.email ? { p_email: store.email } : {}),
+      ...(store.cityAr ? { p_city_ar: store.cityAr } : {}),
+      ...(store.cityHe ? { p_city_he: store.cityHe } : {}),
+      ...(store.cityEn ? { p_city_en: store.cityEn } : {}),
+      ...(store.address ? { p_address: store.address } : {}),
+      ...(notes ? { p_notes: notes } : {}),
+    })
+    .single();
+  if (error || !data) return null;
+  return data.order_number;
+}
 
 export async function getShowcaseCatalog(
   rawToken: string,
