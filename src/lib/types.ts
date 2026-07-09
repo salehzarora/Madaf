@@ -110,6 +110,10 @@ export interface Customer {
   city: LocalizedText;
   phone: string;
   contactName: string;
+  /** Street address (optional; supabase surfaces it, mock may omit). */
+  address?: string;
+  /** Internal supplier note about the shop (optional; not shown to customers). */
+  notes?: string;
 }
 
 export interface InventoryItem {

@@ -10,7 +10,7 @@ import { ProductImage } from "@/components/product-image";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
@@ -36,17 +36,29 @@ export function ProductsTable({
   dict: Dictionary;
 }) {
   const t = dict.admin.products;
-  const { categories, categoryById, manufacturerById } = useShopData();
+  const { categories, categoryById, manufacturerById, manufacturers } =
+    useShopData();
   const live = getDataMode() === "supabase";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [manufacturerId, setManufacturerId] = useState<string>("");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "active" | "inactive"
+  >("all");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((product) => {
       if (categoryId && product.categoryId !== categoryId) return false;
+      if (manufacturerId && product.manufacturerId !== manufacturerId) {
+        return false;
+      }
+      if (activeFilter === "active" && product.isActive === false) return false;
+      if (activeFilter === "inactive" && product.isActive !== false) {
+        return false;
+      }
       if (!q) return true;
       const manufacturer = manufacturerById.get(product.manufacturerId);
       return [
@@ -60,7 +72,15 @@ export function ProductsTable({
         .toLowerCase()
         .includes(q);
     });
-  }, [products, manufacturerById, query, categoryId, locale]);
+  }, [
+    products,
+    manufacturerById,
+    query,
+    categoryId,
+    manufacturerId,
+    activeFilter,
+    locale,
+  ]);
 
   function toggleActive(product: Product) {
     startTransition(async () => {
@@ -89,6 +109,33 @@ export function ProductsTable({
             aria-label={dict.common.search}
           />
         </div>
+        <Select
+          value={manufacturerId}
+          onChange={(e) => setManufacturerId(e.target.value)}
+          aria-label={dict.catalog.manufacturers}
+          className="sm:w-48"
+        >
+          <option value="">{dict.catalog.manufacturers}</option>
+          {manufacturers.map((manufacturer) => (
+            <option key={manufacturer.id} value={manufacturer.id}>
+              {manufacturer.name[locale]}
+            </option>
+          ))}
+        </Select>
+        {live ? (
+          <Select
+            value={activeFilter}
+            onChange={(e) =>
+              setActiveFilter(e.target.value as "all" | "active" | "inactive")
+            }
+            aria-label={t.filterStatus}
+            className="sm:w-40"
+          >
+            <option value="all">{t.filterStatus}</option>
+            <option value="active">{t.statusActive}</option>
+            <option value="inactive">{t.inactiveBadge}</option>
+          </Select>
+        ) : null}
       </div>
 
       <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">

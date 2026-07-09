@@ -107,6 +107,9 @@ export interface Dictionary {
     resultsCount: string;
     noResults: string;
     noResultsHint: string;
+    /** Shown when /catalog is opened without an authenticated tenant/token. */
+    privateTitle: string;
+    privateBody: string;
     orderingFor: string;
     selectShop: string;
     changeShop: string;
@@ -191,6 +194,7 @@ export interface Dictionary {
       activeProducts: string;
       lowStock: string;
       activeShops: string;
+      todayOrders: string;
     };
     recentOrders: string;
     lowStockTitle: string;
@@ -228,6 +232,8 @@ export interface Dictionary {
       activate: string;
       deactivate: string;
       inactiveBadge: string;
+      filterStatus: string;
+      statusActive: string;
       new: {
         title: string;
         subtitle: string;
@@ -310,6 +316,8 @@ export interface Dictionary {
       colTotal: string;
       colStatus: string;
       colDate: string;
+      colRef: string;
+      searchPlaceholder: string;
       detail: {
         title: string;
         itemsTitle: string;
@@ -350,11 +358,47 @@ export interface Dictionary {
       colOrders: string;
       colLastOrder: string;
       startOrder: string;
+      /** Clarifies these are the supplier's business customers (stores). */
+      addCustomer: string;
+      edit: string;
+      addressLabel: string;
+      recentOrders: string;
+      noOrders: string;
+      viewAllOrders: string;
+      empty: string;
+      emptyHint: string;
       types: {
         grocery: string;
         kiosk: string;
         supermarket: string;
         minimarket: string;
+      };
+      form: {
+        newTitle: string;
+        newSubtitle: string;
+        editTitle: string;
+        editSubtitle: string;
+        sectionBasics: string;
+        sectionContact: string;
+        name: string;
+        nameHint: string;
+        type: string;
+        contactName: string;
+        phone: string;
+        address: string;
+        cityHe: string;
+        cityAr: string;
+        cityEn: string;
+        cityHint: string;
+        notes: string;
+        notesHint: string;
+        save: string;
+        saving: string;
+        savedToast: string;
+        saveError: string;
+        mockNotice: string;
+        liveNotice: string;
+        backToList: string;
       };
     };
     documents: {
@@ -562,6 +606,9 @@ export interface Dictionary {
       copy: string;
       copied: string;
       revoke: string;
+      regenerate: string;
+      regenerating: string;
+      regenerateHint: string;
       colLabel: string;
       colStatus: string;
       colToken: string;
@@ -589,6 +636,7 @@ export interface Dictionary {
       successTitle: string;
       successBody: string;
       orderNumberLabel: string;
+      refHint: string;
       error: string;
       invalidTitle: string;
       invalidBody: string;

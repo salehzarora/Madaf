@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Link2, Trash2 } from "lucide-react";
+import { Check, Copy, Link2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { EmptyState } from "@/components/empty-state";
@@ -11,6 +11,7 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import {
   createCustomerLinkAction,
+  regenerateCustomerLinkAction,
   revokeCustomerLinkAction,
 } from "@/lib/actions/customer-links";
 import type { CustomerLink, LinkStatus } from "@/lib/data/customer-links";
@@ -89,6 +90,30 @@ export function CustomerLinksManager({
       });
       if (!result.ok) setError(t.revokeError);
       router.refresh();
+    });
+  }
+
+  // Regenerate = revoke the old link + issue a fresh one; the new URL lands
+  // in the same copy-once banner (shown only here, only once).
+  function onRegenerate(linkId: string, linkLabel: string | null) {
+    setError(null);
+    setCreatedUrl(null);
+    setCopied(false);
+    startTransition(async () => {
+      const result = await regenerateCustomerLinkAction({
+        linkId,
+        customerId,
+        label: linkLabel ?? undefined,
+        locale,
+      });
+      if (result.ok && result.url) {
+        const origin =
+          typeof window !== "undefined" ? window.location.origin : "";
+        setCreatedUrl(`${origin}${result.url}`);
+        router.refresh();
+      } else {
+        setError(t.error);
+      }
     });
   }
 
@@ -225,15 +250,26 @@ export function CustomerLinksManager({
                     </td>
                     <td className="px-3 py-3 text-end">
                       {status === "active" ? (
-                        <button
-                          type="button"
-                          onClick={() => onRevoke(link.id)}
-                          disabled={pending}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
-                        >
-                          <Trash2 className="size-3.5" aria-hidden />
-                          {t.revoke}
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onRegenerate(link.id, link.label)}
+                            disabled={pending}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
+                          >
+                            <RefreshCw className="size-3.5" aria-hidden />
+                            {t.regenerate}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRevoke(link.id)}
+                            disabled={pending}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
+                          >
+                            <Trash2 className="size-3.5" aria-hidden />
+                            {t.revoke}
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-xs text-ink-muted">{t.none}</span>
                       )}
@@ -245,6 +281,8 @@ export function CustomerLinksManager({
           </table>
         </div>
       )}
+
+      <p className="text-xs text-ink-muted">{t.regenerateHint}</p>
     </div>
   );
 }

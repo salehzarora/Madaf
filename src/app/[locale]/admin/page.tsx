@@ -1,7 +1,8 @@
-import { PlusCircle } from "lucide-react";
+import { ClipboardList, Package, PlusCircle, Store } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { MetricCard } from "@/components/metric-card";
 import { StatusDonut } from "@/components/dashboard/status-donut";
 import { TrendChart, type TrendDay } from "@/components/dashboard/trend-chart";
 import { OrderStatusBadge } from "@/components/order-status-badge";
@@ -63,6 +64,13 @@ export default async function AdminDashboardPage({
   const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
   const lowStockItems = inventory.filter(isLowStock);
   const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
+
+  // At-a-glance counts. "Today" is the real current day; in supabase mode the
+  // dashboard renders per-request (authenticated), so it stays accurate.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayOrdersCount = orders.filter(
+    (o) => o.createdAt.slice(0, 10) === todayStr,
+  ).length;
 
   // Open-orders segmented mini-bar shares.
   const openBy = {
@@ -261,6 +269,26 @@ export default async function AdminDashboardPage({
             <span className="text-[11px] text-warning/90">{d.lowSub}</span>
           </div>
         </KpiCard>
+      </div>
+
+      {/* At-a-glance counts */}
+      <div className="grid grid-cols-3 gap-3">
+        <MetricCard
+          label={t.metrics.todayOrders}
+          value={formatNumber(todayOrdersCount, locale)}
+          icon={<ClipboardList />}
+          tone="brand"
+        />
+        <MetricCard
+          label={t.metrics.activeProducts}
+          value={formatNumber(products.length, locale)}
+          icon={<Package />}
+        />
+        <MetricCard
+          label={t.metrics.activeShops}
+          value={formatNumber(customers.length, locale)}
+          icon={<Store />}
+        />
       </div>
 
       {/* Trend + status */}

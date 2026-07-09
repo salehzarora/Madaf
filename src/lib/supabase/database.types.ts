@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1531,6 +1531,21 @@ export type Database = {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: boolean
       }
+      create_customer: {
+        Args: {
+          p_address?: string
+          p_city_ar?: string
+          p_city_en?: string
+          p_city_he?: string
+          p_contact_name?: string
+          p_customer_type?: Database["public"]["Enums"]["customer_type"]
+          p_name: string
+          p_notes?: string
+          p_phone?: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       create_manufacturer: {
         Args: {
           p_logo_url?: string
@@ -1774,6 +1789,22 @@ export type Database = {
       unassign_customer_from_rep: {
         Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }
         Returns: undefined
+      }
+      update_customer: {
+        Args: {
+          p_address?: string
+          p_city_ar?: string
+          p_city_en?: string
+          p_city_he?: string
+          p_contact_name?: string
+          p_customer_id: string
+          p_customer_type?: Database["public"]["Enums"]["customer_type"]
+          p_name: string
+          p_notes?: string
+          p_phone?: string
+          p_tenant_id: string
+        }
+        Returns: string
       }
       update_manufacturer: {
         Args: {
@@ -2100,5 +2131,4 @@ export const Constants = {
     },
   },
 } as const
-
 

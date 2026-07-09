@@ -559,3 +559,49 @@ RLS-gated — an anonymous visitor gets zero tenant rows by design (the catalog 
 never globally public); `CatalogView` already shows an `EmptyState`. Customers
 order through their private `/shop/<token>` link, which is tied to their store.
 No code change.
+
+## 17. M7F — demo polish & missing core features
+
+Full detail in `docs/product/M7F_DEMO_POLISH.md`. Summary of what affects
+staging:
+
+- **New migration** `20260717100000_customer_write_rpcs.sql` — adds
+  `create_customer` / `update_customer` (owner/admin, RPC-only). Unblocks
+  creating a store/customer from the app (previously seed-only), which the
+  tokenized shop-link demo depends on for a fresh tenant.
+- **Product image upload** now works on the create form (was edit-only); no
+  storage/bucket change (reuses the private `product-images` bucket via a
+  tenant-scoped staging path). No service_role.
+- **`/catalog` without a token** now shows a clear private-link message
+  instead of an empty grid (supabase mode only; mock stays the public demo).
+
+**Operator steps (hosted — confirm STAGING first; never reset/config-push):**
+1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+   `20260717100000` **and** the still-pending `20260716100000` (M7E public
+   ref). The latter is what makes the customer success screen show
+   `MDF-XXXXXXXX` instead of the internal `MDF-N`.
+2. Redeploy Vercel from the merged branch with **build cache OFF**; confirm
+   the three detail routes still render `ƒ`.
+
+No RLS weakened, no service_role in client, no legal/payment change,
+`legal_effective` stays false.
+
+### 17a. M7F.4 — uploaded product images in the private shop
+
+Uploaded (private-bucket) product images now render on `/shop/<token>` via
+short-lived (30 min) **signed** URLs. After the token is validated,
+`signTokenProductImages` resolves the token's tenant server-side (trusted
+service-role client, by `token_hash`) and signs **only** `<tenant_id>/products/`
+objects; external URLs pass through; failures fall back to placeholders.
+
+- **No migration, no storage-policy change, no new bucket, no new env var.**
+- Reuses the existing trusted client (`getTrustedDocumentStorageClient`), so on
+  staging it works with the **same** `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
+  `..._PROJECT_REF` config the document PDFs already use. If unset, shops show
+  placeholders for uploaded images (external URLs still render) — no crash.
+- No service_role reaches the client; no cross-tenant image access (strict
+  `<tenant_id>/products/` prefix on an authoritative tenant id).
+
+**Operator:** no new steps beyond §17. If uploaded shop images should appear on
+staging, ensure the trusted-storage env vars are set (already required for
+document PDFs). No DB push needed for M7F.4.

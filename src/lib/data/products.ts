@@ -194,7 +194,9 @@ export async function updateManufacturer(
 }
 
 export async function uploadProductImage(input: {
-  productId: string;
+  /** Omitted in create mode (no product row yet) — a tenant-scoped staging
+   * path is used instead; see sbUploadProductImage. */
+  productId?: string;
   fileName: string;
   contentType: string;
   bytes: Uint8Array;

@@ -346,8 +346,10 @@ everything here was built to be wired, not rebuilt.
 > ONLY order write paths. Since M3B.1 the SAME holds for master data:
 > products/inventory_items/manufacturers/categories/customers are
 > table-level READ-ONLY for authenticated — product/manufacturer/
-> inventory writes go through the M3B RPCs; categories/customers stay
-> read-only until a future validated RPC. The service-role context
+> inventory writes go through the M3B RPCs; **customer writes go through
+> `create_customer`/`update_customer` (M7F.2, owner/admin, RPC-only)**;
+> categories stay read-only until a future validated RPC. The service-role
+> context
 > refuses non-local Supabase URLs on top of refusing production. Mock
 > stays the zero-config default. Earlier M2 status below still applies to
 > reads:
@@ -394,7 +396,7 @@ translation tables). Full DDL: `supabase/migrations/`.
 | `Manufacturer` | `manufacturers` | `name_*`, `logo_url`, `sort_order` |
 | `Product` | `products` | `packageType`→`package_unit`, `unitsPerPackage`→`package_quantity`, plus `base_unit`, `unit_size`, `wholesale_price` (numeric ILS excl. VAT), `vat_rate` (0.18 default), `track_expiry`, `is_active`, `sku`/`barcode` nullable. **`availability` is DERIVED from inventory, not stored** |
 | `ProductTranslation` | *(columns on `products`)* | `name_*` + `description_*` |
-| `Customer` | `customers` | shop `name` (proper noun, single column), `city_*` per locale, `customer_type`, `contact_name`, `notes` |
+| `Customer` | `customers` | shop `name` (proper noun, single column), `city_*` per locale, `customer_type`, `contact_name`, plus optional `address` + `notes` surfaced since M7F.2 (writes via `create_customer`/`update_customer`) |
 | `InventoryItem` | `inventory_items` | `stockPackages`→`quantity_available`, `location`→`warehouse_location`, `nearestExpiry`→`expiry_date`, per-row `low_stock_threshold` (mock global const = 10) |
 | `Order` | `orders` | `number`→`order_number` via `next_order_number(tenant_id)` (atomic counter, `MDF-1048…`); `status` enum = `OrderStatus`; denormalized `subtotal`/`vat_total`/`total`; `currency` (ILS), `source` |
 | `OrderItem` | `order_items` | price/VAT/name/package **snapshots** (`product_name_snapshot` is jsonb `{ar,he,en}` so documents re-render in any language after product edits) |

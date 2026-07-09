@@ -79,6 +79,37 @@ export async function createCustomerLinkAction(input: {
   }
 }
 
+/**
+ * Regenerate = revoke the old link, then issue a fresh one (M7F.2). Reuses
+ * the existing secure primitives only (revoke RPC + the create path above);
+ * invents NO new token behavior — the raw token is still shown exactly once
+ * and only its hash is stored. Revoking first means a store never has two
+ * live tokens at once.
+ */
+export async function regenerateCustomerLinkAction(input: {
+  linkId: string;
+  customerId: string;
+  label?: string;
+  expiresInDays?: number;
+  locale: string;
+}): Promise<CreateLinkResult> {
+  try {
+    if (!isPlausibleId(input.linkId) || !isPlausibleId(input.customerId)) {
+      return { ok: false };
+    }
+    await revokeCustomerLink(input.linkId);
+    return await createCustomerLinkAction({
+      customerId: input.customerId,
+      label: input.label,
+      expiresInDays: input.expiresInDays,
+      locale: input.locale,
+    });
+  } catch (error) {
+    console.error("[madaf/actions] regenerateCustomerLinkAction failed:", error);
+    return { ok: false };
+  }
+}
+
 export async function revokeCustomerLinkAction(input: {
   linkId: string;
   customerId: string;

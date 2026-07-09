@@ -19,7 +19,10 @@ import "server-only";
  *     document row (order request / delivery note / invoice DRAFT). It is
  *     the ONLY document write path — documents stay table-level read-only.
  */
-import { getDataContext } from "@/lib/auth/session";
+import { randomUUID } from "node:crypto";
+
+import { getDataContext, NO_TENANT } from "@/lib/auth/session";
+import type { CustomerWriteInput } from "./customers";
 import type { OrderSource } from "./orders";
 import type {
   InventoryWriteInput,
@@ -268,32 +271,45 @@ export async function sbUpdateManufacturer(
 const PRODUCT_IMAGE_BUCKET = "product-images";
 
 /**
- * Upload a product image to the private product-images bucket under the
- * tenant-scoped path `<tenant_id>/products/<product_id>/<filename>`.
- * Returns the object PATH (stored on products.image_url — the read layer
- * signs it) plus a short-lived signed URL for immediate preview. The
- * product must belong to the tenant (checked here); on top of that the
- * upload runs on the authenticated client, so the storage RLS policy
- * ("owners/admins can upload" to their `<tenant_id>/…` path) is enforced
- * too (M4A).
+ * Upload a product image to the private product-images bucket under a
+ * tenant-scoped path whose FIRST segment is always the tenant uuid (the only
+ * thing the storage RLS policy keys on). Returns the object PATH (stored on
+ * products.image_url — the read layer signs it) plus a short-lived signed URL
+ * for immediate preview. The upload runs on the authenticated client, so the
+ * storage RLS policy ("owners/admins can upload" to their `<tenant_id>/…`
+ * path) is the real gate (M4A).
+ *
+ * EDIT mode (`productId` given): the product must belong to the tenant
+ * (checked here) and the object lives at `<tenant_id>/products/<id>/<file>`.
+ * CREATE mode (`productId` omitted): there is no product row yet, so the
+ * object lives at `<tenant_id>/products/uploads/<uuid>-<file>` — still under
+ * the tenant prefix, so RLS + signProductImages both keep working, and the
+ * path is persisted verbatim by create_product on save (M7F.1).
  */
 export async function sbUploadProductImage(input: {
-  productId: string;
+  productId?: string;
   fileName: string;
   contentType: string;
   bytes: Uint8Array;
 }): Promise<{ path: string; previewUrl: string }> {
   const { client, tenantId } = await getDataContext();
+  // Anon / no membership can never own a tenant storage prefix — fail closed
+  // (the storage RLS would reject anyway, but be explicit).
+  if (tenantId === NO_TENANT) {
+    fail("uploadProductImage", "no tenant membership for the caller");
+  }
 
-  const { data: product, error: productError } = await client
-    .from("products")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("id", input.productId)
-    .maybeSingle();
-  if (productError) fail("uploadProductImage", productError.message);
-  if (!product) {
-    fail("uploadProductImage", "product is unknown or belongs to another tenant");
+  if (input.productId) {
+    const { data: product, error: productError } = await client
+      .from("products")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.productId)
+      .maybeSingle();
+    if (productError) fail("uploadProductImage", productError.message);
+    if (!product) {
+      fail("uploadProductImage", "product is unknown or belongs to another tenant");
+    }
   }
 
   const safeName = input.fileName
@@ -301,7 +317,9 @@ export async function sbUploadProductImage(input: {
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(-80);
-  const path = `${tenantId}/products/${input.productId}/${safeName || "image"}`;
+  const path = input.productId
+    ? `${tenantId}/products/${input.productId}/${safeName || "image"}`
+    : `${tenantId}/products/uploads/${randomUUID()}-${safeName || "image"}`;
 
   const { error: uploadError } = await client.storage
     .from(PRODUCT_IMAGE_BUCKET)
@@ -317,4 +335,47 @@ export async function sbUploadProductImage(input: {
   if (signError) fail("uploadProductImage", signError.message);
 
   return { path, previewUrl: signed.signedUrl };
+}
+
+// ── Customers (M7F.2) — create_customer / update_customer RPCs ─────────────
+
+/** Only send optional params that carry a value (RPC defaults handle the rest). */
+function customerRpcArgs(input: CustomerWriteInput) {
+  return {
+    p_name: input.name,
+    p_customer_type: input.type,
+    ...(input.contactName ? { p_contact_name: input.contactName } : {}),
+    ...(input.phone ? { p_phone: input.phone } : {}),
+    ...(input.cityAr ? { p_city_ar: input.cityAr } : {}),
+    ...(input.cityHe ? { p_city_he: input.cityHe } : {}),
+    ...(input.cityEn ? { p_city_en: input.cityEn } : {}),
+    ...(input.address ? { p_address: input.address } : {}),
+    ...(input.notes ? { p_notes: input.notes } : {}),
+  };
+}
+
+export async function sbCreateCustomer(
+  input: CustomerWriteInput,
+): Promise<{ customerId: string }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("create_customer", {
+    p_tenant_id: tenantId,
+    ...customerRpcArgs(input),
+  });
+  if (error) fail("createCustomer", error.message);
+  return { customerId: data as string };
+}
+
+export async function sbUpdateCustomer(
+  customerId: string,
+  input: CustomerWriteInput,
+): Promise<{ customerId: string }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("update_customer", {
+    p_tenant_id: tenantId,
+    p_customer_id: customerId,
+    ...customerRpcArgs(input),
+  });
+  if (error) fail("updateCustomer", error.message);
+  return { customerId: data as string };
 }
