@@ -1,6 +1,8 @@
 import { ArrowRight, Download, FileText, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GuestOrderCard } from "@/components/admin/guest-order-card";
+import { OrderItemsEditor } from "@/components/admin/order-items-editor";
 import { OrderStatusControl } from "@/components/order-status-control";
 import { ProductImage } from "@/components/product-image";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +48,10 @@ export default async function AdminOrderDetailPage({
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   // Latest document record per type, for the documents history/generate card.
   const docsByType = new Map(orderDocs.map((doc) => [doc.type, doc]));
+  const live = getDataMode() === "supabase";
+  // Guest (showcase) order — no linked shop, buyer details in the snapshot (M7I).
+  const guest =
+    !customer && order.customerSnapshot?.name ? order.customerSnapshot : null;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -97,7 +103,7 @@ export default async function AdminOrderDetailPage({
                 orderId={order.id}
                 initialStatus={order.status}
                 locale={locale}
-                live={getDataMode() === "supabase"}
+                live={live}
                 dict={dict}
               />
             </CardContent>
@@ -153,32 +159,52 @@ export default async function AdminOrderDetailPage({
               <p className="mt-1 text-xs text-ink-muted">{dict.cart.vatNote}</p>
             </CardContent>
           </Card>
+
+          {/* Edit lines (M7I.3) — owner/admin only; RPC reconciles reserved stock */}
+          <OrderItemsEditor
+            order={order}
+            products={products}
+            categories={categories}
+            locale={locale}
+            live={live}
+            dict={dict}
+          />
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* Shop */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.shopTitle}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1.5 pt-3 text-sm">
-              <p className="text-base font-semibold text-ink">
-                {customer?.name ?? "—"}
-              </p>
-              {customer ? (
-                <>
-                  <p className="text-ink-soft">
-                    {dict.admin.customers.types[customer.type]} ·{" "}
-                    {customer.city[locale]}
-                  </p>
-                  <p className="text-ink-soft" dir="ltr">
-                    {customer.phone}
-                  </p>
-                  <p className="text-ink-soft">{customer.contactName}</p>
-                </>
-              ) : null}
-            </CardContent>
-          </Card>
+          {/* Shop — a linked customer, or a guest (showcase) order snapshot (M7I) */}
+          {guest ? (
+            <GuestOrderCard
+              orderId={order.id}
+              snapshot={guest}
+              locale={locale}
+              live={live}
+              dict={dict}
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.shopTitle}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1.5 pt-3 text-sm">
+                <p className="text-base font-semibold text-ink">
+                  {customer?.name ?? "—"}
+                </p>
+                {customer ? (
+                  <>
+                    <p className="text-ink-soft">
+                      {dict.admin.customers.types[customer.type]} ·{" "}
+                      {customer.city[locale]}
+                    </p>
+                    <p className="text-ink-soft" dir="ltr">
+                      {customer.phone}
+                    </p>
+                    <p className="text-ink-soft">{customer.contactName}</p>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Notes */}
           <Card>
