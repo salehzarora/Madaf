@@ -259,7 +259,15 @@ export function ProductForm({
           </div>
           <div>
             <Label htmlFor="np-barcode">{t.barcode}</Label>
-            <Input id="np-barcode" name="barcode" mono dir="ltr" />
+            {/* Prefilled in edit mode (M8A) — an empty save used to silently
+                wipe the stored barcode. Clearing is now a deliberate act. */}
+            <Input
+              id="np-barcode"
+              name="barcode"
+              mono
+              dir="ltr"
+              defaultValue={product?.barcode}
+            />
           </div>
         </CardContent>
       </Card>
