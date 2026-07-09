@@ -1,7 +1,14 @@
 "use client";
 
-import { CheckCircle2, PackageSearch, Plus, ShoppingCart } from "lucide-react";
+import {
+  CheckCircle2,
+  Lock,
+  PackageSearch,
+  Plus,
+  ShoppingCart,
+} from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import { CatalogFilterBar } from "@/components/shop/catalog-filter-bar";
 import { EmptyState } from "@/components/empty-state";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { ProductImage } from "@/components/product-image";
@@ -11,6 +18,10 @@ import { Textarea } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { packageLabel, productName } from "@/lib/catalog-helpers";
+import {
+  emptyCatalogFilters,
+  filterAndSortProducts,
+} from "@/lib/catalog-filter";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { submitShopOrderAction } from "@/lib/actions/shop";
 import type { TokenCatalog } from "@/lib/data/token";
@@ -28,8 +39,8 @@ const FALLBACK_CATEGORY: Category = {
 /**
  * Self-contained tokenized storefront for a shop opening its private link.
  * No login, no global cart — the cart is local state and the order is
- * submitted through the token action (the DB derives tenant + customer and
- * prices everything server-side; source = remote_customer).
+ * submitted through the token action. The store/customer is fixed by the
+ * token and is READ-ONLY (the buyer can never change who the order is for).
  */
 export function ShopView({
   locale,
@@ -49,10 +60,19 @@ export function ShopView({
   // Customer-facing PUBLIC ref (MDF-XXXXXXXX), never the internal number.
   const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [filters, setFilters] = useState(emptyCatalogFilters);
 
   const categoryById = useMemo(
     () => new Map(catalog.categories.map((c) => [c.id, c])),
     [catalog.categories],
+  );
+  const manufacturerById = useMemo(
+    () => new Map(catalog.manufacturers.map((m) => [m.id, m])),
+    [catalog.manufacturers],
+  );
+  const visible = useMemo(
+    () => filterAndSortProducts(catalog.products, filters, manufacturerById, locale),
+    [catalog.products, filters, manufacturerById, locale],
   );
 
   function setQty(productId: string, qty: number) {
@@ -123,7 +143,7 @@ export function ShopView({
 
   return (
     <div className="min-h-dvh bg-surface-sunken pb-28">
-      {/* Header */}
+      {/* Header — supplier + read-only store context */}
       <header className="border-b border-line bg-surface-warm">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="min-w-0">
@@ -137,32 +157,53 @@ export function ShopView({
           </div>
         </div>
         <div className="mx-auto max-w-5xl px-4 pb-3 sm:px-6">
-          <p className="text-sm text-ink-soft">
-            <span className="text-ink-muted">{t.orderingFor}: </span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-field bg-brand-50 px-3 py-2 text-sm">
+            <Lock className="size-3.5 shrink-0 text-brand-700" aria-hidden />
+            <span className="text-ink-muted">{t.orderingFor}</span>
             <span className="font-semibold text-ink">
               {catalog.customer.name}
             </span>
             {catalog.customer.city[locale] ? (
               <span className="text-ink-muted">
-                {" · "}
-                {catalog.customer.city[locale]}
+                · {catalog.customer.city[locale]}
               </span>
             ) : null}
-          </p>
+            <span className="ms-auto text-[11px] text-ink-muted">
+              {t.storeLocked}
+            </span>
+          </div>
         </div>
       </header>
 
-      {/* Product grid */}
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <main className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6">
+        {catalog.products.length > 0 ? (
+          <CatalogFilterBar
+            locale={locale}
+            dict={dict}
+            categories={catalog.categories}
+            manufacturers={catalog.manufacturers}
+            filters={filters}
+            onChange={setFilters}
+            onClear={() => setFilters(emptyCatalogFilters())}
+          />
+        ) : null}
+
         {catalog.products.length === 0 ? (
           <EmptyState icon={<PackageSearch />} title={t.empty} />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            icon={<PackageSearch />}
+            title={dict.catalog.noResults}
+            hint={dict.catalog.noResultsHint}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {catalog.products.map((product) => {
+            {visible.map((product) => {
               const qty = cart.get(product.id) ?? 0;
               const soldOut = product.availability === "outOfStock";
               const category =
                 categoryById.get(product.categoryId) ?? FALLBACK_CATEGORY;
+              const manufacturer = manufacturerById.get(product.manufacturerId);
               return (
                 <div
                   key={product.id}
@@ -182,6 +223,11 @@ export function ShopView({
                     <h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-ink">
                       {productName(product, locale)}
                     </h3>
+                    {manufacturer ? (
+                      <p className="truncate text-[11px] font-semibold uppercase tracking-[0.04em] text-brand-700">
+                        {manufacturer.name[locale]}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-ink-muted">
                       {packageLabel(product, dict)}
                     </p>
@@ -227,7 +273,7 @@ export function ShopView({
 
         {/* Notes + disclaimer */}
         {lineCount > 0 ? (
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -242,7 +288,7 @@ export function ShopView({
         {error ? (
           <p
             role="alert"
-            className="mt-4 rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+            className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
           >
             {t.error}
           </p>
@@ -256,7 +302,7 @@ export function ShopView({
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-xs text-ink-muted">
                 <ShoppingCart className="size-3.5" aria-hidden />
-                {formatNumber(lineCount, locale)}
+                {dict.cart.title} · {formatNumber(lineCount, locale)}
               </p>
               <p className="text-lg font-extrabold tabular-nums text-ink">
                 {formatCurrency(estimate, locale)}

@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import {
   insertCustomerLink,
   revokeCustomerLink,
+  revokeCustomerLinksForCustomer,
 } from "@/lib/data/customer-links";
 import { hashToken } from "@/lib/data/token";
 
@@ -63,6 +64,10 @@ export async function createCustomerLinkAction(input: {
       expiresAt = new Date(Date.now() + days * 86400_000).toISOString();
     }
 
+    // M7H.1: a store keeps exactly ONE live link. Revoke every currently-active
+    // link for this customer BEFORE issuing the new one, so any previously
+    // copied URL stops working immediately.
+    await revokeCustomerLinksForCustomer(input.customerId);
     await insertCustomerLink({
       customerId: input.customerId,
       tokenHash,
@@ -80,11 +85,10 @@ export async function createCustomerLinkAction(input: {
 }
 
 /**
- * Regenerate = revoke the old link, then issue a fresh one (M7F.2). Reuses
- * the existing secure primitives only (revoke RPC + the create path above);
- * invents NO new token behavior — the raw token is still shown exactly once
- * and only its hash is stored. Revoking first means a store never has two
- * live tokens at once.
+ * Regenerate a store's private link (M7F.2, hardened M7H.1). Delegates to
+ * createCustomerLinkAction, which now revokes ALL of the customer's active
+ * links before issuing the fresh one — so EVERY old URL (not just the clicked
+ * row) stops working. Only token_hash is stored; the raw token is shown once.
  */
 export async function regenerateCustomerLinkAction(input: {
   linkId: string;
@@ -97,7 +101,6 @@ export async function regenerateCustomerLinkAction(input: {
     if (!isPlausibleId(input.linkId) || !isPlausibleId(input.customerId)) {
       return { ok: false };
     }
-    await revokeCustomerLink(input.linkId);
     return await createCustomerLinkAction({
       customerId: input.customerId,
       label: input.label,

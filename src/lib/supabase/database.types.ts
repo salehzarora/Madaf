@@ -116,6 +116,56 @@ export type Database = {
           },
         ]
       }
+      catalog_showcase_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          label: string | null
+          last_used_at: string | null
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+          token_preview?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_showcase_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color_hue: number
@@ -851,6 +901,54 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_inventory_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          order_id: string
+          product_id: string | null
+          quantity_delta: number
+          reason: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id: string
+          product_id?: string | null
+          quantity_delta: number
+          reason?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id?: string
+          product_id?: string | null
+          quantity_delta?: number
+          reason?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_inventory_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_inventory_movements_tenant_id_order_id_fkey"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
           },
         ]
       }
@@ -1629,6 +1727,13 @@ export type Database = {
         Args: { p_fingerprint: string; p_purpose: string }
         Returns: undefined
       }
+      _resolve_showcase_token: {
+        Args: { p_raw_token: string }
+        Returns: {
+          link_id: string
+          tenant_id: string
+        }[]
+      }
       _resolve_signup_token: {
         Args: { p_raw_token: string }
         Returns: {
@@ -1801,6 +1906,7 @@ export type Database = {
         }
         Returns: string
       }
+      get_showcase_catalog: { Args: { p_token: string }; Returns: Json }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }
         Returns: {
@@ -1839,6 +1945,16 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: boolean
+      }
+      insert_catalog_showcase_link: {
+        Args: {
+          p_expires_at?: string
+          p_label?: string
+          p_tenant_id: string
+          p_token_hash: string
+          p_token_preview?: string
+        }
+        Returns: string
       }
       insert_customer_access_link: {
         Args: {
@@ -1902,9 +2018,17 @@ export type Database = {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined
       }
+      revoke_catalog_showcase_link: {
+        Args: { p_link_id: string; p_tenant_id: string }
+        Returns: string
+      }
       revoke_customer_access_link: {
         Args: { p_link_id: string; p_tenant_id: string }
         Returns: string
+      }
+      revoke_customer_access_links_for_customer: {
+        Args: { p_customer_id: string; p_tenant_id: string }
+        Returns: number
       }
       revoke_customer_signup_link: {
         Args: { p_link_id: string; p_tenant_id: string }

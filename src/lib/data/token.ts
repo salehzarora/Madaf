@@ -68,26 +68,83 @@ function resolveShopImageUrl(
   return undefined;
 }
 
+/** One-line, non-secret diagnostic for the most common hosted cause of missing
+ * shop images: the trusted (service-role) storage client is fail-closed unless
+ * its envs are set. Logged server-side only. */
+function logTrustedStorageUnavailable(context: string, error: unknown): void {
+  console.error(
+    `[madaf/${context}] uploaded product images will show as PLACEHOLDERS — ` +
+      "the trusted storage client is not configured. On hosted set (server-" +
+      "only): MADAF_TRUSTED_DOCUMENT_STORAGE=enabled, " +
+      "MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=<your project ref>, " +
+      "SUPABASE_SERVICE_ROLE_KEY. External image URLs are unaffected. Detail:",
+    error instanceof Error ? error.message : error,
+  );
+}
+
 /**
- * M7F.4 — sign uploaded product images for a VALIDATED private shop token.
+ * Sign uploaded product-image paths for an ALREADY-authorized anonymous viewer
+ * of `tenantId` (M7F.4 / M7H). Signs ONLY objects under `<tenantId>/products/`
+ * in the private product-images bucket (strict prefix — a value that isn't an
+ * own-tenant product-image path is NEVER signed, so images can't leak across
+ * tenants). External URLs are handled by the caller.
  *
- * The token was already validated by get_token_catalog (it returned a
- * catalog), which scopes every product to the token's tenant. To render the
- * private `product-images` objects to the anonymous shop we:
- *   1. resolve the token's AUTHORITATIVE tenant_id server-side (trusted
- *      client, by token_hash — never from the client / never from the path
- *      itself),
- *   2. sign ONLY paths under `<tenant_id>/products/` (strict prefix — a value
- *      that isn't an own-tenant product-image path is never signed, so images
- *      can't leak across tenants),
- *   3. return a path→signedUrl map. External URLs are handled by the caller.
- *
- * Fail-closed: any missing config / lookup / signing error returns an empty
- * map, so those products fall back to the placeholder — never a crash and
- * never a service_role leak (the trusted client is server-only).
- *
- * Exported for the M7F.4 local probe; server-only (this module imports
- * "server-only"), so it can never reach the client bundle.
+ * Fail-closed: missing config / signing error → empty map (placeholder
+ * fallback) with a safe diagnostic — never a crash, never a service_role leak
+ * (the trusted client is server-only). Shared by the shop + showcase loaders.
+ */
+export async function signOwnTenantPaths(
+  context: string,
+  tenantId: string | null | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  products: any[],
+): Promise<Map<string, string>> {
+  const empty = new Map<string, string>();
+  if (!tenantId) return empty;
+  const prefix = `${tenantId}/products/`;
+  const ownPaths = [
+    ...new Set(
+      products
+        .map((p) => p?.image_url)
+        .filter((v): v is string => typeof v === "string")
+        // Own-tenant storage path (not an external URL). Plain regex avoids the
+        // type-guard narrowing of isExternalUrl on an already-string value.
+        .filter((v) => !/^https?:\/\//i.test(v) && v.startsWith(prefix)),
+    ),
+  ];
+  if (ownPaths.length === 0) return empty;
+
+  let storage;
+  try {
+    storage = getTrustedDocumentStorageClient().storage;
+  } catch (error) {
+    logTrustedStorageUnavailable(context, error);
+    return empty;
+  }
+  try {
+    const { data, error } = await storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .createSignedUrls(ownPaths, SHOP_SIGNED_URL_TTL_SECONDS);
+    if (error || !data) {
+      console.error(`[madaf/${context}] product image signing failed:`, error?.message);
+      return empty;
+    }
+    const out = new Map<string, string>();
+    data.forEach((row, i) => {
+      if (row.signedUrl) out.set(ownPaths[i], row.signedUrl);
+    });
+    return out;
+  } catch (error) {
+    console.error(`[madaf/${context}] product image signing error:`, error);
+    return empty;
+  }
+}
+
+/**
+ * Sign product images for a VALIDATED private shop token. Resolves the token's
+ * AUTHORITATIVE tenant_id server-side (trusted client, by token_hash — never
+ * from the client / never from the path), then signs own-tenant paths.
+ * Exported for the local probe; server-only.
  */
 export async function signTokenProductImages(
   rawToken: string,
@@ -95,50 +152,20 @@ export async function signTokenProductImages(
   products: any[],
 ): Promise<Map<string, string>> {
   const empty = new Map<string, string>();
-  // Distinct, non-external storage paths present in the catalog.
-  const candidatePaths = [
-    ...new Set(
-      products
-        .map((p) => p?.image_url)
-        .filter(
-          (v): v is string => typeof v === "string" && !isExternalUrl(v),
-        ),
-    ),
-  ];
-  if (candidatePaths.length === 0) return empty;
-
+  let client;
   try {
-    const client = getTrustedDocumentStorageClient();
-
-    // Authoritative tenant for this token (server-only; never sent to client).
-    const { data: link } = await client
-      .from("customer_access_links")
-      .select("tenant_id")
-      .eq("token_hash", hashToken(rawToken))
-      .is("revoked_at", null)
-      .maybeSingle();
-    const tenantId = link?.tenant_id;
-    if (!tenantId) return empty;
-
-    // Strict: only this tenant's product-image objects are signable.
-    const prefix = `${tenantId}/products/`;
-    const ownPaths = candidatePaths.filter((p) => p.startsWith(prefix));
-    if (ownPaths.length === 0) return empty;
-
-    const { data, error } = await client.storage
-      .from(PRODUCT_IMAGE_BUCKET)
-      .createSignedUrls(ownPaths, SHOP_SIGNED_URL_TTL_SECONDS);
-    if (error || !data) return empty;
-
-    const out = new Map<string, string>();
-    data.forEach((row, i) => {
-      if (row.signedUrl) out.set(ownPaths[i], row.signedUrl);
-    });
-    return out;
+    client = getTrustedDocumentStorageClient();
   } catch (error) {
-    console.error("[madaf/shop] product image signing skipped:", error);
+    logTrustedStorageUnavailable("shop", error);
     return empty;
   }
+  const { data: link } = await client
+    .from("customer_access_links")
+    .select("tenant_id")
+    .eq("token_hash", hashToken(rawToken))
+    .is("revoked_at", null)
+    .maybeSingle();
+  return signOwnTenantPaths("shop", link?.tenant_id, products);
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

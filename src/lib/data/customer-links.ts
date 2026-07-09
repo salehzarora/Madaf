@@ -94,3 +94,20 @@ export async function revokeCustomerLink(linkId: string): Promise<void> {
     throw new Error(`[madaf/data] revokeCustomerLink failed: ${error.message}`);
   }
 }
+
+/** Revoke ALL currently-active links for a customer (M7H.1) — so issuing a new
+ * link leaves the store with exactly one live link and every old URL dies. */
+export async function revokeCustomerLinksForCustomer(
+  customerId: string,
+): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc(
+    "revoke_customer_access_links_for_customer",
+    { p_tenant_id: tenantId, p_customer_id: customerId },
+  );
+  if (error) {
+    throw new Error(
+      `[madaf/data] revokeCustomerLinksForCustomer failed: ${error.message}`,
+    );
+  }
+}
