@@ -934,7 +934,8 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
-          order_id: string
+          note: string | null
+          order_id: string | null
           product_id: string | null
           quantity_delta: number
           reason: string
@@ -944,7 +945,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          order_id: string
+          note?: string | null
+          order_id?: string | null
           product_id?: string | null
           quantity_delta: number
           reason?: string
@@ -954,7 +956,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          order_id?: string
+          note?: string | null
+          order_id?: string | null
           product_id?: string | null
           quantity_delta?: number
           reason?: string
@@ -1783,6 +1786,16 @@ export type Database = {
         Returns: undefined
       }
       accept_tenant_invite: { Args: { p_token: string }; Returns: string }
+      adjust_inventory_stock: {
+        Args: {
+          p_delta: number
+          p_note?: string
+          p_product_id: string
+          p_reason: string
+          p_tenant_id: string
+        }
+        Returns: number
+      }
       approve_customer_signup_request: {
         Args: { p_request_id: string; p_tenant_id: string }
         Returns: string
@@ -2025,6 +2038,10 @@ export type Database = {
         Returns: string
       }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
+      link_order_to_customer: {
+        Args: { p_customer_id: string; p_order_id: string; p_tenant_id: string }
+        Returns: undefined
+      }
       list_memberships: {
         Args: never
         Returns: {

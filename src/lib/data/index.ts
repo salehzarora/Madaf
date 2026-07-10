@@ -44,6 +44,7 @@ export {
   createOrderRequest,
   getDocument,
   getOrder,
+  linkOrderToCustomer,
   listDocuments,
   listDocumentsForOrder,
   listOrders,
@@ -53,5 +54,10 @@ export {
   type CreateOrderResult,
   type OrderSource,
 } from "./orders";
-export { getInventoryForProduct, listInventory } from "./inventory";
+export {
+  adjustInventoryStock,
+  getInventoryForProduct,
+  listInventory,
+  listInventoryMovements,
+} from "./inventory";
 export { getSupplier } from "./supplier";

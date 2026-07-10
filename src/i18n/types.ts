@@ -218,6 +218,21 @@ export interface Dictionary {
       emptyLabel: string;
       /** `{count}` orders. */
       ordersCount: string;
+      /** M8B.4 — operational alert cards. */
+      alerts: {
+        guestOrders: string;
+        /** `{count}` pending guest orders. */
+        guestOrdersCount: string;
+        guestOrdersNone: string;
+        signupRequests: string;
+        /** `{count}` pending signup requests. */
+        signupRequestsCount: string;
+        signupRequestsNone: string;
+        lowStock: string;
+        /** `{count}` products at/below their threshold. */
+        lowStockCount: string;
+        lowStockNone: string;
+      };
     };
     products: {
       title: string;
@@ -356,6 +371,13 @@ export interface Dictionary {
           creating: string;
           createError: string;
           created: string;
+          /** M8B.3 — order linked to an existing store instead. */
+          linked: string;
+          duplicateTitle: string;
+          duplicatePhoneMatch: string;
+          duplicateNameMatch: string;
+          linkExisting: string;
+          createAnyway: string;
         };
         /** M7I — owner/admin order line editing. */
         edit: {
@@ -387,6 +409,60 @@ export interface Dictionary {
       noExpiry: string;
       lowOnly: string;
       expiringSoon: string;
+      /** M8B.1 — stock-movement ledger history view. */
+      movements: {
+        navLabel: string;
+        title: string;
+        subtitle: string;
+        searchPlaceholder: string;
+        allReasons: string;
+        colDate: string;
+        colProduct: string;
+        colDelta: string;
+        colReason: string;
+        colOrder: string;
+        colNote: string;
+        /** Order column value for manual (order-less) adjustments. */
+        manualBadge: string;
+        /** Shown when the 500-newest-rows cap was hit (older rows hidden). */
+        truncatedNote: string;
+        empty: string;
+        emptyHint: string;
+        direction: { all: string; in: string; out: string };
+        reasons: {
+          order_reserved: string;
+          order_reservation_released: string;
+          order_edit_adjustment: string;
+          order_delivered: string;
+          manual_stock_count: string;
+          manual_damaged_goods: string;
+          manual_returned_goods: string;
+          manual_supplier_delivery: string;
+          manual_correction: string;
+          manual_other: string;
+        };
+      };
+      /** M8B.2 — manual stock adjustment. */
+      adjust: {
+        button: string;
+        title: string;
+        deltaLabel: string;
+        deltaPlaceholder: string;
+        reasonLabel: string;
+        reasonPlaceholder: string;
+        currentLabel: string;
+        newLabel: string;
+        noteLabel: string;
+        save: string;
+        saving: string;
+        success: string;
+        errors: {
+          negative: string;
+          reasonRequired: string;
+          deltaRequired: string;
+          failed: string;
+        };
+      };
     };
     customers: {
       title: string;
@@ -398,6 +474,9 @@ export interface Dictionary {
       colOrders: string;
       colLastOrder: string;
       startOrder: string;
+      /** M8B.5 — stores list search. */
+      searchPlaceholder: string;
+      noMatches: string;
       /** Clarifies these are the supplier's business customers (stores). */
       addCustomer: string;
       edit: string;
@@ -439,6 +518,11 @@ export interface Dictionary {
         mockNotice: string;
         liveNotice: string;
         backToList: string;
+        /** M8B.3 — duplicate-store warning on manual create. */
+        duplicateTitle: string;
+        duplicatePhoneMatch: string;
+        duplicateNameMatch: string;
+        createAnyway: string;
       };
       /** M7G — new-store self-signup management (owner/admin). */
       signup: {
@@ -481,6 +565,11 @@ export interface Dictionary {
         noRequests: string;
         /** `{count}` pending requests — header badge/CTA */
         pendingBadge: string;
+        /** M8B.3 — duplicate-store warning on approval. */
+        duplicateTitle: string;
+        duplicatePhoneMatch: string;
+        duplicateNameMatch: string;
+        approveAnyway: string;
         error: string;
         never: string;
         none: string;

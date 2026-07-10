@@ -156,3 +156,18 @@ export async function createCustomerFromOrder(
   }
   return (await import("./supabase-writes")).sbCreateCustomerFromOrder(orderId);
 }
+
+/** M8B.3 — owner/admin link a guest order to an EXISTING customer (duplicate
+ * guard alternative to creating a new one). Snapshot preserved. */
+export async function linkOrderToCustomer(
+  orderId: string,
+  customerId: string,
+): Promise<void> {
+  if (getDataMode() !== "supabase") {
+    throw new Error("[madaf/data] linkOrderToCustomer is a Supabase-only write.");
+  }
+  return (await import("./supabase-writes")).sbLinkOrderToCustomer(
+    orderId,
+    customerId,
+  );
+}

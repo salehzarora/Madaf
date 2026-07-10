@@ -134,6 +134,43 @@ export interface InventoryItem {
   lowStockThreshold?: number;
 }
 
+/**
+ * Machine reasons on the stock-movement ledger (DB
+ * `order_inventory_movements.reason`). Order-driven reasons come from the
+ * M7H/M7I lifecycle; `manual_*` reasons come from adjust_inventory_stock
+ * (M8B). The UI maps known reasons to labels and falls back to the raw
+ * string for anything unknown.
+ */
+export const INVENTORY_MOVEMENT_REASONS = [
+  "order_reserved",
+  "order_reservation_released",
+  "order_edit_adjustment",
+  "order_delivered", // legacy M7H rows (pre-reservation lifecycle)
+  "manual_stock_count",
+  "manual_damaged_goods",
+  "manual_returned_goods",
+  "manual_supplier_delivery",
+  "manual_correction",
+  "manual_other",
+] as const;
+export type InventoryMovementReason =
+  (typeof INVENTORY_MOVEMENT_REASONS)[number];
+
+/** One append-only stock-movement ledger row (M8B admin history view). */
+export interface InventoryMovement {
+  id: string;
+  productId: string | null;
+  /** NULL for manual adjustments (no order). */
+  orderId: string | null;
+  /** Packages; negative = deducted, positive = returned/added. */
+  quantityDelta: number;
+  /** Machine reason — usually an InventoryMovementReason. */
+  reason: string;
+  /** Free-text note (manual adjustments only). */
+  note?: string;
+  createdAt: string;
+}
+
 export interface CartItem {
   productId: string;
   /** Quantity in packages. */
