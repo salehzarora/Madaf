@@ -1,10 +1,13 @@
 # M8E — Scale Polish, Customer Pagination, Branding & Document Fidelity
 
-Status: implemented on `feature/M8E-scale-polish-customer-branding-docs` (not
-merged). Builds on M8D (main `80c6da1`). **One migration**
-(`20260725100000_tenant_business_profile.sql`, additive). Mock stays the
-zero-env default; no legal/payment/production change — `legal_effective` stays
-false, drafts keep their DRAFT watermark + "not a tax invoice" notice.
+Status: merged to main (`3004cb2`). Builds on M8D (main `80c6da1`). **One
+migration** (`20260725100000_tenant_business_profile.sql`, additive). Mock stays
+the zero-env default; no legal/payment/production change — `legal_effective`
+stays false, drafts keep their DRAFT watermark + "not a tax invoice" notice.
+
+> **M8E.1 (hotfix, `feature/M8E1-upload-logo-visibility-hotfix`)** — no
+> migration. Fixes logo-upload error handling and makes the company/manufacturer
+> logos visible. See the "M8E.1" section at the end.
 
 ## A — Server-side export of all filtered rows [M8E.1]
 
@@ -201,3 +204,80 @@ owner/admin gate + VAT range; document preview stored-totals + guest snapshot.
 - Recommended next (M8F): orders/products server-side pagination, a
   per-customer order-stats aggregate RPC, optional customer source column for
   guest/signup facets.
+
+---
+
+## M8E.1 — Upload-error hotfix + logo visibility
+
+Operator feedback after M8E: (1) uploading an invalid image could leave the UI
+stuck on "uploading"; (2) the company logo existed in settings but wasn't shown
+anywhere, so the feature felt invisible. **No migration.**
+
+### Root cause of the upload hang
+The tenant/manufacturer logo upload handlers called `await uploadXAction(fd)`
+with **no `try/catch/finally`**, so a REJECTED action promise never reset
+`uploading`. The trigger: Next.js server actions cap the request body at **1MB
+by default**, smaller than the app's own image limits (5MB product images, 2MB
+logos) — a valid 1–2MB logo was rejected at the transport layer, the promise
+rejected, and without a `finally` the button stayed disabled forever. (The
+product-image handler already had a `finally`, so it recovered — but the >1MB
+upload still failed.)
+
+### What was fixed
+- `next.config.ts`: `experimental.serverActions.bodySizeLimit = "6mb"` — valid
+  images up to the app limit now actually upload instead of being rejected.
+- All three logo/image upload handlers (tenant, manufacturer, product) now:
+  wrap the upload in `try/catch/finally` (`uploading` is always reset — no
+  more hang); **pre-validate on the client** (MIME + size) for instant feedback
+  before any upload starts; map a distinct **`invalid`** reason for a
+  magic-byte mismatch (corrupt/spoofed image) vs unsupported **`type`**; show a
+  reassurance line that **the current image was not changed** on any failure;
+  leave the existing logo/preview untouched on failure; and reset the file
+  input so the user can immediately retry (even the same file).
+- Shared client helper `src/lib/image-upload.ts` (`preValidateImage`,
+  `IMAGE_ACCEPT`, size caps) — no server-only imports.
+- New shared error strings `common.uploadInvalid` / `common.uploadKeepCurrent`
+  (ar/he/en).
+
+### Where the TENANT/company logo now appears
+1. **Business settings** — the current logo previews, updates immediately after
+   upload, and a helper line states where it appears.
+2. **Admin shell (every admin page)** — the logo shows beside the tenant name
+   in the sidebar (falls back to the tenant initial when absent). Fetched
+   best-effort in the admin layout (a signing hiccup never blocks the chrome).
+3. **Document preview** — already shown in the header (M8E.5); DRAFT watermark +
+   "not a tax invoice" notice unchanged.
+4. **Shop + showcase customer-facing headers** — the supplier logo shows beside
+   the business name. Signed for the anon viewer via a NEW server-only
+   `signTenantBrandingLogo` (resolves the tenant from the token_hash, signs the
+   own-tenant `<tenant>/branding/…` path only, external URLs pass through,
+   fail-closed to name-only). Never exposes a storage path or the service role.
+
+### Where the MANUFACTURER logo now appears
+1. **Manufacturers admin list** — logo avatar (M8E.3).
+2. **Catalog filter chips** — small logo before the brand name (admin + shop +
+   showcase, signed).
+3. **Product cards** — a small brand logo before the manufacturer eyebrow name
+   (admin + shop + showcase), fallback to name-only (no clutter).
+   The product-form manufacturer field is a native `<select>` (can't embed an
+   image in an `<option>`), so it stays text — documented, not a regression.
+
+### Legal boundary
+Logos are cosmetic branding only — showing a logo does NOT make a document a
+legal invoice. `legal_effective` stays false; drafts keep the DRAFT watermark +
+"not a tax invoice" notice + VAT-estimate wording.
+
+### Known limitations
+- **Server-generated PDF logo**: the on-demand pdfkit PDF does NOT yet embed the
+  tenant logo (it would need a signed-bytes fetch + pdfkit image embedding on
+  the legally-sensitive PDF path). The HTML preview — the primary, printable
+  document view — DOES show the logo. PDF logo embedding is a scoped follow-up.
+- Storefront/admin logos rely on a fresh signed URL per request; a signing
+  failure falls back to the initial/name (never a broken image blocking the UI).
+
+### Verification
+`lint` / `tsc` / `build` (route guard OK) / `audit` (0 vulns) / `db reset` +
+`db lint` + `db advisors` all green. No migration, no RLS change, no
+service_role in client, product-images bucket stays private, own-tenant-only
+logo signing (cross-tenant paths never signed — enforced on read in both
+`sbGetSupplier` and `signTenantBrandingLogo`).

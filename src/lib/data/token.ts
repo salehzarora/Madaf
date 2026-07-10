@@ -34,6 +34,9 @@ const SHOP_SIGNED_URL_TTL_SECONDS = 1800; // 30 min
 
 export interface TokenCatalog {
   tenantName: { ar: string; he: string; en: string };
+  /** Supplier business logo for the storefront header (M8E.1) — a signed
+   * private-bucket URL or an external URL; absent → name only. */
+  tenantLogoUrl?: string;
   customer: { name: string; city: { ar: string; he: string; en: string } };
   products: Product[];
   categories: Category[];
@@ -211,6 +214,63 @@ async function signOwnTenantObjectPaths(
 }
 
 /**
+ * Fetch + sign the tenant's OWN business/branding logo for an anon storefront
+ * (M8E.1). External http(s) URLs pass through; an own-tenant private-bucket
+ * object path (under `<tenantId>/`, e.g. `<tenantId>/branding/…`) is signed;
+ * anything else (cross-tenant, missing) → undefined (name-only fallback).
+ * Fail-closed: any error → undefined, never a crash, never a service_role leak.
+ * The `client` is the trusted service-role storage client; `tenantId` is the
+ * AUTHORITATIVE tenant already resolved from the token_hash by the caller.
+ */
+export async function signTenantBrandingLogo(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  tenantId: string | null | undefined,
+): Promise<string | undefined> {
+  if (!tenantId) return undefined;
+  try {
+    const { data: tenant } = await client
+      .from("tenants")
+      .select("logo_url")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const raw = tenant?.logo_url;
+    if (typeof raw !== "string" || !raw) return undefined;
+    // Plain regex (not the isExternalUrl type guard) so the string type is not
+    // narrowed to `never` on the own-tenant-path branch below.
+    if (/^https?:\/\//i.test(raw)) return raw; // external URL passes through
+    // Own-tenant object path ONLY — never sign a cross-tenant / stray path.
+    if (!raw.startsWith(`${tenantId}/`)) return undefined;
+    const { data } = await client.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .createSignedUrl(raw, SHOP_SIGNED_URL_TTL_SECONDS);
+    return data?.signedUrl ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve a private shop token to its tenant and sign that tenant's business
+ * logo (M8E.1). Fail-closed to undefined (name-only header). */
+export async function signTokenTenantLogo(
+  rawToken: string,
+): Promise<string | undefined> {
+  let client;
+  try {
+    client = getProductImageStorageClient();
+  } catch {
+    return undefined;
+  }
+  const { data: link } = await client
+    .from("customer_access_links")
+    .select("tenant_id")
+    .eq("token_hash", hashToken(rawToken))
+    .is("revoked_at", null)
+    .maybeSingle();
+  return signTenantBrandingLogo(client, link?.tenant_id);
+}
+
+/**
  * Sign product images for a VALIDATED private shop token. Resolves the token's
  * AUTHORITATIVE tenant_id server-side (service-role client, by token_hash —
  * never from the client / never from the path), then signs own-tenant paths.
@@ -385,11 +445,12 @@ export async function getTokenCatalog(
     manufacturers: any[];
   };
   // Token is valid (RPC returned a catalog) → sign this tenant's uploaded
-  // product images + manufacturer logos for the anon shop. Fail-closed to
-  // placeholders.
-  const [signedByPath, signedLogos] = await Promise.all([
+  // product images + manufacturer logos + business logo for the anon shop.
+  // Fail-closed to placeholders / name-only.
+  const [signedByPath, signedLogos, tenantLogoUrl] = await Promise.all([
     signTokenProductImages(rawToken, blob.products),
     signTokenManufacturerLogos(rawToken, blob.manufacturers),
+    signTokenTenantLogo(rawToken),
   ]);
   return {
     tenantName: {
@@ -397,6 +458,7 @@ export async function getTokenCatalog(
       he: blob.tenant.name_he,
       en: blob.tenant.name_en,
     },
+    tenantLogoUrl,
     customer: {
       name: blob.customer.name,
       city: {

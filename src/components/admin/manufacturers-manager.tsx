@@ -14,6 +14,12 @@ import {
   uploadManufacturerLogoAction,
 } from "@/lib/actions/products";
 import { getDataMode } from "@/lib/data/mode";
+import {
+  IMAGE_ACCEPT,
+  MAX_LOGO_BYTES,
+  preValidateImage,
+  type UploadReason,
+} from "@/lib/image-upload";
 import type { Manufacturer } from "@/lib/types";
 
 const EXTERNAL_URL = /^https?:\/\//i;
@@ -70,11 +76,27 @@ function LogoField({
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function reasonMessage(reason?: UploadReason): string {
+    return reason === "type"
+      ? t.uploadTypeError
+      : reason === "size"
+        ? t.uploadSizeError
+        : reason === "invalid"
+          ? dict.common.uploadInvalid
+          : t.uploadFailed;
+  }
+
   async function onFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    event.target.value = ""; // allow re-selecting the same file
+    event.target.value = ""; // allow re-selecting the same file (even after error)
     if (!file) return;
     setError(null);
+    // Fast client-side reject before any upload starts (server re-validates).
+    const pre = preValidateImage(file, MAX_LOGO_BYTES);
+    if (pre) {
+      setError(reasonMessage(pre));
+      return;
+    }
     if (!live) {
       // Demo mode: local preview only, nothing persisted.
       setPreview(URL.createObjectURL(file));
@@ -82,23 +104,25 @@ function LogoField({
       return;
     }
     setUploading(true);
-    const fd = new FormData();
-    if (manufacturerId) fd.set("manufacturerId", manufacturerId);
-    fd.set("file", file);
-    const result = await uploadManufacturerLogoAction(fd);
-    setUploading(false);
-    if (result.ok && result.path) {
-      setValue(result.path);
-      setPreview(result.previewUrl);
-      setUrlText("");
-    } else {
-      setError(
-        result.reason === "type"
-          ? t.uploadTypeError
-          : result.reason === "size"
-            ? t.uploadSizeError
-            : t.uploadFailed,
-      );
+    try {
+      const fd = new FormData();
+      if (manufacturerId) fd.set("manufacturerId", manufacturerId);
+      fd.set("file", file);
+      const result = await uploadManufacturerLogoAction(fd);
+      if (result.ok && result.path) {
+        setValue(result.path);
+        setPreview(result.previewUrl);
+        setUrlText("");
+      } else {
+        // The current logo/preview is untouched — only surface the error.
+        setError(reasonMessage(result.reason));
+      }
+    } catch {
+      // Rejected promise (network / body-size / server error) — reset state so
+      // the button never stays stuck on "uploading" (M8E.1 hotfix).
+      setError(t.uploadFailed);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -146,7 +170,7 @@ function LogoField({
         <input
           ref={fileRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={onFile}
         />
@@ -160,10 +184,14 @@ function LogoField({
         className="mt-2"
       />
       <p className="mt-1 text-xs text-ink-muted">{t.logoOrUrl} · {t.logoUrlHint}</p>
+      <p className="text-xs text-ink-muted">{t.logoHelp}</p>
       {error ? (
-        <p role="alert" className="mt-1 text-[13px] font-medium text-danger">
-          {error}
-        </p>
+        <div className="mt-1">
+          <p role="alert" className="text-[13px] font-medium text-danger">
+            {error}
+          </p>
+          <p className="text-xs text-ink-muted">{dict.common.uploadKeepCurrent}</p>
+        </div>
       ) : null}
     </div>
   );

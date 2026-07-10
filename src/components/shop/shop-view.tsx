@@ -146,6 +146,16 @@ export function ShopView({
       {/* Header — supplier + read-only store context */}
       <header className="border-b border-line bg-surface-warm">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          {catalog.tenantLogoUrl ? (
+            // Supplier business logo (M8E.1) — signed URL; graceful fallback to
+            // name-only when absent or signing failed.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={catalog.tenantLogoUrl}
+              alt=""
+              className="size-10 shrink-0 rounded-field border border-line bg-surface object-contain"
+            />
+          ) : null}
           <div className="min-w-0">
             <p className="text-xs font-medium text-ink-muted">{t.welcome}</p>
             <h1 className="truncate text-lg font-bold tracking-tight text-ink">

@@ -14,7 +14,12 @@ import { createServerAuthClient } from "@/lib/supabase/server-auth";
 import type { Availability, Category, Manufacturer, Product } from "@/lib/types";
 
 import { getProductImageStorageClient } from "./product-image-storage";
-import { hashToken, signOwnTenantLogoPaths, signOwnTenantPaths } from "./token";
+import {
+  hashToken,
+  signOwnTenantLogoPaths,
+  signOwnTenantPaths,
+  signTenantBrandingLogo,
+} from "./token";
 
 export type ShowcaseLinkStatus = "active" | "revoked" | "expired";
 
@@ -30,6 +35,9 @@ export interface ShowcaseLink {
 
 export interface ShowcaseCatalog {
   tenantName: { ar: string; he: string; en: string };
+  /** Supplier business logo for the showcase header (M8E.1) — signed private
+   * URL or external URL; absent → name only. */
+  tenantLogoUrl?: string;
   products: Product[];
   categories: Category[];
   manufacturers: Manufacturer[];
@@ -154,6 +162,26 @@ async function signShowcaseLogos(
   return signOwnTenantLogoPaths("showcase", link.tenant_id, manufacturers);
 }
 
+/** Resolve a showcase token to its tenant and sign that tenant's business logo
+ * (M8E.1). Fail-closed to undefined (name-only header). */
+async function signShowcaseTenantLogo(
+  rawToken: string,
+): Promise<string | undefined> {
+  let client;
+  try {
+    client = getProductImageStorageClient();
+  } catch {
+    return undefined;
+  }
+  const { data: link } = await client
+    .from("catalog_showcase_links")
+    .select("tenant_id")
+    .eq("token_hash", hashToken(rawToken))
+    .is("revoked_at", null)
+    .maybeSingle();
+  return signTenantBrandingLogo(client, link?.tenant_id);
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapShowcaseProduct(p: any, signed: Map<string, string>): Product {
   const raw = p.image_url;
@@ -271,9 +299,10 @@ export async function getShowcaseCatalog(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     manufacturers: any[];
   };
-  const [signed, signedLogos] = await Promise.all([
+  const [signed, signedLogos, tenantLogoUrl] = await Promise.all([
     signShowcaseImages(rawToken, blob.products),
     signShowcaseLogos(rawToken, blob.manufacturers),
+    signShowcaseTenantLogo(rawToken),
   ]);
   return {
     tenantName: {
@@ -281,6 +310,7 @@ export async function getShowcaseCatalog(
       he: blob.tenant.name_he,
       en: blob.tenant.name_en,
     },
+    tenantLogoUrl,
     products: blob.products.map((p) => mapShowcaseProduct(p, signed)),
     categories: blob.categories.map(mapShowcaseCategory),
     manufacturers: blob.manufacturers.map((m) =>

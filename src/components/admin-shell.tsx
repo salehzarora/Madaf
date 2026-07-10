@@ -31,6 +31,9 @@ export interface AdminSession {
   /** Membership role — keyed into `dict.access.session.roles` for display. */
   role: keyof Dictionary["access"]["session"]["roles"];
   tenantName: string;
+  /** Business logo (signed URL or external, M8E.1) shown beside the tenant
+   * name; falls back to the initial when absent. */
+  logoUrl?: string;
   /** Currently-selected tenant id + all memberships (for the switcher). */
   currentTenantId: string;
   tenants: { id: string; name: string }[];
@@ -160,9 +163,20 @@ export function AdminShell({
           />
         ) : (
           <span className="inline-flex max-w-full items-center gap-2 truncate rounded-field border border-band-muted/25 bg-band-ink/5 px-2.5 py-2 text-[13px] font-semibold text-band-ink">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-[12px] font-extrabold text-band">
-              {session.tenantName.slice(0, 1)}
-            </span>
+            {session.logoUrl ? (
+              // Business logo (M8E.1) — signed/external URL; falls back to the
+              // initial below when absent.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={session.logoUrl}
+                alt=""
+                className="size-6 shrink-0 rounded-md bg-band object-contain"
+              />
+            ) : (
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-[12px] font-extrabold text-band">
+                {session.tenantName.slice(0, 1)}
+              </span>
+            )}
             <span className="truncate">{session.tenantName}</span>
           </span>
         )

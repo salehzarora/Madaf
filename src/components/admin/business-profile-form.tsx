@@ -9,6 +9,12 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { saveBusinessProfileAction } from "@/lib/actions/tenant";
 import { uploadTenantLogoAction } from "@/lib/actions/products";
+import {
+  IMAGE_ACCEPT,
+  MAX_LOGO_BYTES,
+  preValidateImage,
+  type UploadReason,
+} from "@/lib/image-upload";
 import type { Supplier } from "@/lib/types";
 
 const EXTERNAL_URL = /^https?:\/\//i;
@@ -55,33 +61,51 @@ export function BusinessProfileForm({
       ? Number((initial.displayVatRate * 100).toFixed(2))
       : undefined;
 
+  function logoReasonMessage(reason?: UploadReason): string {
+    return reason === "type"
+      ? t.uploadTypeError
+      : reason === "size"
+        ? t.uploadSizeError
+        : reason === "invalid"
+          ? dict.common.uploadInvalid
+          : t.uploadFailed;
+  }
+
   async function onFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    event.target.value = "";
+    event.target.value = ""; // allow re-selecting the same file (even after error)
     if (!file) return;
     setLogoError(null);
+    // Fast client-side reject before any upload starts (server re-validates).
+    const pre = preValidateImage(file, MAX_LOGO_BYTES);
+    if (pre) {
+      setLogoError(logoReasonMessage(pre));
+      return;
+    }
     if (!live) {
       setLogoPreview(URL.createObjectURL(file));
       setLogoUrlText("");
       return;
     }
     setUploading(true);
-    const fd = new FormData();
-    fd.set("file", file);
-    const result = await uploadTenantLogoAction(fd);
-    setUploading(false);
-    if (result.ok && result.path) {
-      setLogoValue(result.path);
-      setLogoPreview(result.previewUrl);
-      setLogoUrlText("");
-    } else {
-      setLogoError(
-        result.reason === "type"
-          ? t.uploadTypeError
-          : result.reason === "size"
-            ? t.uploadSizeError
-            : t.uploadFailed,
-      );
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const result = await uploadTenantLogoAction(fd);
+      if (result.ok && result.path) {
+        setLogoValue(result.path);
+        setLogoPreview(result.previewUrl);
+        setLogoUrlText("");
+      } else {
+        // The current logo/preview is untouched — only surface the error.
+        setLogoError(logoReasonMessage(result.reason));
+      }
+    } catch {
+      // Rejected promise (network / body-size / server error) — reset state so
+      // the button never stays stuck on "uploading" (M8E.1 hotfix).
+      setLogoError(t.uploadFailed);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -283,7 +307,7 @@ export function BusinessProfileForm({
             <input
               ref={fileRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept={IMAGE_ACCEPT}
               className="hidden"
               onChange={onFile}
             />
@@ -297,10 +321,16 @@ export function BusinessProfileForm({
             className="mt-2"
           />
           <p className="mt-1 text-xs text-ink-muted">{t.logoOrUrl}</p>
+          <p className="mt-1 text-xs text-ink-muted">{t.logoHelp}</p>
           {logoError ? (
-            <p role="alert" className="mt-1 text-[13px] font-medium text-danger">
-              {logoError}
-            </p>
+            <div className="mt-1">
+              <p role="alert" className="text-[13px] font-medium text-danger">
+                {logoError}
+              </p>
+              <p className="text-xs text-ink-muted">
+                {dict.common.uploadKeepCurrent}
+              </p>
+            </div>
           ) : null}
         </CardContent>
       </Card>

@@ -20,6 +20,10 @@ export interface Dictionary {
     exporting: string;
     /** M8E — shown when a filtered export hit the row cap; {count} = rows written. */
     exportCapped: string;
+    /** M8E.1 — image upload: bytes are not a real/matching image (corrupt/spoofed). */
+    uploadInvalid: string;
+    /** M8E.1 — reassurance shown on any upload failure: the current image stayed. */
+    uploadKeepCurrent: string;
     /** M8D — shown where a role-gated action is hidden for a sales_rep. */
     noPermission: string;
     search: string;
@@ -352,6 +356,8 @@ export interface Dictionary {
       logoUrlHint: string;
       /** M8E.3 — brand logo upload (private bucket, signed on read). */
       logoLabel: string;
+      /** M8E.1 — where the manufacturer logo appears (helper text). */
+      logoHelp: string;
       uploadLogo: string;
       uploading: string;
       logoOrUrl: string;
@@ -745,6 +751,8 @@ export interface Dictionary {
         sectionAddress: string;
         sectionContact: string;
         sectionBranding: string;
+        /** M8E.1 — where the business logo appears (settings helper text). */
+        logoHelp: string;
         nameAr: string;
         nameHe: string;
         nameEn: string;
