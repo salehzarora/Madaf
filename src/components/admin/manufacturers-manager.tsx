@@ -42,11 +42,14 @@ function LogoAvatar({ manufacturer }: { manufacturer: Manufacturer }) {
 export function ManufacturersManager({
   manufacturers,
   productCounts,
+  canManage = false,
   locale,
   dict,
 }: {
   manufacturers: Manufacturer[];
   productCounts: Record<string, number>;
+  /** Owner/admin (or mock demo) — shows add/edit (M8D). */
+  canManage?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
@@ -122,7 +125,7 @@ export function ManufacturersManager({
         ) : (
           <span />
         )}
-        {!formOpen ? (
+        {canManage && !formOpen ? (
           <Button type="button" onClick={openAdd}>
             <Plus className="size-4" aria-hidden />
             {t.add}
@@ -192,7 +195,7 @@ export function ManufacturersManager({
             <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
               <th className="px-4 py-3 text-start">{t.colName}</th>
               <th className="px-4 py-3 text-end">{dict.nav.products}</th>
-              {live ? (
+              {canManage ? (
                 <th className="px-4 py-3 text-end">{t.colActions}</th>
               ) : null}
             </tr>
@@ -214,7 +217,7 @@ export function ManufacturersManager({
                 <td className="px-4 py-3.5 text-end font-mono text-[13px] tabular-nums text-ink-soft">
                   {productCounts[manufacturer.id] ?? 0}
                 </td>
-                {live ? (
+                {canManage ? (
                   <td className="px-4 py-3.5 text-end">
                     <Button
                       variant="outline"

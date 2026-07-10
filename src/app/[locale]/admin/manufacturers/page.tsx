@@ -3,7 +3,8 @@ import { ManufacturersManager } from "@/components/admin/manufacturers-manager";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listManufacturers, listProducts } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import { getDataMode, listManufacturers, listProducts } from "@/lib/data";
 
 /** Manufacturers admin — brands and their logos (tenant-scoped). */
 export default async function AdminManufacturersPage({
@@ -24,6 +25,10 @@ export default async function AdminManufacturersPage({
     if (p.manufacturerId) acc[p.manufacturerId] = (acc[p.manufacturerId] ?? 0) + 1;
     return acc;
   }, {});
+  // Catalog writes are owner/admin (M8D); mock demo stays open.
+  const isSupabase = getDataMode() === "supabase";
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  const canManage = !isSupabase || role === "owner" || role === "admin";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -40,6 +45,7 @@ export default async function AdminManufacturersPage({
       <ManufacturersManager
         manufacturers={manufacturers}
         productCounts={productCounts}
+        canManage={canManage}
         locale={locale}
         dict={dict}
       />
