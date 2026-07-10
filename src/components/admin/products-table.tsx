@@ -31,6 +31,7 @@ export function ProductsTable({
   products,
   inventory = [],
   canExport = false,
+  canManage = false,
   locale,
   dict,
 }: {
@@ -39,6 +40,8 @@ export function ProductsTable({
   inventory?: InventoryItem[];
   /** Owner/admin (or mock demo) — shows the CSV export button. */
   canExport?: boolean;
+  /** Owner/admin (or mock demo) — shows edit + activate/deactivate (M8D). */
+  canManage?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
@@ -113,17 +116,18 @@ export function ProductsTable({
         inv ? (isLowStock(inv) ? "yes" : "no") : "",
       ];
     });
+    const h = t.csv;
     const csv = toCsv(
       [
-        "name",
-        "sku",
-        "barcode",
-        "category",
-        "manufacturer",
-        "price_excl_vat",
-        "status",
-        "stock_packages",
-        "low_stock",
+        h.name,
+        h.sku,
+        h.barcode,
+        h.category,
+        h.manufacturer,
+        h.price,
+        h.status,
+        h.stock,
+        h.lowStock,
       ],
       rows,
     );
@@ -250,7 +254,7 @@ export function ProductsTable({
                 <th className="px-4 py-3 text-start">{t.colPackage}</th>
                 <th className="px-4 py-3 text-end">{t.colPrice}</th>
                 <th className="px-4 py-3 text-start">{t.colAvailability}</th>
-                {live ? (
+                {canManage ? (
                   <th className="px-4 py-3 text-end">{t.colActions}</th>
                 ) : null}
               </tr>
@@ -312,7 +316,7 @@ export function ProductsTable({
                         dict={dict.availability}
                       />
                     </td>
-                    {live ? (
+                    {canManage ? (
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Link
