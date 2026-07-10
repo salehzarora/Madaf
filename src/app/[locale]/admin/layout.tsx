@@ -4,7 +4,7 @@ import { AdminShell, type AdminSession } from "@/components/admin-shell";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode } from "@/lib/data";
+import { getDataMode, getSupplier } from "@/lib/data";
 
 /**
  * Admin chrome — sidebar dashboard layout for all /admin pages.
@@ -32,11 +32,21 @@ export default async function AdminLayout({
     if (!userId) redirect(`/${locale}/login`);
     if (!membership) redirect(`/${locale}/onboarding`);
 
+    // Business logo for the top bar (M8E.1) — signed on read; best-effort so a
+    // signing hiccup never blocks the admin chrome (falls back to the initial).
+    let logoUrl: string | undefined;
+    try {
+      logoUrl = (await getSupplier()).logoUrl;
+    } catch {
+      logoUrl = undefined;
+    }
+
     session = {
       // Phone-OTP users have no email — show their phone as the identity.
       email: email ?? phone,
       role: membership.role,
       tenantName: membership.name[locale],
+      logoUrl,
       currentTenantId: membership.tenantId,
       tenants: memberships.map((m) => ({ id: m.tenantId, name: m.name[locale] })),
     };

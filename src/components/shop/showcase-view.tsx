@@ -323,6 +323,15 @@ export function ShowcaseView({
     <div className="min-h-dvh bg-surface-sunken pb-24">
       <header className="border-b border-line bg-surface-warm">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          {catalog.tenantLogoUrl ? (
+            // Supplier business logo (M8E.1) — signed URL; graceful fallback.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={catalog.tenantLogoUrl}
+              alt=""
+              className="size-10 shrink-0 rounded-field border border-line bg-surface object-contain"
+            />
+          ) : null}
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 text-xs font-medium text-ink-muted">
               <Store className="size-3.5" aria-hidden />

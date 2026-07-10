@@ -83,8 +83,18 @@ export function ProductCard({
       {/* Body */}
       <div className="pointer-events-none flex flex-1 flex-col gap-[3px] px-3.5 pt-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[11px] font-bold uppercase tracking-[0.05em] text-brand-700">
-            {manufacturer?.name[locale] ?? " "}
+          <p className="flex min-w-0 items-center gap-1 truncate text-[11px] font-bold uppercase tracking-[0.05em] text-brand-700">
+            {manufacturer?.logoUrl ? (
+              // Small brand logo before the name (M8E.1) — signed URL on the
+              // storefront; absent → name only (no clutter).
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={manufacturer.logoUrl}
+                alt=""
+                className="size-3.5 shrink-0 rounded-[3px] object-contain"
+              />
+            ) : null}
+            <span className="truncate">{manufacturer?.name[locale] ?? " "}</span>
           </p>
           <span
             className="size-2 shrink-0 rounded-[3px]"
