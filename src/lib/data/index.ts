@@ -60,5 +60,6 @@ export {
   getInventoryForProduct,
   listInventory,
   listInventoryMovements,
+  searchInventoryMovements,
 } from "./inventory";
 export { getSupplier } from "./supplier";
