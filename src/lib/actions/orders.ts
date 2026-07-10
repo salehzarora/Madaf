@@ -21,9 +21,15 @@ import { revalidatePath } from "next/cache";
 import {
   createCustomerFromOrder,
   createOrderRequest,
+  getOrder,
+  linkOrderToCustomer,
   updateOrderItems,
   updateOrderStatus,
 } from "@/lib/data";
+import {
+  findCustomerDuplicates,
+  type CustomerDuplicate,
+} from "@/lib/data/customers";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
 /** Maps the DB insufficient-stock error (MDF30) to a UI reason. */
@@ -194,13 +200,39 @@ export async function updateOrderItemsAction(input: {
   }
 }
 
-/** M7I.1 — owner/admin create a permanent customer from a guest order. */
+export interface PromoteGuestResult {
+  ok: boolean;
+  customerId?: string;
+  /** Existing same-phone/name customers (M8B.3) — shown as a warning; the
+   * admin must either link to one or explicitly confirm creating anyway. */
+  duplicates?: CustomerDuplicate[];
+}
+
+/** M7I.1 — owner/admin create a permanent customer from a guest order.
+ * M8B.3: refuses (returning the matches) when an existing customer shares
+ * the guest's phone/name, unless confirmDuplicate is explicitly true. */
 export async function createCustomerFromOrderAction(input: {
   orderId: string;
   locale: string;
-}): Promise<{ ok: boolean; customerId?: string }> {
+  confirmDuplicate?: boolean;
+}): Promise<PromoteGuestResult> {
   try {
     if (!isPlausibleId(input.orderId)) return { ok: false };
+
+    if (input.confirmDuplicate !== true) {
+      const order = await getOrder(input.orderId);
+      const snap = order?.customerSnapshot;
+      if (snap?.name || snap?.phone) {
+        const duplicates = await findCustomerDuplicates({
+          name: snap.name,
+          phone: snap.phone,
+        });
+        if (duplicates.length > 0) {
+          return { ok: false, duplicates: duplicates.slice(0, 5) };
+        }
+      }
+    }
+
     const result = await createCustomerFromOrder(input.orderId);
     revalidateOrder(input.locale, input.orderId);
     if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
@@ -210,6 +242,30 @@ export async function createCustomerFromOrderAction(input: {
     return { ok: true, customerId: result.customerId };
   } catch (error) {
     console.error("[madaf/actions] createCustomerFromOrderAction failed:", error);
+    return { ok: false };
+  }
+}
+
+/** M8B.3 — owner/admin link a guest order to an EXISTING customer instead of
+ * creating a duplicate. The guest snapshot stays on the order. */
+export async function linkOrderToCustomerAction(input: {
+  orderId: string;
+  customerId: string;
+  locale: string;
+}): Promise<{ ok: boolean }> {
+  try {
+    if (!isPlausibleId(input.orderId) || !isPlausibleId(input.customerId)) {
+      return { ok: false };
+    }
+    await linkOrderToCustomer(input.orderId, input.customerId);
+    revalidateOrder(input.locale, input.orderId);
+    if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
+      revalidatePath(`/${input.locale}/admin/customers`);
+      revalidatePath(`/${input.locale}/admin/customers/${input.customerId}`);
+    }
+    return { ok: true };
+  } catch (error) {
+    console.error("[madaf/actions] linkOrderToCustomerAction failed:", error);
     return { ok: false };
   }
 }

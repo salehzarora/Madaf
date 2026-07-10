@@ -17,6 +17,7 @@ import {
   rejectSignupRequestAction,
   revokeSignupLinkAction,
 } from "@/lib/actions/customer-signup";
+import type { CustomerDuplicate } from "@/lib/data/customers";
 import type {
   SignupLink,
   SignupLinkStatus,
@@ -47,6 +48,11 @@ export function SignupManager({
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // M8B.3 — pending duplicate-store warning for an approval attempt.
+  const [dupWarning, setDupWarning] = useState<{
+    requestId: string;
+    duplicates: CustomerDuplicate[];
+  } | null>(null);
 
   function onGenerate() {
     setError(null);
@@ -90,11 +96,26 @@ export function SignupManager({
     });
   }
 
-  function onApprove(requestId: string) {
+  function onApprove(requestId: string, confirmDuplicate = false) {
     setError(null);
+    setDupWarning(null);
     startTransition(async () => {
-      const result = await approveSignupRequestAction({ requestId, locale });
-      if (!result.ok) setError(t.error);
+      const result = await approveSignupRequestAction({
+        requestId,
+        locale,
+        confirmDuplicate,
+      });
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+      // M8B.3 duplicate guard — an existing store shares this request's
+      // phone/name; approval needs an explicit confirmation.
+      if (result.duplicates && result.duplicates.length > 0) {
+        setDupWarning({ requestId, duplicates: result.duplicates });
+        return;
+      }
+      setError(t.error);
       router.refresh();
     });
   }
@@ -142,6 +163,58 @@ export function SignupManager({
         >
           {error}
         </p>
+      ) : null}
+
+      {/* M8B.3 — duplicate-store warning for a pending approval */}
+      {dupWarning ? (
+        <div className="flex flex-col gap-2 rounded-field border border-warning/45 bg-warning-soft p-4">
+          <p className="text-sm font-bold text-warning">{t.duplicateTitle}</p>
+          <ul className="flex flex-col gap-1.5">
+            {dupWarning.duplicates.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center gap-2 rounded-field bg-surface px-3 py-2"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink">
+                    {d.name}
+                  </span>
+                  <span className="block text-xs text-ink-soft">
+                    {d.matchType === "phone"
+                      ? t.duplicatePhoneMatch
+                      : t.duplicateNameMatch}
+                    {d.phone ? <span dir="ltr"> · {d.phone}</span> : null}
+                  </span>
+                </span>
+                <Link
+                  href={`/${locale}/admin/customers/${d.id}`}
+                  className="text-xs font-semibold text-brand-700 underline"
+                >
+                  {t.viewStore}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending}
+              onClick={() => onApprove(dupWarning.requestId, true)}
+            >
+              {t.approveAnyway}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => setDupWarning(null)}
+            >
+              {dict.common.cancel}
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {/* ── Create + list links ── */}

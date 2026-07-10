@@ -16,10 +16,15 @@ import { revalidatePath } from "next/cache";
 import {
   approveSignupRequest,
   insertSignupLink,
+  listSignupRequests,
   rejectSignupRequest,
   revokeSignupLink,
   submitSignupRequest,
 } from "@/lib/data/customer-signup";
+import {
+  findCustomerDuplicates,
+  type CustomerDuplicate,
+} from "@/lib/data/customers";
 import { hashToken } from "@/lib/data/token";
 
 const MAX_LABEL = 80;
@@ -133,12 +138,39 @@ function revalidateRequests(locale: string): void {
   revalidatePath(`/${locale}`, "layout"); // ShopDataProvider (new customer)
 }
 
+export interface ApproveSignupResult {
+  ok: boolean;
+  customerId?: string;
+  /** Existing same-phone/name customers (M8B.3) — the admin must confirm
+   * (confirmDuplicate: true) to approve into a look-alike store anyway. */
+  duplicates?: CustomerDuplicate[];
+}
+
 export async function approveSignupRequestAction(input: {
   requestId: string;
   locale: string;
-}): Promise<{ ok: boolean; customerId?: string }> {
+  confirmDuplicate?: boolean;
+}): Promise<ApproveSignupResult> {
   try {
     if (!isPlausibleId(input.requestId)) return { ok: false };
+
+    // M8B.3 duplicate guard: approval CREATES a customer, so check the
+    // pending request's name/phone against existing stores first.
+    if (input.confirmDuplicate !== true) {
+      const request = (await listSignupRequests()).find(
+        (r) => r.id === input.requestId,
+      );
+      if (request) {
+        const duplicates = await findCustomerDuplicates({
+          name: request.name,
+          phone: request.phone ?? undefined,
+        });
+        if (duplicates.length > 0) {
+          return { ok: false, duplicates: duplicates.slice(0, 5) };
+        }
+      }
+    }
+
     const result = await approveSignupRequest(input.requestId);
     revalidateRequests(safeLocale(input.locale));
     return { ok: true, customerId: result.customerId };

@@ -13,6 +13,10 @@
 import { revalidatePath } from "next/cache";
 
 import { createCustomer, updateCustomer, type CustomerWriteInput } from "@/lib/data";
+import {
+  findCustomerDuplicates,
+  type CustomerDuplicate,
+} from "@/lib/data/customers";
 import type { CustomerType } from "@/lib/types";
 
 const MAX_NAME = 200;
@@ -67,6 +71,9 @@ function readCustomerInput(raw: Record<string, unknown>): CustomerWriteInput | n
 export interface CustomerWriteResult {
   ok: boolean;
   customerId?: string;
+  /** Existing same-phone/name customers (M8B.3) — the admin must confirm
+   * (confirmDuplicate: true) to create a look-alike store anyway. */
+  duplicates?: CustomerDuplicate[];
 }
 
 function revalidateCustomers(locale: string): void {
@@ -79,10 +86,22 @@ function revalidateCustomers(locale: string): void {
 export async function createCustomerAction(input: {
   customer: Record<string, unknown>;
   locale: string;
+  confirmDuplicate?: boolean;
 }): Promise<CustomerWriteResult> {
   try {
     const customer = readCustomerInput(input.customer);
     if (!customer) return { ok: false };
+
+    if (input.confirmDuplicate !== true) {
+      const duplicates = await findCustomerDuplicates({
+        name: customer.name,
+        phone: customer.phone,
+      });
+      if (duplicates.length > 0) {
+        return { ok: false, duplicates: duplicates.slice(0, 5) };
+      }
+    }
+
     const result = await createCustomer(customer);
     revalidateCustomers(input.locale);
     return { ok: true, customerId: result.customerId };

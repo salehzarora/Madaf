@@ -3,7 +3,7 @@
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   createCustomerAction,
   updateCustomerAction,
 } from "@/lib/actions/customers";
+import type { CustomerDuplicate } from "@/lib/data/customers";
 import { getDataMode } from "@/lib/data/mode";
 import type { Customer, CustomerType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -49,10 +50,21 @@ export function CustomerForm({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  // M8B.3 — existing same-phone/name stores; creating needs confirmation.
+  const [duplicates, setDuplicates] = useState<CustomerDuplicate[] | null>(
+    null,
+  );
+
+  const formRef = useRef<HTMLFormElement>(null);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await save(event.currentTarget, false);
+  }
+
+  async function save(form: HTMLFormElement, confirmDuplicate: boolean) {
     setSaveFailed(false);
+    setDuplicates(null);
 
     if (!live) {
       setSaved(true);
@@ -60,7 +72,7 @@ export function CustomerForm({
       return;
     }
 
-    const fd = new FormData(event.currentTarget);
+    const fd = new FormData(form);
     const customerInput = {
       name: fd.get("name"),
       type: fd.get("type"),
@@ -82,10 +94,20 @@ export function CustomerForm({
               customer: customerInput,
               locale,
             })
-          : await createCustomerAction({ customer: customerInput, locale });
+          : await createCustomerAction({
+              customer: customerInput,
+              locale,
+              confirmDuplicate,
+            });
       if (result.ok) {
         router.push(`/${locale}/admin/customers`);
         router.refresh();
+        return;
+      }
+      // Duplicate guard (create only): show matches; the admin can confirm.
+      if (!isEdit && "duplicates" in result && result.duplicates?.length) {
+        setDuplicates(result.duplicates);
+        setSaving(false);
         return;
       }
     } catch {
@@ -96,7 +118,7 @@ export function CustomerForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex max-w-2xl flex-col gap-4">
+    <form ref={formRef} onSubmit={onSubmit} className="flex max-w-2xl flex-col gap-4">
       <p
         className={cn(
           "rounded-field px-4 py-3 text-sm",
@@ -226,6 +248,58 @@ export function CustomerForm({
           </div>
         </CardContent>
       </Card>
+
+      {/* M8B.3 — duplicate-store warning (create mode) */}
+      {duplicates ? (
+        <div className="flex flex-col gap-2 rounded-field border border-warning/45 bg-warning-soft p-4">
+          <p className="text-sm font-bold text-warning">{t.duplicateTitle}</p>
+          <ul className="flex flex-col gap-1.5">
+            {duplicates.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center gap-2 rounded-field bg-surface px-3 py-2"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink">
+                    {d.name}
+                  </span>
+                  <span className="block text-xs text-ink-soft">
+                    {d.matchType === "phone"
+                      ? t.duplicatePhoneMatch
+                      : t.duplicateNameMatch}
+                    {d.phone ? <span dir="ltr"> · {d.phone}</span> : null}
+                  </span>
+                </span>
+                <Link
+                  href={`/${locale}/admin/customers/${d.id}`}
+                  className="text-xs font-semibold text-brand-700 underline"
+                >
+                  {dict.admin.customers.signup.viewStore}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={saving}
+              onClick={() => formRef.current && save(formRef.current, true)}
+            >
+              {t.createAnyway}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={() => setDuplicates(null)}
+            >
+              {dict.common.cancel}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {saveFailed ? (
         <p
