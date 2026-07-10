@@ -744,3 +744,39 @@ must end with the route-guard OK line.
 
 No RLS weakened, no service_role in client, no legal/payment change,
 `legal_effective` stays false. No hosted db reset, no config push.
+
+## 22. M8B — inventory operations, duplicate customer guard, dashboard alerts
+
+Full detail in `docs/product/M8B_INVENTORY_OPS_DASHBOARD_ALERTS.md`.
+
+- **Movement history:** `/admin/inventory/movements` — owner/admin view of
+  the append-only stock ledger (search, reason + in/out filters; sales_rep
+  gets zero rows via RLS; mock shows the empty state).
+- **Manual stock adjustment:** `adjust_inventory_stock` RPC (owner/admin,
+  allowlisted reasons, optional note, FOR UPDATE, negative result blocked
+  MDF32, ledger row with created_by, first adjustment starts tracking an
+  untracked product) + inline per-row form on `/admin/inventory`. Ledger:
+  `order_id` now nullable + capped `note` column — order reconciliation
+  unaffected (regression-probed).
+- **Duplicate customer guard:** tenant-scoped phone/name match warns before
+  guest-order promotion, signup approval and manual create; explicit
+  confirm-anyway; guest orders can instead be LINKED to the existing store
+  via the new `link_order_to_customer` RPC (owner/admin, unlinked orders
+  only, snapshot preserved).
+- **Dashboard alerts:** pending guest orders / pending signup requests
+  (owner/admin) / low-stock cards with links and all-clear states.
+- **Customers search:** `/admin/customers` searches name/contact/phone/city
+  (3 locales)/address.
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260723100000_manual_inventory_adjustments.sql`
+2. `20260723110000_link_order_to_customer.sql`
+
+**Vercel:** no new envs. Redeploy with **build cache OFF**; the build must
+end with the route-guard OK line.
+
+No RLS/policy change (ledger read stays owner/admin), anon revoked on both
+new RPCs, no direct table writes, no service_role in client, no legal/
+payment change, `legal_effective` stays false. No hosted db reset, no config
+push.
