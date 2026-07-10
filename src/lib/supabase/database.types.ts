@@ -7,31 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       archival_records: {
@@ -1655,9 +1630,12 @@ export type Database = {
           company_id: string | null
           created_at: string
           default_locale: Database["public"]["Enums"]["locale_code"]
+          display_vat_rate: number | null
           document_locale: Database["public"]["Enums"]["locale_code"]
+          email: string | null
           id: string
           legal_name: string | null
+          logo_url: string | null
           name_ar: string
           name_en: string
           name_he: string
@@ -1673,9 +1651,12 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           default_locale?: Database["public"]["Enums"]["locale_code"]
+          display_vat_rate?: number | null
           document_locale?: Database["public"]["Enums"]["locale_code"]
+          email?: string | null
           id?: string
           legal_name?: string | null
+          logo_url?: string | null
           name_ar: string
           name_en: string
           name_he: string
@@ -1691,9 +1672,12 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           default_locale?: Database["public"]["Enums"]["locale_code"]
+          display_vat_rate?: number | null
           document_locale?: Database["public"]["Enums"]["locale_code"]
+          email?: string | null
           id?: string
           legal_name?: string | null
+          logo_url?: string | null
           name_ar?: string
           name_en?: string
           name_he?: string
@@ -2233,6 +2217,50 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_tenant_profile: {
+        Args: {
+          p_address_ar?: string
+          p_address_en?: string
+          p_address_he?: string
+          p_company_id?: string
+          p_display_vat_rate?: number
+          p_email?: string
+          p_legal_name?: string
+          p_logo_url?: string
+          p_name_ar: string
+          p_name_en: string
+          p_name_he: string
+          p_phone?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          address_ar: string | null
+          address_en: string | null
+          address_he: string | null
+          company_id: string | null
+          created_at: string
+          default_locale: Database["public"]["Enums"]["locale_code"]
+          display_vat_rate: number | null
+          document_locale: Database["public"]["Enums"]["locale_code"]
+          email: string | null
+          id: string
+          legal_name: string | null
+          logo_url: string | null
+          name_ar: string
+          name_en: string
+          name_he: string
+          order_seq: number
+          phone: string | null
+          updated_at: string
+          vat_registration_type: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       upsert_inventory_item: {
         Args: { p_inventory: Json; p_product_id: string; p_tenant_id: string }
         Returns: string
@@ -2475,9 +2503,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       base_unit: [

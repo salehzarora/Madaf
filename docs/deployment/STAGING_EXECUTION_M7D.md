@@ -838,3 +838,34 @@ the outstanding hosted `supabase db push` step if not already applied.)
 
 No RLS/policy/grant change, no service_role in client, no legal/payment
 change, `legal_effective` stays false. No hosted db reset, no config push.
+
+## 25. M8E — scale polish, customer pagination, branding, document fidelity
+
+Full detail in `docs/product/M8E_SCALE_POLISH_CUSTOMER_BRANDING_DOCS.md`.
+**One additive migration** `20260725100000_tenant_business_profile.sql`.
+
+- **Exports (M8E.1):** filtered exports now cover ALL matching rows up to a cap
+  — movements via a server-side paging action (`exportMovementsAction`, cap
+  10,000), orders/products via a client cap guard (5,000). A cap warning shows
+  when reached. Formula-injection defense + localized headers + BOM intact.
+- **Customers (M8E.2):** `/admin/customers` search + facets (active/inactive,
+  has/no private link) + pagination run in the DB (RLS tenant-scoped);
+  deep-linkable `?q=&status=&link=`. sales_rep/anon see nothing cross-tenant.
+- **Manufacturer logo (M8E.3):** upload to the existing private product-images
+  bucket under `<tenant>/manufacturers/…` (no new bucket/migration); signed on
+  read for admin + anon storefront; owner/admin only; 2 MB / MIME / magic-byte
+  validated.
+- **Business profile (M8E.4):** new `/admin/settings/business` (owner/admin)
+  edits the tenant display identity (name/phone/email/address/legal/company id/
+  logo) + a NON-LEGAL display VAT rate. Logo upload under `<tenant>/branding/…`.
+- **Document fidelity (M8E.5):** the HTML preview now uses the stored order
+  totals (matches the PDF), shows guest snapshots (not "—"), and renders the
+  tenant logo. DRAFT watermark + "not a tax invoice" notice unchanged.
+
+**Migrations:** push `20260725100000_tenant_business_profile.sql` with
+`supabase db push` (additive — all new columns nullable, safe on existing
+rows). Then redeploy Vercel with **build cache OFF**.
+
+No RLS loosened, no table write re-enabled, no anon/public read added, no
+service_role in client, no new bucket, no legal/payment change,
+`legal_effective` stays false. No hosted db reset, no config push.

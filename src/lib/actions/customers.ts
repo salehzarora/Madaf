@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   createCustomer,
+  searchCustomers,
   setCustomerActive,
   updateCustomer,
   type CustomerWriteInput,
@@ -22,7 +23,7 @@ import {
   findCustomerDuplicates,
   type CustomerDuplicate,
 } from "@/lib/data/customers";
-import type { CustomerType } from "@/lib/types";
+import type { Customer, CustomerQuery, CustomerType } from "@/lib/types";
 
 const MAX_NAME = 200;
 const MAX_PHONE = 40;
@@ -79,6 +80,54 @@ export interface CustomerWriteResult {
   /** Existing same-phone/name customers (M8B.3) — the admin must confirm
    * (confirmDuplicate: true) to create a look-alike store anyway. */
   duplicates?: CustomerDuplicate[];
+}
+
+/** Server page size for the customers list — mirrors the movements table. */
+const CUSTOMERS_PAGE = 50;
+
+export interface CustomerSearchResult {
+  ok: boolean;
+  customers?: Customer[];
+  /** True when a full page came back — more pages may exist. */
+  hasMore?: boolean;
+}
+
+/**
+ * M8E.2 — server-side customer search + pagination. Filters run in the DB
+ * query (RLS scopes rows to the caller's tenant). Inputs are re-validated;
+ * an out-of-range offset or unknown facet is rejected/ignored. Read-only, so
+ * every authenticated member may call it (RLS + the owner/admin link SELECT
+ * policy already bound what they can see).
+ */
+export async function searchCustomersAction(input: {
+  q?: string;
+  status?: string;
+  hasLink?: boolean;
+  offset?: number;
+}): Promise<CustomerSearchResult> {
+  try {
+    const offset = Number.isInteger(input.offset) ? (input.offset as number) : 0;
+    if (offset < 0 || offset > 5_000_000) return { ok: false };
+
+    const query: CustomerQuery = {};
+    if (typeof input.q === "string" && input.q.trim()) {
+      query.q = input.q.trim().slice(0, 120);
+    }
+    if (input.status === "active" || input.status === "inactive") {
+      query.status = input.status;
+    }
+    if (typeof input.hasLink === "boolean") query.hasLink = input.hasLink;
+
+    const customers = await searchCustomers(query, offset, CUSTOMERS_PAGE);
+    return {
+      ok: true,
+      customers,
+      hasMore: customers.length >= CUSTOMERS_PAGE,
+    };
+  } catch (error) {
+    console.error("[madaf/actions] searchCustomersAction failed:", error);
+    return { ok: false };
+  }
 }
 
 function revalidateCustomers(locale: string): void {

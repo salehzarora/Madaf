@@ -8,8 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
+import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
-import { searchMovementsAction } from "@/lib/actions/inventory";
+import {
+  exportMovementsAction,
+  searchMovementsAction,
+} from "@/lib/actions/inventory";
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { dateRangeBounds, type DateRangePreset } from "@/lib/date-range";
@@ -75,7 +79,14 @@ export function MovementsTable({
   const [rows, setRows] = useState<InventoryMovement[]>(initialMovements);
   const [hasMore, setHasMore] = useState(initialMovements.length >= PAGE_SIZE);
   const [loading, startLoading] = useTransition();
+  // Export runs its own server round-trip over ALL filtered rows (M8E.1).
+  const [exporting, startExport] = useTransition();
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const firstRun = useRef(true);
+  // Monotonic filter generation (M8E) — bumped on every filter change so an
+  // in-flight "load more" or superseded page-0 query is discarded instead of
+  // merging rows across different filters.
+  const loadGen = useRef(0);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -127,8 +138,11 @@ export function MovementsTable({
       firstRun.current = false;
       if (isDefault) return;
     }
+    loadGen.current += 1;
+    const myGen = loadGen.current;
     startLoading(async () => {
       const result = await searchMovementsAction(currentQuery(0));
+      if (loadGen.current !== myGen) return; // superseded by a newer filter
       if (result.ok) {
         setRows(result.movements ?? []);
         setHasMore(!!result.hasMore);
@@ -138,8 +152,12 @@ export function MovementsTable({
   }, [reason, direction, preset, customFrom, customTo, productIds]);
 
   function onLoadMore() {
+    const myGen = loadGen.current;
     startLoading(async () => {
       const result = await searchMovementsAction(currentQuery(rows.length));
+      // A filter changed mid-flight → drop this page (it belongs to the old
+      // filter set) instead of merging it into the new rows.
+      if (loadGen.current !== myGen) return;
       if (!result.ok) return; // transient — keep the button to retry
       const page = result.movements ?? [];
       if (page.length > 0) {
@@ -154,30 +172,43 @@ export function MovementsTable({
     (t.reasons as Record<string, string>)[value] ?? value;
 
   function onExport() {
-    // Admin-only file over the CURRENT loaded (server-filtered) rows.
-    const rowsCsv = rows.map((m) => {
-      const product = m.productId ? productById.get(m.productId) : undefined;
-      const order = m.orderId ? orderById.get(m.orderId) : undefined;
-      return [
-        m.createdAt,
-        product ? productName(product, locale) : "",
-        product?.sku ?? "",
-        m.quantityDelta,
-        reasonLabel(m.reason),
-        m.note ?? "",
-        order?.number ?? "",
-        order?.publicRef ?? "",
-      ];
+    // Admin-only file over ALL rows matching the current filters (M8E.1) — a
+    // dedicated server round-trip pages the DB-side filtered query up to the
+    // cap, so the export is not limited to the loaded page.
+    setExportNote(null);
+    startExport(async () => {
+      const result = await exportMovementsAction(currentQuery(0));
+      if (!result.ok || !result.movements) return;
+      const exportRows = result.movements;
+      const rowsCsv = exportRows.map((m) => {
+        const product = m.productId ? productById.get(m.productId) : undefined;
+        const order = m.orderId ? orderById.get(m.orderId) : undefined;
+        return [
+          m.createdAt,
+          product ? productName(product, locale) : "",
+          product?.sku ?? "",
+          m.quantityDelta,
+          reasonLabel(m.reason),
+          m.note ?? "",
+          order?.number ?? "",
+          order?.publicRef ?? "",
+        ];
+      });
+      const h = t.csv;
+      const csv = toCsv(
+        [h.date, h.product, h.sku, h.delta, h.reason, h.note, h.order, h.publicRef],
+        rowsCsv,
+      );
+      downloadCsv(
+        `madaf-inventory-movements-${new Date().toISOString().slice(0, 10)}.csv`,
+        csv,
+      );
+      if (result.capped) {
+        setExportNote(
+          interpolate(dict.common.exportCapped, { count: exportRows.length }),
+        );
+      }
     });
-    const h = t.csv;
-    const csv = toCsv(
-      [h.date, h.product, h.sku, h.delta, h.reason, h.note, h.order, h.publicRef],
-      rowsCsv,
-    );
-    downloadCsv(
-      `madaf-inventory-movements-${new Date().toISOString().slice(0, 10)}.csv`,
-      csv,
-    );
   }
 
   return (
@@ -264,15 +295,24 @@ export function MovementsTable({
           <button
             type="button"
             onClick={onExport}
-            disabled={rows.length === 0}
+            disabled={rows.length === 0 || exporting}
             title={rows.length === 0 ? dict.common.exportEmpty : undefined}
             className="ms-auto inline-flex h-11 items-center gap-1.5 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="size-4" aria-hidden />
-            {dict.common.exportCsv}
+            {exporting ? dict.common.exporting : dict.common.exportCsv}
           </button>
         ) : null}
       </div>
+
+      {exportNote ? (
+        <p
+          role="status"
+          className="rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
+        >
+          {exportNote}
+        </p>
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState

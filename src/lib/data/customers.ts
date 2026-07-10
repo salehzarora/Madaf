@@ -3,7 +3,7 @@
  * server-only local dev (see ./supabase-reads for the access model).
  */
 import { customerById, customers } from "@/lib/mock";
-import type { Customer, CustomerType } from "@/lib/types";
+import type { Customer, CustomerQuery, CustomerType } from "@/lib/types";
 
 import { getDataMode } from "./mode";
 
@@ -12,6 +12,45 @@ export async function listCustomers(): Promise<Customer[]> {
     return (await import("./supabase-reads")).sbListCustomers();
   }
   return customers;
+}
+
+/**
+ * M8E.2 — server-side customer search + pagination. Supabase runs the filters
+ * in the DB query (RLS tenant-scoped); mock filters the demo array in memory
+ * (the `hasLink` facet has no mock data, so it is ignored in mock mode). The
+ * page + a stats map keep the list operational for many stores.
+ */
+export async function searchCustomers(
+  query: CustomerQuery,
+  offset = 0,
+  limit = 50,
+): Promise<Customer[]> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbSearchCustomers(
+      query,
+      offset,
+      limit,
+    );
+  }
+  const term = (query.q ?? "").trim().toLowerCase();
+  const matched = customers.filter((c) => {
+    if (query.status === "active" && c.isActive === false) return false;
+    if (query.status === "inactive" && c.isActive !== false) return false;
+    if (!term) return true;
+    return [
+      c.name,
+      c.contactName ?? "",
+      c.phone ?? "",
+      c.address ?? "",
+      c.city.ar,
+      c.city.he,
+      c.city.en,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(term);
+  });
+  return matched.slice(offset, offset + limit);
 }
 
 export async function getCustomer(id: string): Promise<Customer | undefined> {

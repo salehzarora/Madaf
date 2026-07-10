@@ -1,8 +1,8 @@
 "use client";
 
-import { CheckCircle2, Factory, Pencil, Plus, X } from "lucide-react";
+import { CheckCircle2, Factory, Pencil, Plus, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
@@ -11,17 +11,20 @@ import type { Dictionary } from "@/i18n/types";
 import {
   createManufacturerAction,
   updateManufacturerAction,
+  uploadManufacturerLogoAction,
 } from "@/lib/actions/products";
 import { getDataMode } from "@/lib/data/mode";
 import type { Manufacturer } from "@/lib/types";
 
+const EXTERNAL_URL = /^https?:\/\//i;
+
 /** Small brand avatar: logo if present, else a factory glyph. */
-function LogoAvatar({ manufacturer }: { manufacturer: Manufacturer }) {
-  if (manufacturer.logoUrl) {
+function LogoAvatar({ src }: { src?: string }) {
+  if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={manufacturer.logoUrl}
+        src={src}
         alt=""
         className="size-10 rounded-field border border-line object-cover"
       />
@@ -31,6 +34,138 @@ function LogoAvatar({ manufacturer }: { manufacturer: Manufacturer }) {
     <span className="flex size-10 items-center justify-center rounded-field bg-brand-50 text-brand-700">
       <Factory className="size-4" aria-hidden />
     </span>
+  );
+}
+
+/**
+ * Brand-logo field (M8E.3): upload a file to the private bucket (signed on
+ * read) OR paste an external image URL. Tracks the value to PERSIST (an object
+ * path or an external URL) separately from the display preview, so an edit
+ * never re-persists an ephemeral signed URL. A hidden input named `logoUrl`
+ * carries the persisted value into the form. Mock mode shows a local preview
+ * and persists nothing.
+ */
+function LogoField({
+  manufacturerId,
+  initialValue,
+  initialPreview,
+  live,
+  dict,
+}: {
+  manufacturerId?: string;
+  /** The raw value to persist on open (storage path or external URL). */
+  initialValue: string;
+  /** The signed/external URL to display on open. */
+  initialPreview?: string;
+  live: boolean;
+  dict: Dictionary;
+}) {
+  const t = dict.admin.manufacturers;
+  const [value, setValue] = useState(initialValue);
+  const [preview, setPreview] = useState<string | undefined>(initialPreview);
+  const [urlText, setUrlText] = useState(
+    EXTERNAL_URL.test(initialValue) ? initialValue : "",
+  );
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setError(null);
+    if (!live) {
+      // Demo mode: local preview only, nothing persisted.
+      setPreview(URL.createObjectURL(file));
+      setUrlText("");
+      return;
+    }
+    setUploading(true);
+    const fd = new FormData();
+    if (manufacturerId) fd.set("manufacturerId", manufacturerId);
+    fd.set("file", file);
+    const result = await uploadManufacturerLogoAction(fd);
+    setUploading(false);
+    if (result.ok && result.path) {
+      setValue(result.path);
+      setPreview(result.previewUrl);
+      setUrlText("");
+    } else {
+      setError(
+        result.reason === "type"
+          ? t.uploadTypeError
+          : result.reason === "size"
+            ? t.uploadSizeError
+            : t.uploadFailed,
+      );
+    }
+  }
+
+  function onUrlChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const v = event.target.value;
+    setUrlText(v);
+    setValue(v);
+    setPreview(v || undefined);
+    setError(null);
+  }
+
+  function onRemove() {
+    setValue("");
+    setPreview(undefined);
+    setUrlText("");
+    setError(null);
+  }
+
+  return (
+    <div className="sm:col-span-2">
+      <Label>{t.logoLabel}</Label>
+      <input type="hidden" name="logoUrl" value={value} />
+      <div className="flex flex-wrap items-center gap-3">
+        <LogoAvatar src={preview} />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          <Upload className="size-3.5" aria-hidden />
+          {uploading ? t.uploading : t.uploadLogo}
+        </Button>
+        {value ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex h-9 items-center gap-1 rounded-field px-2.5 text-xs font-semibold text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          >
+            <X className="size-3.5" aria-hidden />
+            {t.removeLogo}
+          </button>
+        ) : null}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={onFile}
+        />
+      </div>
+      <Input
+        dir="ltr"
+        value={urlText}
+        onChange={onUrlChange}
+        placeholder="https://…"
+        aria-label={t.logoOrUrl}
+        className="mt-2"
+      />
+      <p className="mt-1 text-xs text-ink-muted">{t.logoOrUrl} · {t.logoUrlHint}</p>
+      {error ? (
+        <p role="alert" className="mt-1 text-[13px] font-medium text-danger">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -168,12 +303,13 @@ export function ManufacturersManager({
                 <Input id="m-en" name="nameEn" dir="ltr" lang="en" required
                   defaultValue={editing?.name.en} />
               </div>
-              <div>
-                <Label htmlFor="m-logo">{t.logoUrl}</Label>
-                <Input id="m-logo" name="logoUrl" dir="ltr"
-                  defaultValue={editing?.logoUrl} />
-                <p className="mt-1 text-xs text-ink-muted">{t.logoUrlHint}</p>
-              </div>
+              <LogoField
+                manufacturerId={editing?.id}
+                initialValue={editing?.logoStoragePath ?? editing?.logoUrl ?? ""}
+                initialPreview={editing?.logoUrl}
+                live={live}
+                dict={dict}
+              />
               {failed ? (
                 <p role="alert" className="text-[13px] font-medium text-danger sm:col-span-2">
                   {t.saveError}
@@ -208,7 +344,7 @@ export function ManufacturersManager({
               >
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-3">
-                    <LogoAvatar manufacturer={manufacturer} />
+                    <LogoAvatar src={manufacturer.logoUrl} />
                     <span className="font-medium text-ink">
                       {manufacturer.name[locale]}
                     </span>

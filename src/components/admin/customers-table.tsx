@@ -2,13 +2,15 @@
 
 import { Link2, Search, ShoppingBag, Store } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
+import { searchCustomersAction } from "@/lib/actions/customers";
 import { formatDate, formatNumber } from "@/lib/format";
 import type { Customer } from "@/lib/types";
 
@@ -17,52 +19,108 @@ export interface CustomerRowStat {
   lastOrder?: string;
 }
 
+/** Server page size — mirrors CUSTOMERS_PAGE in the action. */
+const PAGE_SIZE = 50;
+
+type Lifecycle = "all" | "active" | "inactive";
+type LinkFilter = "all" | "has" | "none";
+
 /**
- * Admin stores list (M8B.5) — the former inline server table, extracted so a
- * supplier with many stores can SEARCH by name / contact / phone / city /
- * address across all three locales. Rows + per-store order stats come from
- * the server page.
+ * Admin stores list (M8B.5 → M8E.2 server-side). Search (name / contact /
+ * phone / city / address), the active/inactive facet and the private-link
+ * facet now run in the DB query via searchCustomersAction — the client never
+ * loads every store. The initial page is SSR'd; the client re-queries page 0
+ * on any filter change (search debounced) and appends pages on "load more".
+ * Per-store order stats come from the server page (keyed by id).
  */
 export function CustomersTable({
-  customers,
+  customers: initialCustomers,
   stats,
   locale,
   dict,
+  initialQuery = "",
+  initialStatus = "all",
+  initialLink = "all",
 }: {
   customers: Customer[];
   stats: Record<string, CustomerRowStat>;
   locale: Locale;
   dict: Dictionary;
+  initialQuery?: string;
+  initialStatus?: Lifecycle;
+  initialLink?: LinkFilter;
 }) {
   const t = dict.admin.customers;
-  const [query, setQuery] = useState("");
-  const [lifecycle, setLifecycle] = useState<"all" | "active" | "inactive">(
-    "all",
-  );
+  const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [lifecycle, setLifecycle] = useState<Lifecycle>(initialStatus);
+  const [linkFilter, setLinkFilter] = useState<LinkFilter>(initialLink);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = customers.filter((c) => {
-      if (lifecycle === "active") return c.isActive !== false;
-      if (lifecycle === "inactive") return c.isActive === false;
-      return true;
+  const [rows, setRows] = useState<Customer[]>(initialCustomers);
+  const [hasMore, setHasMore] = useState(initialCustomers.length >= PAGE_SIZE);
+  const [loading, startLoading] = useTransition();
+  const firstRun = useRef(true);
+  // Monotonic filter generation: bumped on every filter change so an in-flight
+  // "load more" (or a superseded page-0 query) is discarded instead of merging
+  // rows across different filters.
+  const loadGen = useRef(0);
+
+  // Debounce the text search (one server round-trip per applied term).
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const isDefault =
+    debouncedQuery.trim() === "" && lifecycle === "all" && linkFilter === "all";
+
+  /** Serialize the current filters for the server action. */
+  function currentQuery(offset: number) {
+    return {
+      q: debouncedQuery.trim() || undefined,
+      status: lifecycle === "all" ? undefined : lifecycle,
+      hasLink:
+        linkFilter === "all" ? undefined : linkFilter === "has" ? true : false,
+      offset,
+    };
+  }
+
+  // Re-query page 0 whenever a filter changes. Skip the first run when filters
+  // are still default — the SSR'd initial page already covers it.
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      if (isDefault) return;
+    }
+    loadGen.current += 1;
+    const myGen = loadGen.current;
+    startLoading(async () => {
+      const result = await searchCustomersAction(currentQuery(0));
+      if (loadGen.current !== myGen) return; // superseded by a newer filter
+      if (result.ok) {
+        setRows(result.customers ?? []);
+        setHasMore(!!result.hasMore);
+      }
     });
-    if (!q) return base;
-    return base.filter((c) =>
-      [
-        c.name,
-        c.contactName ?? "",
-        c.phone ?? "",
-        c.address ?? "",
-        c.city.ar,
-        c.city.he,
-        c.city.en,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [customers, query, lifecycle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, lifecycle, linkFilter]);
+
+  function onLoadMore() {
+    const myGen = loadGen.current;
+    startLoading(async () => {
+      const result = await searchCustomersAction(currentQuery(rows.length));
+      // A filter changed mid-flight → drop this page (it belongs to the old
+      // filter set) instead of merging it into the new rows.
+      if (loadGen.current !== myGen) return;
+      if (!result.ok) return; // transient — keep the button to retry
+      const page = result.customers ?? [];
+      if (page.length > 0) {
+        const seen = new Set(rows.map((c) => c.id));
+        setRows((prev) => [...prev, ...page.filter((c) => !seen.has(c.id))]);
+      }
+      setHasMore(!!result.hasMore && page.length > 0);
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,9 +141,7 @@ export function CustomersTable({
         </div>
         <Select
           value={lifecycle}
-          onChange={(e) =>
-            setLifecycle(e.target.value as "all" | "active" | "inactive")
-          }
+          onChange={(e) => setLifecycle(e.target.value as Lifecycle)}
           aria-label={t.lifecycle.filterLabel}
           className="sm:w-44"
         >
@@ -93,12 +149,22 @@ export function CustomersTable({
           <option value="active">{t.lifecycle.activeBadge}</option>
           <option value="inactive">{t.lifecycle.inactiveBadge}</option>
         </Select>
+        <Select
+          value={linkFilter}
+          onChange={(e) => setLinkFilter(e.target.value as LinkFilter)}
+          aria-label={t.linkFilter.label}
+          className="sm:w-44"
+        >
+          <option value="all">{t.linkFilter.all}</option>
+          <option value="has">{t.linkFilter.has}</option>
+          <option value="none">{t.linkFilter.none}</option>
+        </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState icon={<Store />} title={t.noMatches} />
       ) : (
-        <Card className="overflow-x-auto">
+        <Card className={"overflow-x-auto" + (loading ? " opacity-70" : "")}>
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
@@ -112,7 +178,7 @@ export function CustomersTable({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((customer) => {
+              {rows.map((customer) => {
                 const stat = stats[customer.id] ?? { count: 0 };
                 return (
                   <tr
@@ -189,6 +255,19 @@ export function CustomersTable({
           </table>
         </Card>
       )}
+
+      {hasMore ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onLoadMore}
+          disabled={loading}
+          className="self-center"
+        >
+          {loading ? t.loadingMore : t.loadMore}
+        </Button>
+      ) : null}
     </div>
   );
 }

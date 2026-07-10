@@ -47,12 +47,40 @@ export function DocumentView({
   const uiDict = getDictionary(uiLocale);
   const { productById, customerById } = useShopData();
 
-  const customer = customerById.get(order.customerId);
-  const subtotal = order.items.reduce(
+  // Buyer: a linked store, else the GUEST snapshot (M7I orders have no
+  // customerId). M8E.5 — the preview now shows the guest snapshot exactly like
+  // the PDF, instead of a blank "—".
+  const linkedCustomer = order.customerId
+    ? customerById.get(order.customerId)
+    : undefined;
+  const snap = order.customerSnapshot;
+  const buyer = linkedCustomer
+    ? {
+        name: linkedCustomer.name,
+        city: linkedCustomer.city[docLocale],
+        phone: linkedCustomer.phone,
+        contactName: linkedCustomer.contactName,
+      }
+    : snap
+      ? {
+          name: snap.name ?? "—",
+          city: snap.city?.[docLocale] ?? "",
+          phone: snap.phone ?? "",
+          contactName: snap.contactName ?? "",
+        }
+      : null;
+
+  // Totals: use the SERVER-STORED order totals when present (supabase) so the
+  // preview matches the PDF exactly (M8E.5); otherwise recompute with the
+  // tenant's DISPLAY VAT rate (a non-legal estimate; falls back to VAT_RATE).
+  const vatRate = supplier.displayVatRate ?? VAT_RATE;
+  const computedSubtotal = order.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0,
   );
-  const vat = subtotal * VAT_RATE;
+  const subtotal = order.subtotal ?? computedSubtotal;
+  const vat = order.vatTotal ?? computedSubtotal * vatRate;
+  const grandTotal = order.total ?? subtotal + vat;
 
   const isInvoiceDraft = document.type === "invoiceDraft";
   const isDelivery = document.type === "delivery";
@@ -125,7 +153,17 @@ export function DocumentView({
         {/* Header */}
         <header className="relative flex items-start justify-between gap-6 pb-6">
           <div className="flex items-center gap-3">
-            <LogoMark className="size-[52px]" />
+            {supplier.logoUrl ? (
+              // Tenant business logo (M8E.4) when set; else the app mark.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={supplier.logoUrl}
+                alt=""
+                className="size-[52px] rounded-field border border-line object-contain"
+              />
+            ) : (
+              <LogoMark className="size-[52px]" />
+            )}
             <div>
               <p className="text-[22px] font-extrabold text-brand-950">
                 {supplier.name[docLocale]}
@@ -186,14 +224,20 @@ export function DocumentView({
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               {t.billTo}
             </p>
-            <p className="font-semibold text-ink">{customer?.name ?? "—"}</p>
-            {customer ? (
+            <p className="font-semibold text-ink">{buyer?.name ?? "—"}</p>
+            {buyer ? (
               <>
-                <p className="text-ink-soft">{customer.city[docLocale]}</p>
-                <p className="text-ink-soft" dir="ltr">
-                  {customer.phone}
-                </p>
-                <p className="text-ink-soft">{customer.contactName}</p>
+                {buyer.city ? (
+                  <p className="text-ink-soft">{buyer.city}</p>
+                ) : null}
+                {buyer.phone ? (
+                  <p className="text-ink-soft" dir="ltr">
+                    {buyer.phone}
+                  </p>
+                ) : null}
+                {buyer.contactName ? (
+                  <p className="text-ink-soft">{buyer.contactName}</p>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -283,7 +327,7 @@ export function DocumentView({
               <div className="flex justify-between border-t-2 border-brand-700 py-2 text-base font-bold text-ink">
                 <span>{t.totalEstimate}</span>
                 <span className="tabular-nums">
-                  {formatCurrency(subtotal + vat, docLocale)}
+                  {formatCurrency(grandTotal, docLocale)}
                 </span>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-ink-muted">

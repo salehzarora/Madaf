@@ -7,23 +7,41 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listCustomers, listOrders } from "@/lib/data";
+import { getDataMode, listOrders, searchCustomers } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
+import type { CustomerQuery } from "@/lib/types";
 
-/** Shops list — with per-shop order stats, an "add store" CTA and a
- * "start order" deep link. */
+/** First-page size — mirrors CUSTOMERS_PAGE in the customers action. */
+const PAGE_SIZE = 50;
+
+/** Shops list — server-side search/pagination (M8E.2) with per-shop order
+ * stats, an "add store" CTA and a "start order" deep link. */
 export default async function AdminCustomersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string; status?: string; link?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.customers;
 
-  const [customers, orders] = await Promise.all([
-    listCustomers(),
+  // Inbound deep-link filters: ?q=…&status=active|inactive&link=has|none.
+  const sp = await searchParams;
+  const initialQuery = typeof sp.q === "string" ? sp.q.slice(0, 120) : "";
+  const initialStatus =
+    sp.status === "active" || sp.status === "inactive" ? sp.status : "all";
+  const initialLink = sp.link === "has" || sp.link === "none" ? sp.link : "all";
+
+  const query: CustomerQuery = {};
+  if (initialQuery.trim()) query.q = initialQuery.trim();
+  if (initialStatus !== "all") query.status = initialStatus;
+  if (initialLink !== "all") query.hasLink = initialLink === "has";
+
+  const [firstPage, orders] = await Promise.all([
+    searchCustomers(query, 0, PAGE_SIZE),
     listOrders(),
   ]);
 
@@ -39,20 +57,23 @@ export default async function AdminCustomersPage({
     ? (await listSignupRequests()).filter((r) => r.status === "pending").length
     : 0;
 
-  // Serializable stat map for the client table (M8B.5).
+  // Per-store order stats, keyed by customer id (built from every order, so a
+  // "load more" page's rows still resolve their stats). A future aggregate
+  // RPC could avoid loading the full orders list.
   const stats: Record<string, CustomerRowStat> = {};
-  for (const customer of customers) {
-    const customerOrders = orders.filter(
-      (order) => order.customerId === customer.id,
-    );
-    stats[customer.id] = {
-      count: customerOrders.length,
-      lastOrder: customerOrders
-        .map((order) => order.createdAt)
-        .sort()
-        .at(-1),
-    };
+  for (const order of orders) {
+    if (!order.customerId) continue;
+    const s = (stats[order.customerId] ??= { count: 0 });
+    s.count += 1;
+    if (!s.lastOrder || order.createdAt > s.lastOrder) {
+      s.lastOrder = order.createdAt;
+    }
   }
+
+  const hasFilters =
+    initialQuery.trim() !== "" || initialStatus !== "all" || initialLink !== "all";
+  // No stores at all (and no filter narrowing them) → the add-first-store CTA.
+  const noStoresYet = firstPage.length === 0 && !hasFilters;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -98,7 +119,7 @@ export default async function AdminCustomersPage({
         <ShelfRule className="mt-4" />
       </div>
 
-      {customers.length === 0 ? (
+      {noStoresYet ? (
         <EmptyState
           icon={<Store />}
           title={t.empty}
@@ -117,10 +138,13 @@ export default async function AdminCustomersPage({
         />
       ) : (
         <CustomersTable
-          customers={customers}
+          customers={firstPage}
           stats={stats}
           locale={locale}
           dict={dict}
+          initialQuery={initialQuery}
+          initialStatus={initialStatus}
+          initialLink={initialLink}
         />
       )}
     </div>

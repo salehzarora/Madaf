@@ -29,6 +29,7 @@ import type {
   ManufacturerWriteInput,
   ProductWriteInput,
 } from "./products";
+import type { TenantProfileInput } from "./supplier";
 import type { Json } from "@/lib/supabase/database.types";
 import type { OrderStatus } from "@/lib/types";
 
@@ -434,6 +435,136 @@ export async function sbUploadProductImage(input: {
     .from(PRODUCT_IMAGE_BUCKET)
     .createSignedUrl(path, 3600);
   if (signError) fail("uploadProductImage", signError.message);
+
+  return { path, previewUrl: signed.signedUrl };
+}
+
+/**
+ * M8E.3 — upload a manufacturer/brand logo to the SAME private product-images
+ * bucket, under a `<tenant_id>/manufacturers/…` prefix. Reuses the bucket's
+ * existing owner/admin storage RLS (it keys only on the first path segment =
+ * tenant uuid), so no new bucket or policy is needed. Returns the object PATH
+ * (stored on manufacturers.logo_url — the read layer signs it) + a short-lived
+ * signed URL for immediate preview.
+ *
+ * EDIT mode (`manufacturerId` given): the brand must belong to the tenant.
+ * CREATE mode (omitted): a staging path `<tenant_id>/manufacturers/uploads/…`,
+ * persisted verbatim by create_manufacturer on save.
+ */
+export async function sbUploadManufacturerLogo(input: {
+  manufacturerId?: string;
+  fileName: string;
+  contentType: string;
+  bytes: Uint8Array;
+}): Promise<{ path: string; previewUrl: string }> {
+  const { client, tenantId } = await getDataContext();
+  if (tenantId === NO_TENANT) {
+    fail("uploadManufacturerLogo", "no tenant membership for the caller");
+  }
+
+  if (input.manufacturerId) {
+    const { data: manufacturer, error: mError } = await client
+      .from("manufacturers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.manufacturerId)
+      .maybeSingle();
+    if (mError) fail("uploadManufacturerLogo", mError.message);
+    if (!manufacturer) {
+      fail(
+        "uploadManufacturerLogo",
+        "manufacturer is unknown or belongs to another tenant",
+      );
+    }
+  }
+
+  const safeName = input.fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-80);
+  const path = input.manufacturerId
+    ? `${tenantId}/manufacturers/${input.manufacturerId}/${safeName || "logo"}`
+    : `${tenantId}/manufacturers/uploads/${randomUUID()}-${safeName || "logo"}`;
+
+  const { error: uploadError } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .upload(path, input.bytes, {
+      contentType: input.contentType,
+      upsert: true,
+    });
+  if (uploadError) fail("uploadManufacturerLogo", uploadError.message);
+
+  const { data: signed, error: signError } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .createSignedUrl(path, 3600);
+  if (signError) fail("uploadManufacturerLogo", signError.message);
+
+  return { path, previewUrl: signed.signedUrl };
+}
+
+// ── Tenant business profile (M8E.4) — update_tenant_profile RPC ────────────
+
+/** Update the selected tenant's business profile via the owner/admin RPC.
+ * NON-LEGAL display settings only (display_vat_rate is an estimate rate). No
+ * client tenant_id is trusted — the session tenant is pinned. */
+export async function sbUpdateTenantProfile(
+  input: TenantProfileInput,
+): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("update_tenant_profile", {
+    p_tenant_id: tenantId,
+    p_name_ar: input.nameAr,
+    p_name_he: input.nameHe,
+    p_name_en: input.nameEn,
+    ...(input.phone ? { p_phone: input.phone } : {}),
+    ...(input.email ? { p_email: input.email } : {}),
+    ...(input.addressAr ? { p_address_ar: input.addressAr } : {}),
+    ...(input.addressHe ? { p_address_he: input.addressHe } : {}),
+    ...(input.addressEn ? { p_address_en: input.addressEn } : {}),
+    ...(input.legalName ? { p_legal_name: input.legalName } : {}),
+    ...(input.companyId ? { p_company_id: input.companyId } : {}),
+    ...(input.displayVatRate != null
+      ? { p_display_vat_rate: input.displayVatRate }
+      : {}),
+    // Empty string clears the logo (the RPC nullifs it); a value persists it.
+    p_logo_url: input.logoUrl ?? "",
+  });
+  if (error) fail("updateTenantProfile", error.message);
+}
+
+/** Upload a tenant business logo to the private product-images bucket under
+ * `<tenant_id>/branding/…` (M8E.4). Reuses the bucket's owner/admin storage
+ * RLS (keys on the first path segment = tenant uuid). Returns the object PATH
+ * (persisted on tenants.logo_url) + a short-lived signed preview URL. */
+export async function sbUploadTenantLogo(input: {
+  fileName: string;
+  contentType: string;
+  bytes: Uint8Array;
+}): Promise<{ path: string; previewUrl: string }> {
+  const { client, tenantId } = await getDataContext();
+  if (tenantId === NO_TENANT) {
+    fail("uploadTenantLogo", "no tenant membership for the caller");
+  }
+  const safeName = input.fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-80);
+  const path = `${tenantId}/branding/${randomUUID()}-${safeName || "logo"}`;
+
+  const { error: uploadError } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .upload(path, input.bytes, {
+      contentType: input.contentType,
+      upsert: true,
+    });
+  if (uploadError) fail("uploadTenantLogo", uploadError.message);
+
+  const { data: signed, error: signError } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .createSignedUrl(path, 3600);
+  if (signError) fail("uploadTenantLogo", signError.message);
 
   return { path, previewUrl: signed.signedUrl };
 }

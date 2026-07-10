@@ -2,6 +2,7 @@
 
 import {
   Boxes,
+  Building2,
   Factory,
   FileText,
   LayoutDashboard,
@@ -74,7 +75,14 @@ export function AdminShell({
       ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }]
       : []),
     ...(canManageSettings
-      ? [{ href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt }]
+      ? [
+          {
+            href: `${base}/settings/business`,
+            label: dict.admin.settings.business.navLabel,
+            icon: Building2,
+          },
+          { href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt },
+        ]
       : []),
   ];
 

@@ -68,6 +68,18 @@ function resolveShopImageUrl(
   return undefined;
 }
 
+/** Same resolution as resolveShopImageUrl, for a manufacturer logo (M8E.3). */
+function resolveShopLogoUrl(
+  raw: unknown,
+  signedByPath: Map<string, string>,
+): string | undefined {
+  if (isExternalUrl(raw)) return raw;
+  if (typeof raw === "string" && signedByPath.has(raw)) {
+    return signedByPath.get(raw);
+  }
+  return undefined;
+}
+
 /** Safe, non-secret diagnostic counts for product-image signing (M7I). Never
  * logs tokens, tenant ids, signed URLs, or the service-role key. */
 function logImageSigning(
@@ -101,20 +113,59 @@ export async function signOwnTenantPaths(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   products: any[],
 ): Promise<Map<string, string>> {
+  return signOwnTenantObjectPaths(
+    context,
+    tenantId,
+    `${tenantId}/products/`,
+    products.map((p) => p?.image_url),
+  );
+}
+
+/**
+ * M8E.3 — same fail-closed service-role signing as signOwnTenantPaths, for
+ * manufacturer/brand LOGOS on the anon shop/showcase. Only own-tenant object
+ * paths under `<tenantId>/manufacturers/` are signed (never a cross-tenant or
+ * external value); external http(s) logo URLs are handled by the caller.
+ */
+export async function signOwnTenantLogoPaths(
+  context: string,
+  tenantId: string | null | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  manufacturers: any[],
+): Promise<Map<string, string>> {
+  return signOwnTenantObjectPaths(
+    context,
+    tenantId,
+    `${tenantId}/manufacturers/`,
+    manufacturers.map((m) => m?.logo_url),
+  );
+}
+
+/**
+ * Shared signing core: sign the DISTINCT candidate paths that are own-tenant
+ * storage objects (under `ownPrefix`, not an external URL). Fail-closed: a
+ * missing service-role key / signing error → empty map (placeholder fallback)
+ * with a safe count-only diagnostic — never a crash, never a service_role leak
+ * (the client is server-only). A cross-tenant or external path is NEVER signed.
+ */
+async function signOwnTenantObjectPaths(
+  context: string,
+  tenantId: string | null | undefined,
+  ownPrefix: string,
+  candidates: (string | null | undefined)[],
+): Promise<Map<string, string>> {
   const empty = new Map<string, string>();
   if (!tenantId) {
     logImageSigning(context, 0, 0, "no-tenant");
     return empty;
   }
-  const prefix = `${tenantId}/products/`;
   const ownPaths = [
     ...new Set(
-      products
-        .map((p) => p?.image_url)
+      candidates
         .filter((v): v is string => typeof v === "string")
         // Own-tenant storage path (not an external URL). Plain regex avoids the
         // type-guard narrowing of isExternalUrl on an already-string value.
-        .filter((v) => !/^https?:\/\//i.test(v) && v.startsWith(prefix)),
+        .filter((v) => !/^https?:\/\//i.test(v) && v.startsWith(ownPrefix)),
     ),
   ];
   if (ownPaths.length === 0) {
@@ -192,6 +243,32 @@ export async function signTokenProductImages(
   return signOwnTenantPaths("shop", link?.tenant_id, products);
 }
 
+/**
+ * Sign manufacturer LOGOS for a VALIDATED private shop token (M8E.3) — same
+ * token→tenant resolution as signTokenProductImages, then own-tenant logo
+ * signing. Fail-closed to an empty map (external-URL / glyph fallback).
+ */
+export async function signTokenManufacturerLogos(
+  rawToken: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  manufacturers: any[],
+): Promise<Map<string, string>> {
+  const empty = new Map<string, string>();
+  let client;
+  try {
+    client = getProductImageStorageClient();
+  } catch {
+    return empty;
+  }
+  const { data: link } = await client
+    .from("customer_access_links")
+    .select("tenant_id")
+    .eq("token_hash", hashToken(rawToken))
+    .is("revoked_at", null)
+    .maybeSingle();
+  return signOwnTenantLogoPaths("shop", link?.tenant_id, manufacturers);
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapTokenProduct(
   p: any,
@@ -232,11 +309,16 @@ function mapTokenCategory(c: any): Category {
   };
 }
 
-function mapTokenManufacturer(m: any): Manufacturer {
+function mapTokenManufacturer(
+  m: any,
+  signedByLogoPath: Map<string, string>,
+): Manufacturer {
   return {
     id: m.id,
     name: { ar: m.name_ar, he: m.name_he, en: m.name_en },
-    logoUrl: isExternalUrl(m.logo_url) ? m.logo_url : undefined,
+    // External URL passes through; an uploaded own-tenant logo is shown via a
+    // short-lived signed URL (M8E.3); anything else falls back to the glyph.
+    logoUrl: resolveShopLogoUrl(m.logo_url, signedByLogoPath),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -303,8 +385,12 @@ export async function getTokenCatalog(
     manufacturers: any[];
   };
   // Token is valid (RPC returned a catalog) → sign this tenant's uploaded
-  // product images for the anon shop. Fail-closed to placeholders.
-  const signedByPath = await signTokenProductImages(rawToken, blob.products);
+  // product images + manufacturer logos for the anon shop. Fail-closed to
+  // placeholders.
+  const [signedByPath, signedLogos] = await Promise.all([
+    signTokenProductImages(rawToken, blob.products),
+    signTokenManufacturerLogos(rawToken, blob.manufacturers),
+  ]);
   return {
     tenantName: {
       ar: blob.tenant.name_ar,
@@ -321,7 +407,9 @@ export async function getTokenCatalog(
     },
     products: blob.products.map((p) => mapTokenProduct(p, signedByPath)),
     categories: blob.categories.map(mapTokenCategory),
-    manufacturers: blob.manufacturers.map(mapTokenManufacturer),
+    manufacturers: blob.manufacturers.map((m) =>
+      mapTokenManufacturer(m, signedLogos),
+    ),
   };
 }
 
