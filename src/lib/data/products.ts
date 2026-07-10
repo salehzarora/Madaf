@@ -204,3 +204,16 @@ export async function uploadProductImage(input: {
   if (getDataMode() !== "supabase") mockWriteUnsupported("uploadProductImage");
   return (await import("./supabase-writes")).sbUploadProductImage(input);
 }
+
+/** M8E.3 — upload a manufacturer/brand logo (private product-images bucket,
+ * `<tenant>/manufacturers/…` path). Supabase-only; mock persists nothing. */
+export async function uploadManufacturerLogo(input: {
+  /** Omitted in create mode (no manufacturer row yet) — a staging path is used. */
+  manufacturerId?: string;
+  fileName: string;
+  contentType: string;
+  bytes: Uint8Array;
+}): Promise<{ path: string; previewUrl: string }> {
+  if (getDataMode() !== "supabase") mockWriteUnsupported("uploadManufacturerLogo");
+  return (await import("./supabase-writes")).sbUploadManufacturerLogo(input);
+}

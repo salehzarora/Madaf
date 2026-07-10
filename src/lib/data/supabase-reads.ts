@@ -25,6 +25,7 @@ import type {
   Availability,
   Category,
   Customer,
+  CustomerQuery,
   DocumentType,
   InventoryItem,
   InventoryMovement,
@@ -215,6 +216,53 @@ async function signProductImages(
   return out;
 }
 
+/**
+ * Same signing model as signProductImages, for manufacturer/brand logos
+ * (M8E.3). External http(s) URLs pass through; an own-tenant storage object
+ * path (under `<tenantId>/`) is recorded on `logoStoragePath` (so the edit
+ * form re-persists the PATH, not the ephemeral signed URL) and signed for
+ * display; anything else drops to no logo (glyph fallback). A hand-typed
+ * cross-tenant path can never be signed. Logos live under
+ * `<tenantId>/manufacturers/…` in the same private product-images bucket.
+ */
+async function signManufacturerLogos(
+  client: Db,
+  tenantId: string,
+  manufacturers: Manufacturer[],
+): Promise<Manufacturer[]> {
+  const prefix = `${tenantId}/`;
+  const pathItems = manufacturers
+    .map((m, index) => ({ index, path: m.logoUrl }))
+    .filter(
+      (x): x is { index: number; path: string } =>
+        typeof x.path === "string" &&
+        !isExternalUrl(x.path) &&
+        x.path.startsWith(prefix),
+    );
+
+  const out = manufacturers.map((m) =>
+    isExternalUrl(m.logoUrl)
+      ? m
+      : m.logoUrl && m.logoUrl.startsWith(prefix)
+        ? { ...m, logoStoragePath: m.logoUrl }
+        : { ...m, logoUrl: undefined },
+  );
+  if (pathItems.length === 0) return out;
+
+  const { data } = await client.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .createSignedUrls(
+      pathItems.map((x) => x.path),
+      SIGNED_URL_TTL_SECONDS,
+    );
+
+  pathItems.forEach((item, k) => {
+    const signed = data?.[k]?.signedUrl;
+    out[item.index] = { ...out[item.index], logoUrl: signed ?? undefined };
+  });
+  return out;
+}
+
 function mapCustomer(row: Row<"customers">): Customer {
   return {
     id: row.id,
@@ -273,6 +321,11 @@ function mapOrder(row: OrderRow): Order {
     status: row.status,
     createdAt: row.created_at,
     notes: row.notes ?? undefined,
+    // Server-stored totals (M8E.5) — the document preview renders THESE (same
+    // as the PDF) instead of recomputing, so preview and PDF never diverge.
+    subtotal: row.subtotal ?? undefined,
+    vatTotal: row.vat_total ?? undefined,
+    total: row.total ?? undefined,
   };
 }
 
@@ -420,7 +473,7 @@ export async function sbListManufacturers(): Promise<Manufacturer[]> {
     .eq("tenant_id", tenantId)
     .order("sort_order");
   if (error) fail("listManufacturers", error.message);
-  return data.map(mapManufacturer);
+  return signManufacturerLogos(client, tenantId, data.map(mapManufacturer));
 }
 
 export async function sbGetManufacturer(
@@ -435,7 +488,11 @@ export async function sbGetManufacturer(
     .eq("id", id)
     .maybeSingle();
   if (error) fail("getManufacturer", error.message);
-  return data ? mapManufacturer(data) : undefined;
+  if (!data) return undefined;
+  const [signed] = await signManufacturerLogos(client, tenantId, [
+    mapManufacturer(data),
+  ]);
+  return signed;
 }
 
 export async function sbListCustomers(): Promise<Customer[]> {
@@ -464,6 +521,85 @@ export async function sbGetCustomer(
     .maybeSingle();
   if (error) fail("getCustomer", error.message);
   return data ? mapCustomer(data) : undefined;
+}
+
+/**
+ * Server-side customer search + pagination (M8E.2) — filters run in the DB
+ * query (RLS scopes rows to the caller's tenant), so the client never loads
+ * every store. Search matches name / contact / phone / address / city via
+ * ILIKE; the free-text term is sanitized of the PostgREST or-grammar
+ * metacharacters (commas/parens/wildcards) before interpolation — RLS still
+ * bounds the result to the tenant regardless. Deterministic order (active
+ * first, then name, then id) makes offset paging skip-/dup-free.
+ *
+ * `hasLink` filters by whether the store has a LIVE private link
+ * (customer_access_links, owner/admin SELECT under RLS): the matching
+ * customer ids are fetched once, then applied as an id in/not-in clause.
+ */
+export async function sbSearchCustomers(
+  q: CustomerQuery,
+  offset = 0,
+  limit = 50,
+): Promise<Customer[]> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
+
+  let query = client.from("customers").select("*").eq("tenant_id", tenantId);
+
+  const term = (q.q ?? "").replace(/[,()%\\*]/g, " ").trim();
+  if (term) {
+    const like = `%${term}%`;
+    query = query.or(
+      [
+        `name.ilike.${like}`,
+        `contact_name.ilike.${like}`,
+        `phone.ilike.${like}`,
+        `address.ilike.${like}`,
+        `city_ar.ilike.${like}`,
+        `city_he.ilike.${like}`,
+        `city_en.ilike.${like}`,
+      ].join(","),
+    );
+  }
+
+  if (q.status === "active") query = query.eq("is_active", true);
+  else if (q.status === "inactive") query = query.eq("is_active", false);
+
+  if (q.hasLink !== undefined) {
+    const linkIds = await sbActiveLinkCustomerIds(client, tenantId);
+    if (q.hasLink) {
+      if (linkIds.length === 0) return []; // no store has a live link
+      query = query.in("id", linkIds);
+    } else if (linkIds.length > 0) {
+      query = query.not("id", "in", `(${linkIds.join(",")})`);
+    }
+  }
+
+  const { data, error } = await query
+    .order("is_active", { ascending: false })
+    .order("name", { ascending: true })
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (error) fail("searchCustomers", error.message);
+  return (data ?? []).map(mapCustomer);
+}
+
+/** Distinct customer ids that currently have a LIVE private link (not revoked,
+ * not expired) for the tenant. Reads under the owner/admin SELECT policy on
+ * customer_access_links (a sales_rep sees none). */
+async function sbActiveLinkCustomerIds(
+  client: Db,
+  tenantId: string,
+): Promise<string[]> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await client
+    .from("customer_access_links")
+    .select("customer_id")
+    .eq("tenant_id", tenantId)
+    .is("revoked_at", null)
+    .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
+  if (error) fail("activeLinkCustomerIds", error.message);
+  return [...new Set((data ?? []).map((r) => r.customer_id))];
 }
 
 /** Stock-movement ledger (M8B) — RLS limits reads to owner/admin; a
@@ -738,6 +874,27 @@ export async function sbGetSupplier(): Promise<Supplier> {
     .maybeSingle();
   if (error) fail("getSupplier", error.message);
   if (!data) fail("getSupplier", `tenant ${tenantId} not found — seed the DB`);
+
+  // Business logo (M8E.4): an external http(s) URL passes through; an
+  // own-tenant private-bucket object path is signed for display + kept raw on
+  // logoStoragePath (so the settings form re-persists the PATH); anything else
+  // drops to no logo (the app LogoMark). Signing reuses the same private
+  // product-images bucket + own-tenant prefix check as manufacturer logos.
+  let logoUrl: string | undefined = data.logo_url ?? undefined;
+  let logoStoragePath: string | undefined;
+  const prefix = `${data.id}/`;
+  if (logoUrl && !isExternalUrl(logoUrl)) {
+    if (logoUrl.startsWith(prefix)) {
+      logoStoragePath = logoUrl;
+      const { data: signed } = await client.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .createSignedUrl(logoUrl, SIGNED_URL_TTL_SECONDS);
+      logoUrl = signed?.signedUrl ?? undefined;
+    } else {
+      logoUrl = undefined; // not an own-tenant object → never signed
+    }
+  }
+
   return {
     id: data.id,
     name: { ar: data.name_ar, he: data.name_he, en: data.name_en },
@@ -749,5 +906,9 @@ export async function sbGetSupplier(): Promise<Supplier> {
       he: data.address_he ?? "",
       en: data.address_en ?? "",
     },
+    email: data.email ?? undefined,
+    logoUrl,
+    logoStoragePath,
+    displayVatRate: data.display_vat_rate ?? undefined,
   };
 }

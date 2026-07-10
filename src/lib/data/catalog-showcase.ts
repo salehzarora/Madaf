@@ -14,7 +14,7 @@ import { createServerAuthClient } from "@/lib/supabase/server-auth";
 import type { Availability, Category, Manufacturer, Product } from "@/lib/types";
 
 import { getProductImageStorageClient } from "./product-image-storage";
-import { hashToken, signOwnTenantPaths } from "./token";
+import { hashToken, signOwnTenantLogoPaths, signOwnTenantPaths } from "./token";
 
 export type ShowcaseLinkStatus = "active" | "revoked" | "expired";
 
@@ -129,6 +129,31 @@ async function signShowcaseImages(
   return signOwnTenantPaths("showcase", link.tenant_id, products);
 }
 
+/** Sign manufacturer LOGOS for a showcase token (M8E.3) — same token→tenant
+ * resolution as signShowcaseImages, then own-tenant logo signing. Fail-closed
+ * to an empty map (external-URL / glyph fallback). */
+async function signShowcaseLogos(
+  rawToken: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  manufacturers: any[],
+): Promise<Map<string, string>> {
+  const empty = new Map<string, string>();
+  let client;
+  try {
+    client = getProductImageStorageClient();
+  } catch {
+    return empty;
+  }
+  const { data: link } = await client
+    .from("catalog_showcase_links")
+    .select("tenant_id")
+    .eq("token_hash", hashToken(rawToken))
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (!link?.tenant_id) return empty;
+  return signOwnTenantLogoPaths("showcase", link.tenant_id, manufacturers);
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapShowcaseProduct(p: any, signed: Map<string, string>): Product {
   const raw = p.image_url;
@@ -169,11 +194,22 @@ function mapShowcaseCategory(c: any): Category {
   };
 }
 
-function mapShowcaseManufacturer(m: any): Manufacturer {
+function mapShowcaseManufacturer(
+  m: any,
+  signedLogos: Map<string, string>,
+): Manufacturer {
+  // External URL passes through; an uploaded own-tenant logo is shown via a
+  // short-lived signed URL (M8E.3); anything else falls back to the glyph.
+  const raw = m.logo_url;
+  const logoUrl = isExternalUrl(raw)
+    ? raw
+    : typeof raw === "string" && signedLogos.has(raw)
+      ? signedLogos.get(raw)
+      : undefined;
   return {
     id: m.id,
     name: { ar: m.name_ar, he: m.name_he, en: m.name_en },
-    logoUrl: isExternalUrl(m.logo_url) ? m.logo_url : undefined,
+    logoUrl,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -235,7 +271,10 @@ export async function getShowcaseCatalog(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     manufacturers: any[];
   };
-  const signed = await signShowcaseImages(rawToken, blob.products);
+  const [signed, signedLogos] = await Promise.all([
+    signShowcaseImages(rawToken, blob.products),
+    signShowcaseLogos(rawToken, blob.manufacturers),
+  ]);
   return {
     tenantName: {
       ar: blob.tenant.name_ar,
@@ -244,6 +283,8 @@ export async function getShowcaseCatalog(
     },
     products: blob.products.map((p) => mapShowcaseProduct(p, signed)),
     categories: blob.categories.map(mapShowcaseCategory),
-    manufacturers: blob.manufacturers.map(mapShowcaseManufacturer),
+    manufacturers: blob.manufacturers.map((m) =>
+      mapShowcaseManufacturer(m, signedLogos),
+    ),
   };
 }

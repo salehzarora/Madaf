@@ -25,7 +25,9 @@ import {
   setProductActive,
   updateManufacturer,
   updateProduct,
+  uploadManufacturerLogo,
   uploadProductImage,
+  uploadTenantLogo,
   upsertInventory,
   type InventoryWriteInput,
   type ManufacturerWriteInput,
@@ -41,6 +43,7 @@ const MAX_ID_LENGTH = 64;
 
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB — brand logos stay small (M8E.3)
 
 /**
  * Sniff the real image type from magic bytes so a spoofed Content-Type
@@ -355,6 +358,88 @@ export async function uploadProductImageAction(
     return { ok: true, path: result.path, previewUrl: result.previewUrl };
   } catch (error) {
     console.error("[madaf/actions] uploadProductImageAction failed:", error);
+    return { ok: false, reason: "failed" };
+  }
+}
+
+/**
+ * M8E.3 — upload a manufacturer/brand logo. Same layered validation as the
+ * product-image upload (MIME allowlist + size + magic-byte sniff that must
+ * match the declared type); the storage RLS (owner/admin on the tenant path)
+ * + tenant-ownership check in the data layer are the real gate. Returns the
+ * object PATH (persisted on manufacturers.logo_url) + a signed preview URL.
+ */
+export async function uploadManufacturerLogoAction(
+  formData: FormData,
+): Promise<UploadImageResult> {
+  try {
+    const rawId = formData.get("manufacturerId");
+    const hasId = typeof rawId === "string" && rawId.length > 0;
+    if (hasId && !isPlausibleId(rawId)) {
+      return { ok: false, reason: "failed" };
+    }
+    const manufacturerId = hasId ? (rawId as string) : undefined;
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, reason: "failed" };
+    }
+    if (!IMAGE_MIME_TYPES.has(file.type)) {
+      return { ok: false, reason: "type" };
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      return { ok: false, reason: "size" };
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const sniffed = sniffImageMime(bytes);
+    if (!sniffed || sniffed !== file.type) {
+      return { ok: false, reason: "type" };
+    }
+    const result = await uploadManufacturerLogo({
+      ...(manufacturerId ? { manufacturerId } : {}),
+      fileName: file.name || "logo",
+      contentType: sniffed,
+      bytes,
+    });
+    return { ok: true, path: result.path, previewUrl: result.previewUrl };
+  } catch (error) {
+    console.error("[madaf/actions] uploadManufacturerLogoAction failed:", error);
+    return { ok: false, reason: "failed" };
+  }
+}
+
+/**
+ * M8E.4 — upload a tenant BUSINESS logo. Same layered image validation as the
+ * manufacturer logo (MIME allowlist + 2 MB cap + magic-byte sniff); the
+ * storage RLS (owner/admin on the tenant path) is the real gate. Returns the
+ * object PATH (persisted on tenants.logo_url) + a signed preview URL.
+ */
+export async function uploadTenantLogoAction(
+  formData: FormData,
+): Promise<UploadImageResult> {
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, reason: "failed" };
+    }
+    if (!IMAGE_MIME_TYPES.has(file.type)) {
+      return { ok: false, reason: "type" };
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      return { ok: false, reason: "size" };
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const sniffed = sniffImageMime(bytes);
+    if (!sniffed || sniffed !== file.type) {
+      return { ok: false, reason: "type" };
+    }
+    const result = await uploadTenantLogo({
+      fileName: file.name || "logo",
+      contentType: sniffed,
+      bytes,
+    });
+    return { ok: true, path: result.path, previewUrl: result.previewUrl };
+  } catch (error) {
+    console.error("[madaf/actions] uploadTenantLogoAction failed:", error);
     return { ok: false, reason: "failed" };
   }
 }
