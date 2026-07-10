@@ -1,16 +1,14 @@
-import { Link2, Plus, ShoppingBag, Store, UserPlus } from "lucide-react";
+import { Plus, Store, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CustomersTable, type CustomerRowStat } from "@/components/admin/customers-table";
 import { EmptyState } from "@/components/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, listCustomers, listOrders } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
-import { formatDate, formatNumber } from "@/lib/format";
 
 /** Shops list — with per-shop order stats, an "add store" CTA and a
  * "start order" deep link. */
@@ -41,18 +39,20 @@ export default async function AdminCustomersPage({
     ? (await listSignupRequests()).filter((r) => r.status === "pending").length
     : 0;
 
-  const stats = new Map(
-    customers.map((customer) => {
-      const customerOrders = orders.filter(
-        (order) => order.customerId === customer.id,
-      );
-      const lastOrder = customerOrders
+  // Serializable stat map for the client table (M8B.5).
+  const stats: Record<string, CustomerRowStat> = {};
+  for (const customer of customers) {
+    const customerOrders = orders.filter(
+      (order) => order.customerId === customer.id,
+    );
+    stats[customer.id] = {
+      count: customerOrders.length,
+      lastOrder: customerOrders
         .map((order) => order.createdAt)
         .sort()
-        .at(-1);
-      return [customer.id, { count: customerOrders.length, lastOrder }];
-    }),
-  );
+        .at(-1),
+    };
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -116,86 +116,12 @@ export default async function AdminCustomersPage({
           }
         />
       ) : (
-      <Card className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
-              <th className="px-4 py-3 text-start">{t.colShop}</th>
-              <th className="px-4 py-3 text-start">{t.colType}</th>
-              <th className="px-4 py-3 text-start">{t.colCity}</th>
-              <th className="px-4 py-3 text-start">{t.colPhone}</th>
-              <th className="px-4 py-3 text-end">{t.colOrders}</th>
-              <th className="px-4 py-3 text-start">{t.colLastOrder}</th>
-              <th className="px-4 py-3 text-end">{dict.common.actions}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((customer) => {
-              const stat = stats.get(customer.id)!;
-              return (
-                <tr
-                  key={customer.id}
-                  className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
-                >
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
-                        <Store className="size-4" aria-hidden />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-ink">
-                          {customer.name}
-                        </p>
-                        <p className="truncate text-xs text-ink-muted">
-                          {customer.contactName}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <Badge tone="neutral" dot>
-                      {t.types[customer.type]}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3.5 text-ink-soft">
-                    {customer.city[locale]}
-                  </td>
-                  <td
-                    className="px-4 py-3.5 font-mono text-[13px] text-ink-soft"
-                    dir="ltr"
-                  >
-                    {customer.phone}
-                  </td>
-                  <td className="px-4 py-3.5 text-end tabular-nums text-ink">
-                    {formatNumber(stat.count, locale)}
-                  </td>
-                  <td className="px-4 py-3.5 text-ink-muted">
-                    {stat.lastOrder ? formatDate(stat.lastOrder, locale) : "—"}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/${locale}/admin/customers/${customer.id}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-                      >
-                        <Link2 className="size-3.5" aria-hidden />
-                        {dict.access.links.manage}
-                      </Link>
-                      <Link
-                        href={`/${locale}/catalog?customer=${customer.id}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-field bg-brand-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-                      >
-                        <ShoppingBag className="size-3.5" aria-hidden />
-                        {t.startOrder}
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+        <CustomersTable
+          customers={customers}
+          stats={stats}
+          locale={locale}
+          dict={dict}
+        />
       )}
     </div>
   );

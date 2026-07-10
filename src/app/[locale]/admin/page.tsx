@@ -1,4 +1,12 @@
-import { ClipboardList, Package, PlusCircle, Store } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardList,
+  Inbox,
+  Package,
+  PlusCircle,
+  Store,
+  UserPlus,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -16,6 +24,7 @@ import {
   orderSubtotal,
   productName,
 } from "@/lib/catalog-helpers";
+import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
   listCustomers,
@@ -23,8 +32,10 @@ import {
   listOrders,
   listProducts,
 } from "@/lib/data";
+import { listSignupRequests } from "@/lib/data/customer-signup";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import type { Locale } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const STATUS_COLOR = {
   new: "#3B62B8",
@@ -84,6 +95,23 @@ export default async function AdminDashboardPage({
   const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
   const lowStockItems = inventory.filter(isLowStock);
   const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
+
+  // ── Operational alerts (M8B.4) ──────────────────────────────────────────
+  // Guest showcase orders awaiting a decision: status new, no linked shop.
+  const pendingGuestOrders = newOrders.filter(
+    (o) => !o.customerId && o.customerSnapshot?.guest,
+  ).length;
+  // Pending store-signup requests — supabase owner/admin only (the list RPC
+  // path is owner/admin; mock has no signups).
+  const isSupabase = getDataMode() === "supabase";
+  const dashRole = isSupabase
+    ? (await getSessionContext()).membership?.role
+    : null;
+  const canSeeSignups =
+    isSupabase && (dashRole === "owner" || dashRole === "admin");
+  const pendingSignups = canSeeSignups
+    ? (await listSignupRequests()).filter((r) => r.status === "pending").length
+    : 0;
 
   // At-a-glance counts. "Today" is the real current day; in supabase mode the
   // dashboard renders per-request (authenticated), so it stays accurate.
@@ -308,6 +336,94 @@ export default async function AdminDashboardPage({
           value={formatNumber(customers.length, locale)}
           icon={<Store />}
         />
+      </div>
+
+      {/* Operational alerts (M8B.4) — what needs the admin's attention NOW.
+          Each card links to where the work happens; zero shows a calm
+          "all clear" line instead of a number badge. */}
+      <div className={cn(
+        "grid grid-cols-1 gap-3 sm:grid-cols-2",
+        canSeeSignups ? "lg:grid-cols-3" : "",
+      )}>
+        <Link
+          href={`/${locale}/admin/orders`}
+          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
+            <Inbox className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">
+              {d.alerts.guestOrders}
+            </span>
+            <span className="block text-xs text-ink-soft">
+              {pendingGuestOrders > 0
+                ? interpolate(d.alerts.guestOrdersCount, {
+                    count: pendingGuestOrders,
+                  })
+                : d.alerts.guestOrdersNone}
+            </span>
+          </span>
+          {pendingGuestOrders > 0 ? (
+            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
+              {formatNumber(pendingGuestOrders, locale)}
+            </span>
+          ) : null}
+        </Link>
+
+        {canSeeSignups ? (
+          <Link
+            href={`/${locale}/admin/customers/signup`}
+            className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
+              <UserPlus className="size-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-ink">
+                {d.alerts.signupRequests}
+              </span>
+              <span className="block text-xs text-ink-soft">
+                {pendingSignups > 0
+                  ? interpolate(d.alerts.signupRequestsCount, {
+                      count: pendingSignups,
+                    })
+                  : d.alerts.signupRequestsNone}
+              </span>
+            </span>
+            {pendingSignups > 0 ? (
+              <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
+                {formatNumber(pendingSignups, locale)}
+              </span>
+            ) : null}
+          </Link>
+        ) : null}
+
+        <Link
+          href={`/${locale}/admin/inventory`}
+          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-accent-wash text-warning">
+            <AlertTriangle className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">
+              {d.alerts.lowStock}
+            </span>
+            <span className="block text-xs text-ink-soft">
+              {lowStockItems.length > 0
+                ? interpolate(d.alerts.lowStockCount, {
+                    count: lowStockItems.length,
+                  })
+                : d.alerts.lowStockNone}
+            </span>
+          </span>
+          {lowStockItems.length > 0 ? (
+            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
+              {formatNumber(lowStockItems.length, locale)}
+            </span>
+          ) : null}
+        </Link>
       </div>
 
       {/* Trend + status */}

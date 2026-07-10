@@ -1,20 +1,25 @@
 "use client";
 
-import { CheckCircle2, Mail, MapPin, Phone, Store, UserPlus } from "lucide-react";
+import { CheckCircle2, Link2, Mail, MapPin, Phone, Store, UserPlus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { createCustomerFromOrderAction } from "@/lib/actions/orders";
+import {
+  createCustomerFromOrderAction,
+  linkOrderToCustomerAction,
+} from "@/lib/actions/orders";
+import type { CustomerDuplicate } from "@/lib/data/customers";
 import type { OrderCustomerSnapshot } from "@/lib/types";
 
 /**
  * Guest (showcase) order card (M7I.1). A guest order has NO shop account — the
  * buyer's details live in a free-form snapshot. Owner/admin can promote it to a
  * permanent shop (create_customer_from_order links the order) or keep it as a
- * one-time order. The button is a no-op after the order gets a real customer
- * (the page re-renders with the shop card instead).
+ * one-time order. M8B.3: when an existing store shares the guest's phone/name,
+ * the create refuses and this card shows the matches — the admin either LINKS
+ * the order to one of them or explicitly confirms creating a new store anyway.
  */
 export function GuestOrderCard({
   orderId,
@@ -31,8 +36,9 @@ export function GuestOrderCard({
 }) {
   const t = dict.admin.orders.detail.guest;
   const [pending, startTransition] = useTransition();
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<"created" | "linked" | null>(null);
   const [failed, setFailed] = useState(false);
+  const [duplicates, setDuplicates] = useState<CustomerDuplicate[] | null>(null);
 
   const city =
     snapshot.city?.[locale] ||
@@ -40,12 +46,41 @@ export function GuestOrderCard({
     snapshot.city?.ar ||
     snapshot.city?.en;
 
-  function onCreate() {
+  function onCreate(confirmDuplicate = false) {
     setFailed(false);
     startTransition(async () => {
-      const result = await createCustomerFromOrderAction({ orderId, locale });
-      if (result.ok) setDone(true);
-      else setFailed(true);
+      const result = await createCustomerFromOrderAction({
+        orderId,
+        locale,
+        confirmDuplicate,
+      });
+      if (result.ok) {
+        setDone("created");
+        setDuplicates(null);
+        return;
+      }
+      if (result.duplicates && result.duplicates.length > 0) {
+        setDuplicates(result.duplicates);
+        return;
+      }
+      setFailed(true);
+    });
+  }
+
+  function onLink(customerId: string) {
+    setFailed(false);
+    startTransition(async () => {
+      const result = await linkOrderToCustomerAction({
+        orderId,
+        customerId,
+        locale,
+      });
+      if (result.ok) {
+        setDone("linked");
+        setDuplicates(null);
+      } else {
+        setFailed(true);
+      }
     });
   }
 
@@ -91,14 +126,72 @@ export function GuestOrderCard({
         {done ? (
           <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-success">
             <CheckCircle2 className="size-4" aria-hidden />
-            {t.created}
+            {done === "linked" ? t.linked : t.created}
           </p>
+        ) : duplicates ? (
+          /* M8B.3 — duplicate guard: same-phone/name stores already exist. */
+          <div className="mt-2 flex flex-col gap-2 rounded-field border border-warning/45 bg-warning-soft p-3">
+            <p className="text-sm font-bold text-warning">{t.duplicateTitle}</p>
+            <ul className="flex flex-col gap-1.5">
+              {duplicates.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-center gap-2 rounded-field bg-surface px-2.5 py-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">
+                      {d.name}
+                    </span>
+                    <span className="block text-xs text-ink-soft">
+                      {d.matchType === "phone"
+                        ? t.duplicatePhoneMatch
+                        : t.duplicateNameMatch}
+                      {d.phone ? (
+                        <span dir="ltr"> · {d.phone}</span>
+                      ) : null}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => onLink(d.id)}
+                  >
+                    <Link2 className="size-3.5" aria-hidden />
+                    {t.linkExisting}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onCreate(true)}
+              >
+                <UserPlus className="size-3.5" aria-hidden />
+                {t.createAnyway}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setDuplicates(null)}
+              >
+                {dict.common.cancel}
+              </Button>
+            </div>
+          </div>
         ) : (
           <div className="mt-2 flex flex-col gap-2">
             <Button
               type="button"
               size="sm"
-              onClick={onCreate}
+              onClick={() => onCreate(false)}
               disabled={pending || !live}
             >
               <UserPlus className="size-4" aria-hidden />

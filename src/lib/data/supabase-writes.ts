@@ -122,6 +122,41 @@ export async function sbCreateCustomerFromOrder(
   return { customerId: data as string };
 }
 
+/** M8B.2 — owner/admin manual stock correction via adjust_inventory_stock
+ * (row lock, negative result blocked, ledger row). Returns the new qty. */
+export async function sbAdjustInventoryStock(
+  productId: string,
+  delta: number,
+  reason: string,
+  note?: string,
+): Promise<{ newQuantity: number }> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("adjust_inventory_stock", {
+    p_tenant_id: tenantId,
+    p_product_id: productId,
+    p_delta: delta,
+    p_reason: reason,
+    ...(note ? { p_note: note } : {}),
+  });
+  if (error) fail("adjustInventoryStock", error.message);
+  return { newQuantity: data as number };
+}
+
+/** M8B.3 — owner/admin link a GUEST order to an EXISTING customer (instead
+ * of promoting the snapshot into a duplicate). Snapshot is preserved. */
+export async function sbLinkOrderToCustomer(
+  orderId: string,
+  customerId: string,
+): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("link_order_to_customer", {
+    p_tenant_id: tenantId,
+    p_order_id: orderId,
+    p_customer_id: customerId,
+  });
+  if (error) fail("linkOrderToCustomer", error.message);
+}
+
 // ── M5A: document generation ──────────────────────────────────────────────
 
 /**

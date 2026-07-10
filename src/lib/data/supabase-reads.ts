@@ -27,6 +27,7 @@ import type {
   Customer,
   DocumentType,
   InventoryItem,
+  InventoryMovement,
   Manufacturer,
   Order,
   OrderCustomerSnapshot,
@@ -460,6 +461,29 @@ export async function sbGetCustomer(
     .maybeSingle();
   if (error) fail("getCustomer", error.message);
   return data ? mapCustomer(data) : undefined;
+}
+
+/** Stock-movement ledger (M8B) — RLS limits reads to owner/admin; a
+ * sales_rep (or non-member) simply gets zero rows. Newest first. */
+export async function sbListInventoryMovements(): Promise<InventoryMovement[]> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
+  const { data, error } = await client
+    .from("order_inventory_movements")
+    .select("id, product_id, order_id, quantity_delta, reason, note, created_at")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) fail("listInventoryMovements", error.message);
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    productId: r.product_id,
+    orderId: r.order_id,
+    quantityDelta: r.quantity_delta,
+    reason: r.reason,
+    note: r.note ?? undefined,
+    createdAt: r.created_at,
+  }));
 }
 
 export async function sbListInventory(): Promise<InventoryItem[]> {
