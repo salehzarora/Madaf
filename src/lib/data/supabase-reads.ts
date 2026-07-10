@@ -28,6 +28,7 @@ import type {
   DocumentType,
   InventoryItem,
   InventoryMovement,
+  MovementQuery,
   Manufacturer,
   Order,
   OrderCustomerSnapshot,
@@ -470,19 +471,43 @@ export async function sbGetCustomer(
 export async function sbListInventoryMovements(
   offset = 0,
 ): Promise<InventoryMovement[]> {
+  return sbSearchInventoryMovements({}, offset, 500);
+}
+
+/**
+ * Server-side stock-movement search (M8D) — filters run in the DB query
+ * (RLS-scoped, owner/admin), so the client never loads more than one page.
+ * Deterministic order (created_at desc, id desc) makes offset paging
+ * skip-/dup-free. `productIds` is resolved client-side from the search term
+ * against the already-loaded catalog; `[]` means "no product matched" →
+ * zero rows (correct), `undefined` means "no product filter".
+ */
+export async function sbSearchInventoryMovements(
+  q: MovementQuery,
+  offset = 0,
+  limit = 50,
+): Promise<InventoryMovement[]> {
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
-  const { data, error } = await client
+
+  let query = client
     .from("order_inventory_movements")
     .select("id, product_id, order_id, quantity_delta, reason, note, created_at")
-    .eq("tenant_id", tenantId)
+    .eq("tenant_id", tenantId);
+
+  if (q.from) query = query.gte("created_at", q.from);
+  if (q.to) query = query.lt("created_at", q.to);
+  if (q.reason) query = query.eq("reason", q.reason);
+  if (q.direction === "in") query = query.gt("quantity_delta", 0);
+  else if (q.direction === "out") query = query.lt("quantity_delta", 0);
+  else if (q.direction === "manual") query = query.is("order_id", null);
+  if (q.productIds) query = query.in("product_id", q.productIds);
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
-    // id breaks created_at ties (movements from one txn share now()), so
-    // offset paging is deterministic and can't skip a straddling tie group.
     .order("id", { ascending: false })
-    // Page of 500, newest first — "load more" walks older pages (M8C).
-    .range(offset, offset + 499);
-  if (error) fail("listInventoryMovements", error.message);
+    .range(offset, offset + limit - 1);
+  if (error) fail("searchInventoryMovements", error.message);
   return (data ?? []).map((r) => ({
     id: r.id,
     productId: r.product_id,

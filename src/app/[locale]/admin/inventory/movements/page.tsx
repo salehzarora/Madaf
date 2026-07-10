@@ -8,9 +8,9 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
-  listInventoryMovements,
   listOrders,
   listProducts,
+  searchInventoryMovements,
 } from "@/lib/data";
 
 /**
@@ -32,8 +32,10 @@ export default async function InventoryMovementsPage({
   const t = dict.admin.inventory.movements;
 
   // includeInactive: movements may reference deactivated products (M8A rule).
+  // Initial page (unfiltered, 50 rows) — the client re-queries the server on
+  // filter change and appends older pages via "load more" (M8D).
   const [movements, products, orders] = await Promise.all([
-    listInventoryMovements(),
+    searchInventoryMovements({}, 0, 50),
     listProducts({ includeInactive: true }),
     listOrders(),
   ]);
