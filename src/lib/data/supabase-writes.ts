@@ -186,15 +186,24 @@ export async function sbSetDocumentStorage(input: {
 
 // ── M3B: catalog writes ───────────────────────────────────────────────────
 
-/** UI field names → jsonb payload keys the product RPCs expect. */
+/** UI field names → jsonb payload keys the product RPCs expect.
+ * Description keys are OMITTED when absent (not sent as null): since M8A,
+ * update_product only overwrites a description whose key is present, so the
+ * form (which has no description inputs) no longer wipes them on edit. */
 function toProductPayload(input: ProductWriteInput): Json {
   return {
     name_ar: input.nameAr,
     name_he: input.nameHe,
     name_en: input.nameEn,
-    description_ar: input.descriptionAr ?? null,
-    description_he: input.descriptionHe ?? null,
-    description_en: input.descriptionEn ?? null,
+    ...(input.descriptionAr !== undefined
+      ? { description_ar: input.descriptionAr }
+      : {}),
+    ...(input.descriptionHe !== undefined
+      ? { description_he: input.descriptionHe }
+      : {}),
+    ...(input.descriptionEn !== undefined
+      ? { description_en: input.descriptionEn }
+      : {}),
     category_id: input.categoryId,
     manufacturer_id: input.manufacturerId ?? null,
     sku: input.sku ?? null,

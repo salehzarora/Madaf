@@ -14,6 +14,9 @@ import { createServerAuthClient } from "@/lib/supabase/server-auth";
 
 import { getDataContext } from "@/lib/auth/session";
 
+import { getProductImageStorageClient } from "./product-image-storage";
+import { hashToken } from "./token";
+
 export type SignupLinkStatus = "active" | "revoked" | "expired";
 
 export interface SignupLink {
@@ -59,6 +62,33 @@ function requestStatus(
   if (approvedAt) return "approved";
   if (rejectedAt) return "rejected";
   return "pending";
+}
+
+/**
+ * GET-time liveness check for a /join/<token> link (M8A). Before this, a
+ * dead (revoked/expired/unknown) link rendered the FULL signup form and the
+ * visitor only learned after typing everything. Checked server-side by
+ * token_hash on the trusted service client (anon has no table access).
+ *
+ * FAIL-OPEN by design: if the service client is unavailable (no key), we
+ * render the form anyway — the submit RPC re-validates the token in-DB, so
+ * this check is purely a UX gate, never the security boundary.
+ */
+export async function isSignupLinkAlive(rawToken: string): Promise<boolean> {
+  try {
+    const client = getProductImageStorageClient();
+    const { data, error } = await client
+      .from("customer_signup_links")
+      .select("expires_at")
+      .eq("token_hash", hashToken(rawToken))
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (error) return true; // fail-open (submit re-validates)
+    if (!data) return false; // unknown or revoked
+    return !data.expires_at || new Date(data.expires_at).getTime() > Date.now();
+  } catch {
+    return true; // no service key locally — fail-open
+  }
 }
 
 // ── Owner/admin: create / revoke / list links ─────────────────────────────

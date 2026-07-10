@@ -95,15 +95,31 @@ export function CustomerLinksManager({
 
   // Regenerate = revoke the old link + issue a fresh one; the new URL lands
   // in the same copy-once banner (shown only here, only once).
-  function onRegenerate(linkId: string, linkLabel: string | null) {
+  function onRegenerate(link: CustomerLink) {
     setError(null);
     setCreatedUrl(null);
     setCopied(false);
     startTransition(async () => {
+      // Carry the ORIGINAL expiry forward (M8A): regenerating an expiring
+      // link must NEVER silently mint a never-expiring one. If the link had
+      // ANY expiry — even one that lapsed between page render and the click —
+      // the replacement keeps an expiry: at least 1 day, clamped to the
+      // action's 365-day maximum. Only a truly never-expiring link
+      // regenerates without one.
+      const expiresInDays = link.expiresAt
+        ? Math.min(
+            365,
+            Math.max(
+              1,
+              Math.ceil((Date.parse(link.expiresAt) - Date.now()) / 86_400_000),
+            ),
+          )
+        : undefined;
       const result = await regenerateCustomerLinkAction({
-        linkId,
+        linkId: link.id,
         customerId,
-        label: linkLabel ?? undefined,
+        label: link.label ?? undefined,
+        expiresInDays,
         locale,
       });
       if (result.ok && result.url) {
@@ -253,7 +269,7 @@ export function CustomerLinksManager({
                         <div className="inline-flex items-center justify-end gap-1">
                           <button
                             type="button"
-                            onClick={() => onRegenerate(link.id, link.label)}
+                            onClick={() => onRegenerate(link)}
                             disabled={pending}
                             className="inline-flex h-9 items-center gap-1.5 rounded-field px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50"
                           >

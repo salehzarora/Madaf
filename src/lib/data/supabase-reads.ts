@@ -128,6 +128,7 @@ function mapProduct(row: ProductRow): Product {
   return {
     id: row.id,
     sku: row.sku ?? "",
+    barcode: row.barcode ?? undefined,
     translations: {
       ar: { name: row.name_ar, description: description.ar },
       he: { name: row.name_he, description: description.he },

@@ -10,8 +10,14 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
-import { isLowStock, orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
+  isLowStock,
+  LOW_STOCK_THRESHOLD,
+  orderSubtotal,
+  productName,
+} from "@/lib/catalog-helpers";
+import {
+  getDataMode,
   listCustomers,
   listInventory,
   listOrders,
@@ -46,21 +52,35 @@ export default async function AdminDashboardPage({
   const t = dict.admin;
   const d = dict.admin.dashboard;
 
+  // includeInactive: order lines / inventory rows / low-stock entries may
+  // reference DEACTIVATED products — lookups must still resolve (M8A crash
+  // fix). Active-only derived values filter explicitly below.
   const [orders, customers, inventory, products] = await Promise.all([
     listOrders(),
     listCustomers(),
     listInventory(),
-    listProducts(),
+    listProducts({ includeInactive: true }),
   ]);
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [p.id, p]));
+  // `isActive !== false`: mock products omit the optional flag (implicitly
+  // active) — a truthy check would render "Active products: 0" in mock mode.
+  const activeProductCount = products.filter(
+    (p) => p.isActive !== false,
+  ).length;
 
   const live = orders.filter((o) => o.status !== "cancelled");
   const newOrders = orders.filter((o) => o.status === "new");
   const open = orders.filter((o) =>
     ["new", "confirmed", "preparing"].includes(o.status),
   );
-  const monthOrders = live.filter((o) => o.createdAt.startsWith("2026-07"));
+  // Mock data lives in July 2026; supabase mode uses the real current month
+  // (the KPI was hardcoded to "2026-07" and went stale — M8A).
+  const monthPrefix =
+    getDataMode() === "mock"
+      ? "2026-07"
+      : new Date().toISOString().slice(0, 7);
+  const monthOrders = live.filter((o) => o.createdAt.startsWith(monthPrefix));
   const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
   const lowStockItems = inventory.filter(isLowStock);
   const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
@@ -196,10 +216,9 @@ export default async function AdminDashboardPage({
           label={t.metrics.newOrders}
           value={formatNumber(newOrders.length, locale)}
         >
+          {/* All-time count of status=new — no "Today" badge (M8A: it was
+              misleading; today's count has its own MetricCard below). */}
           <div className="flex items-center gap-2">
-            <span className="rounded-badge bg-info-soft px-1.5 py-0.5 text-[11px] font-bold text-info">
-              {d.today}
-            </span>
             <span className="text-[11px] text-ink-muted">
               {t.metrics.openOrders}: {formatNumber(open.length, locale)}
             </span>
@@ -281,7 +300,7 @@ export default async function AdminDashboardPage({
         />
         <MetricCard
           label={t.metrics.activeProducts}
-          value={formatNumber(products.length, locale)}
+          value={formatNumber(activeProductCount, locale)}
           icon={<Package />}
         />
         <MetricCard
@@ -404,7 +423,11 @@ export default async function AdminDashboardPage({
           </CardHeader>
           <ul className="flex flex-col gap-2.5 p-4">
             {lowStockItems.slice(0, 4).map((item) => {
-              const product = productById.get(item.productId)!;
+              // Guarded: the product may be deactivated (includeInactive map)
+              // or, in a pathological case, missing entirely — never crash.
+              const product = productById.get(item.productId);
+              if (!product) return null;
+              const threshold = item.lowStockThreshold ?? LOW_STOCK_THRESHOLD;
               const empty = item.stockPackages === 0;
               return (
                 <li key={item.productId} className="flex items-center gap-2.5">
@@ -422,7 +445,7 @@ export default async function AdminDashboardPage({
                       <span
                         className={empty ? "block h-full bg-danger" : "block h-full bg-accent"}
                         style={{
-                          width: `${Math.max((item.stockPackages / 10) * 100, 3)}%`,
+                          width: `${Math.max((item.stockPackages / threshold) * 100, 3)}%`,
                         }}
                       />
                     </div>
@@ -431,7 +454,7 @@ export default async function AdminDashboardPage({
                     className="shrink-0 font-mono text-[13px] font-bold tabular-nums text-ink"
                     dir="ltr"
                   >
-                    {item.stockPackages} / 10
+                    {item.stockPackages} / {threshold}
                   </span>
                 </li>
               );
@@ -467,7 +490,9 @@ export default async function AdminDashboardPage({
                   {order.number}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-                  {customer?.name ?? "—"}
+                  {/* Guest showcase orders have no customer row — show the
+                      snapshot store name (M8A). */}
+                  {customer?.name ?? order.customerSnapshot?.name ?? "—"}
                 </span>
                 <span className="hidden text-xs text-ink-muted sm:block">
                   {formatDate(order.createdAt, locale)} ·{" "}

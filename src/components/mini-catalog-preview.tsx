@@ -54,7 +54,8 @@ export async function MiniCatalogPreview({
       {/* Product mini-grid */}
       <div className="grid grid-cols-2 gap-3">
         {previewProducts.map((product, index) => {
-          const category = categoryById.get(product.categoryId)!;
+          // Optional for ProductImage — never crash on a missing category (M8A).
+          const category = categoryById.get(product.categoryId);
           return (
             <div
               key={product.id}

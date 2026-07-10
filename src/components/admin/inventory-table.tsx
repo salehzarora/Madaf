@@ -10,45 +10,62 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { isLowStock, productName } from "@/lib/catalog-helpers";
 import { formatDate, formatNumber } from "@/lib/format";
-import { useShopData } from "@/lib/shop-data-context";
-import type { InventoryItem } from "@/lib/types";
+import type { InventoryItem, Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Days ahead treated as "expiring soon" in the demo. */
+/** Days ahead treated as "expiring soon". */
 const EXPIRY_HORIZON_DAYS = 21;
-/** Demo "today" — aligned with the mock order timeline. */
+/** Demo "today" — aligned with the mock order timeline (mock-mode fallback). */
 const DEMO_TODAY = "2026-07-05";
 
 /** Inventory overview with low-stock filter and optional expiry column.
- * Rows come from the server page (data layer). */
+ * Rows AND products come from the server page (data layer) — products
+ * include DEACTIVATED ones so tracked stock always renders (M8A crash fix;
+ * the shared shop-data context stays active-only for the storefront). */
 export function InventoryTable({
   inventory,
+  products,
+  today,
   locale,
   dict,
 }: {
   inventory: InventoryItem[];
+  products: Product[];
+  /** Real current day (supabase mode); mock omits it → demo timeline. */
+  today?: string;
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.inventory;
-  const { productById } = useShopData();
   const [lowOnly, setLowOnly] = useState(false);
 
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products],
+  );
   const horizon =
-    new Date(DEMO_TODAY).getTime() + EXPIRY_HORIZON_DAYS * 24 * 60 * 60 * 1000;
+    new Date(today ?? DEMO_TODAY).getTime() +
+    EXPIRY_HORIZON_DAYS * 24 * 60 * 60 * 1000;
 
   const rows = useMemo(
     () =>
       inventory
         .filter((item) => (lowOnly ? isLowStock(item) : true))
-        .map((item) => ({
-          item,
-          product: productById.get(item.productId)!,
-          low: isLowStock(item),
-          expiringSoon: item.nearestExpiry
-            ? new Date(item.nearestExpiry).getTime() <= horizon
-            : false,
-        })),
+        .flatMap((item) => {
+          // Guarded: never crash on a row whose product is missing entirely.
+          const product = productById.get(item.productId);
+          if (!product) return [];
+          return [
+            {
+              item,
+              product,
+              low: isLowStock(item),
+              expiringSoon: item.nearestExpiry
+                ? new Date(item.nearestExpiry).getTime() <= horizon
+                : false,
+            },
+          ];
+        }),
     [inventory, productById, lowOnly, horizon],
   );
 

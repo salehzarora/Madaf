@@ -67,6 +67,9 @@ export interface ProductTranslation {
 export interface Product {
   id: string;
   sku: string;
+  /** EAN/UPC barcode — admin-entered, optional (M8A: carried on the domain
+   * type so the edit form can prefill it; it was silently wiped before). */
+  barcode?: string;
   translations: Record<Locale, ProductTranslation>;
   categoryId: string;
   manufacturerId: string;

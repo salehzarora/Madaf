@@ -46,13 +46,14 @@ export function orderLineCount(order: Order): number {
 }
 
 /**
- * Threshold (in packages) under which stock counts as "low".
- * The database stores a per-row inventory_items.low_stock_threshold; the
- * UI type doesn't carry it yet, so the demo constant (which the seed also
- * uses) stays authoritative until the M3+ inventory write path.
+ * Fallback threshold (in packages) under which stock counts as "low" when a
+ * row carries no per-product threshold (mock rows / older data). Supabase
+ * rows carry inventory_items.low_stock_threshold (edited by the product
+ * form); isLowStock honors it (M8A) so the inventory/dashboard low-stock
+ * signals agree with the catalog availability badge.
  */
 export const LOW_STOCK_THRESHOLD = 10;
 
 export function isLowStock(item: InventoryItem): boolean {
-  return item.stockPackages < LOW_STOCK_THRESHOLD;
+  return item.stockPackages < (item.lowStockThreshold ?? LOW_STOCK_THRESHOLD);
 }

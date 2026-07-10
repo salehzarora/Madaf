@@ -285,7 +285,9 @@ export function ShopView({
           </div>
         ) : null}
 
-        {error ? (
+        {/* Submit errors render in the sticky bar (next to the button) —
+            when the cart is somehow empty, fall back to the in-page banner. */}
+        {error && lineCount === 0 ? (
           <p
             role="alert"
             className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
@@ -298,6 +300,18 @@ export function ShopView({
       {/* Sticky order bar */}
       {lineCount > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur">
+          {/* Submit failure surfaces HERE, next to the button that caused it —
+              the in-page banner above could sit far off-screen (M8A). */}
+          {error ? (
+            <div className="mx-auto max-w-5xl px-4 pt-2 sm:px-6">
+              <p
+                role="alert"
+                className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+              >
+                {t.error}
+              </p>
+            </div>
+          ) : null}
           <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-xs text-ink-muted">

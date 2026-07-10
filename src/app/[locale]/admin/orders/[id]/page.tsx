@@ -38,10 +38,14 @@ export default async function AdminOrderDetailPage({
 
   const dict = getDictionary(locale);
   const t = dict.admin.orders.detail;
+  // includeInactive: order lines keep referencing DEACTIVATED products —
+  // they must still render (with the subtotal they're counted in), not
+  // silently disappear (M8A). The items editor excludes inactive products
+  // from its add-picker on its own.
   const [customer, orderDocs, products, categories] = await Promise.all([
     getCustomer(order.customerId),
     listDocumentsForOrder(order.id),
-    listProducts(),
+    listProducts({ includeInactive: true }),
     listCategories(),
   ]);
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -117,26 +121,34 @@ export default async function AdminOrderDetailPage({
             <CardContent className="pt-4">
               <ul className="divide-y divide-line-hair">
                 {order.items.map((item) => {
+                  // includeInactive map ⇒ deactivated products still resolve.
+                  // A truly missing row (hard-deleted) renders a fallback line
+                  // instead of vanishing — the subtotal counts it (M8A).
                   const product = productById.get(item.productId);
-                  if (!product) return null;
-                  // May be undefined (category deleted / not in the tenant list);
-                  // ProductImage tolerates an undefined category.
-                  const category = categoryById.get(product.categoryId);
+                  const category = product
+                    ? categoryById.get(product.categoryId)
+                    : undefined;
                   return (
                     <li
                       key={item.productId}
                       className="flex items-center gap-3 py-3"
                     >
-                      <ProductImage
-                        product={product}
-                        category={category}
-                        className="size-11 shrink-0 rounded-field"
-                        iconClassName="size-5"
-                        showSizeTag={false}
-                      />
+                      {product ? (
+                        <ProductImage
+                          product={product}
+                          category={category}
+                          className="size-11 shrink-0 rounded-field"
+                          iconClassName="size-5"
+                          showSizeTag={false}
+                        />
+                      ) : (
+                        <span className="size-11 shrink-0 rounded-field bg-surface-sunken" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-ink">
-                          {productName(product, locale)}
+                          {product
+                            ? productName(product, locale)
+                            : t.unavailableProduct}
                         </p>
                         <p className="text-xs text-ink-muted" dir="ltr">
                           {formatCurrency(item.unitPrice, locale)} ×{" "}
