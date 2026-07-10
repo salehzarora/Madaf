@@ -13,6 +13,9 @@ export interface Dictionary {
     description: string;
   };
   common: {
+    /** M8C — admin CSV export button + empty tooltip (orders/products/movements). */
+    exportCsv: string;
+    exportEmpty: string;
     search: string;
     all: string;
     add: string;
@@ -198,6 +201,8 @@ export interface Dictionary {
       lowStock: string;
       activeShops: string;
       todayOrders: string;
+      /** M8C — today's order value (ex-VAT). */
+      todayValue: string;
     };
     recentOrders: string;
     lowStockTitle: string;
@@ -220,6 +225,14 @@ export interface Dictionary {
       ordersCount: string;
       /** M8B.4 — operational alert cards. */
       alerts: {
+        needsConfirmation: string;
+        /** `{count}` new orders awaiting confirmation. */
+        needsConfirmationCount: string;
+        needsConfirmationNone: string;
+        preparing: string;
+        /** `{count}` orders confirmed/preparing. */
+        preparingCount: string;
+        preparingNone: string;
         guestOrders: string;
         /** `{count}` pending guest orders. */
         guestOrdersCount: string;
@@ -336,6 +349,23 @@ export interface Dictionary {
       colDate: string;
       colRef: string;
       searchPlaceholder: string;
+      /** M8C — order source facets. */
+      sourceFilter: {
+        sales_visit: string;
+        shop_link: string;
+        guest: string;
+      };
+      /** M8C — date-range filter (shared with movements). */
+      dateFilter: {
+        label: string;
+        all: string;
+        today: string;
+        last7: string;
+        month: string;
+        custom: string;
+        from: string;
+        to: string;
+      };
       detail: {
         title: string;
         itemsTitle: string;
@@ -424,8 +454,10 @@ export interface Dictionary {
         colNote: string;
         /** Order column value for manual (order-less) adjustments. */
         manualBadge: string;
-        /** Shown when the 500-newest-rows cap was hit (older rows hidden). */
+        /** Shown when older rows exist beyond the loaded pages. */
         truncatedNote: string;
+        loadMore: string;
+        loadingMore: string;
         empty: string;
         emptyHint: string;
         direction: { all: string; in: string; out: string };
@@ -477,6 +509,16 @@ export interface Dictionary {
       /** M8B.5 — stores list search. */
       searchPlaceholder: string;
       noMatches: string;
+      /** M8C — store active/inactive lifecycle. */
+      lifecycle: {
+        activeBadge: string;
+        inactiveBadge: string;
+        activate: string;
+        deactivate: string;
+        deactivateConfirm: string;
+        error: string;
+        filterLabel: string;
+      };
       /** Clarifies these are the supplier's business customers (stores). */
       addCustomer: string;
       edit: string;
@@ -787,6 +829,8 @@ export interface Dictionary {
       regenerate: string;
       regenerating: string;
       regenerateHint: string;
+      /** M8C — no new/regenerated links for a deactivated store. */
+      inactiveError: string;
       colLabel: string;
       colStatus: string;
       colToken: string;
@@ -817,6 +861,9 @@ export interface Dictionary {
       refHint: string;
       /** M7H — the store is fixed by the link and cannot be changed. */
       storeLocked: string;
+      /** M8C — the link's store is deactivated (distinct from invalid). */
+      inactiveTitle: string;
+      inactiveBody: string;
       error: string;
       invalidTitle: string;
       invalidBody: string;
