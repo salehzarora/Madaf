@@ -117,6 +117,9 @@ export interface Customer {
   address?: string;
   /** Internal supplier note about the shop (optional; not shown to customers). */
   notes?: string;
+  /** M8C lifecycle — false blocks the store's private links + new links.
+   * Optional: mock rows omit it (implicitly active). */
+  isActive?: boolean;
 }
 
 export interface InventoryItem {
@@ -240,6 +243,9 @@ export interface Order {
    */
   publicRef?: string;
   customerId: string;
+  /** How the order arrived: sales_visit (admin/rep flow), remote_customer
+   * (tokenized shop link OR showcase guest), admin. Optional (mock omits). */
+  source?: "sales_visit" | "remote_customer" | "admin";
   /** M7I — guest store details when `customerId` is empty (guest showcase order). */
   customerSnapshot?: OrderCustomerSnapshot;
   items: OrderItem[];

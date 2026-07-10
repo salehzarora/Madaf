@@ -12,7 +12,12 @@
  */
 import { revalidatePath } from "next/cache";
 
-import { createCustomer, updateCustomer, type CustomerWriteInput } from "@/lib/data";
+import {
+  createCustomer,
+  setCustomerActive,
+  updateCustomer,
+  type CustomerWriteInput,
+} from "@/lib/data";
 import {
   findCustomerDuplicates,
   type CustomerDuplicate,
@@ -107,6 +112,28 @@ export async function createCustomerAction(input: {
     return { ok: true, customerId: result.customerId };
   } catch (error) {
     console.error("[madaf/actions] createCustomerAction failed:", error);
+    return { ok: false };
+  }
+}
+
+/** M8C.3 — owner/admin deactivate/reactivate a store. The RPC is the gate. */
+export async function setCustomerActiveAction(input: {
+  customerId: string;
+  active: boolean;
+  locale: string;
+}): Promise<{ ok: boolean }> {
+  try {
+    if (!isPlausibleId(input.customerId) || typeof input.active !== "boolean") {
+      return { ok: false };
+    }
+    await setCustomerActive(input.customerId, input.active);
+    revalidateCustomers(input.locale);
+    if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
+      revalidatePath(`/${input.locale}/admin/customers/${input.customerId}`);
+    }
+    return { ok: true };
+  } catch (error) {
+    console.error("[madaf/actions] setCustomerActiveAction failed:", error);
     return { ok: false };
   }
 }

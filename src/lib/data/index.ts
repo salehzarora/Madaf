@@ -30,6 +30,7 @@ export {
   createCustomer,
   getCustomer,
   listCustomers,
+  setCustomerActive,
   updateCustomer,
   type CustomerWriteInput,
 } from "./customers";

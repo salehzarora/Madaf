@@ -5,7 +5,13 @@ import { MovementsTable } from "@/components/admin/movements-table";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listInventoryMovements, listOrders, listProducts } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import {
+  getDataMode,
+  listInventoryMovements,
+  listOrders,
+  listProducts,
+} from "@/lib/data";
 
 /**
  * Stock-movement ledger history (M8B.1). Every stock change — order
@@ -31,6 +37,10 @@ export default async function InventoryMovementsPage({
     listProducts({ includeInactive: true }),
     listOrders(),
   ]);
+  // Export is owner/admin (mock demo stays open; RLS already limits the data).
+  const isSupabase = getDataMode() === "supabase";
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  const canExport = !isSupabase || role === "owner" || role === "admin";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -52,6 +62,7 @@ export default async function InventoryMovementsPage({
         movements={movements}
         products={products}
         orders={orders}
+        canExport={canExport}
         locale={locale}
         dict={dict}
       />

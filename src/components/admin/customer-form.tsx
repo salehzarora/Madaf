@@ -260,8 +260,13 @@ export function CustomerForm({
                 className="flex flex-wrap items-center gap-2 rounded-field bg-surface px-3 py-2"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink">
+                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
                     {d.name}
+                    {d.isActive === false ? (
+                      <span className="shrink-0 rounded-badge bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                        {dict.admin.customers.lifecycle.inactiveBadge}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="block text-xs text-ink-soft">
                     {d.matchType === "phone"

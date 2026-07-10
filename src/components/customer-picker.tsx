@@ -34,8 +34,15 @@ export function CustomerPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) =>
+    // Active stores first (M8C); inactive ones stay visible but marked and
+    // unselectable — new orders belong to active stores.
+    const base = [...customers].sort((a, b) => {
+      const aInactive = a.isActive === false ? 1 : 0;
+      const bInactive = b.isActive === false ? 1 : 0;
+      return aInactive - bInactive;
+    });
+    if (!q) return base;
+    return base.filter((c) =>
       [
         c.name,
         c.contactName ?? "",
@@ -119,15 +126,18 @@ export function CustomerPicker({
                 {dict.catalog.noShopsFound}
               </li>
             ) : (
-              filtered.map((customer) => (
+              filtered.map((customer) => {
+                const inactive = customer.isActive === false;
+                return (
                 <li key={customer.id}>
                   <button
                     type="button"
+                    disabled={inactive}
                     onClick={() => {
                       setCustomer(customer.id);
                       setOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-warm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+                    className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-warm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
                       <Store className="size-4" aria-hidden />
@@ -144,12 +154,17 @@ export function CustomerPicker({
                         ) : null}
                       </span>
                     </span>
-                    {customer.id === customerId ? (
+                    {inactive ? (
+                      <span className="shrink-0 rounded-badge bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                        {dict.admin.customers.lifecycle.inactiveBadge}
+                      </span>
+                    ) : customer.id === customerId ? (
                       <Check className="size-4 shrink-0 text-brand-600" aria-hidden />
                     ) : null}
                   </button>
                 </li>
-              ))
+                );
+              })
             )}
           </ul>
           {selected ? (

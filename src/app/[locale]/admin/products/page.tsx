@@ -5,7 +5,8 @@ import { ProductsTable } from "@/components/admin/products-table";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listProducts } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import { getDataMode, listInventory, listProducts } from "@/lib/data";
 
 export default async function AdminProductsPage({
   params,
@@ -17,7 +18,14 @@ export default async function AdminProductsPage({
   const dict = getDictionary(locale);
   const t = dict.admin.products;
   // Admin sees inactive products too (supabase mode); mock lists all.
-  const products = await listProducts({ includeInactive: true });
+  const [products, inventory] = await Promise.all([
+    listProducts({ includeInactive: true }),
+    listInventory(),
+  ]);
+  // CSV export is owner/admin (mock demo stays open) — M8C.
+  const isSupabase = getDataMode() === "supabase";
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  const canExport = !isSupabase || role === "owner" || role === "admin";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -42,7 +50,13 @@ export default async function AdminProductsPage({
         </div>
         <ShelfRule className="mt-4" />
       </div>
-      <ProductsTable products={products} locale={locale} dict={dict} />
+      <ProductsTable
+        products={products}
+        inventory={inventory}
+        canExport={canExport}
+        locale={locale}
+        dict={dict}
+      />
     </div>
   );
 }

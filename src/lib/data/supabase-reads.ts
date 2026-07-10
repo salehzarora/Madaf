@@ -228,6 +228,7 @@ function mapCustomer(row: Row<"customers">): Customer {
     contactName: row.contact_name ?? "",
     address: row.address ?? undefined,
     notes: row.notes ?? undefined,
+    isActive: row.is_active,
   };
 }
 
@@ -261,6 +262,7 @@ function mapOrder(row: OrderRow): Order {
     number: row.order_number,
     publicRef: row.public_ref,
     customerId: row.customer_id ?? "",
+    source: row.source,
     customerSnapshot: mapCustomerSnapshot(row.customer_snapshot),
     items: items.map((item) => ({
       productId: item.product_id ?? "",
@@ -465,7 +467,9 @@ export async function sbGetCustomer(
 
 /** Stock-movement ledger (M8B) — RLS limits reads to owner/admin; a
  * sales_rep (or non-member) simply gets zero rows. Newest first. */
-export async function sbListInventoryMovements(): Promise<InventoryMovement[]> {
+export async function sbListInventoryMovements(
+  offset = 0,
+): Promise<InventoryMovement[]> {
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
   const { data, error } = await client
@@ -473,7 +477,11 @@ export async function sbListInventoryMovements(): Promise<InventoryMovement[]> {
     .select("id, product_id, order_id, quantity_delta, reason, note, created_at")
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
-    .limit(500);
+    // id breaks created_at ties (movements from one txn share now()), so
+    // offset paging is deterministic and can't skip a straddling tie group.
+    .order("id", { ascending: false })
+    // Page of 500, newest first — "load more" walks older pages (M8C).
+    .range(offset, offset + 499);
   if (error) fail("listInventoryMovements", error.message);
   return (data ?? []).map((r) => ({
     id: r.id,

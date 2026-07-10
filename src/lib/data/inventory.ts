@@ -32,9 +32,11 @@ export async function getInventoryForProduct(
 
 /** M8B — stock-movement ledger history (owner/admin via RLS; newest first).
  * Mock mode has no ledger → empty (the page shows its empty state). */
-export async function listInventoryMovements(): Promise<InventoryMovement[]> {
+export async function listInventoryMovements(
+  offset = 0,
+): Promise<InventoryMovement[]> {
   if (getDataMode() === "supabase") {
-    return (await import("./supabase-reads")).sbListInventoryMovements();
+    return (await import("./supabase-reads")).sbListInventoryMovements(offset);
   }
   return [];
 }

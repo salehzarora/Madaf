@@ -10,7 +10,7 @@
  */
 import { revalidatePath } from "next/cache";
 
-import { adjustInventoryStock } from "@/lib/data";
+import { adjustInventoryStock, listInventoryMovements } from "@/lib/data";
 
 const MAX_ID_LENGTH = 64;
 const MAX_NOTE = 500;
@@ -41,6 +41,30 @@ export interface AdjustStockResult {
   newQuantity?: number;
   /** "negative" = the correction would take stock below zero. */
   reason?: "negative";
+}
+
+/** M8C.2 — "load more" for the movements history. Reads run on the caller's
+ * RLS-scoped context (owner/admin read policy); offset is bounded. */
+export async function loadMoreMovementsAction(input: {
+  offset: number;
+}): Promise<{
+  ok: boolean;
+  movements?: Awaited<ReturnType<typeof listInventoryMovements>>;
+}> {
+  try {
+    if (
+      !Number.isInteger(input.offset) ||
+      input.offset < 0 ||
+      input.offset > 1_000_000
+    ) {
+      return { ok: false };
+    }
+    const movements = await listInventoryMovements(input.offset);
+    return { ok: true, movements };
+  } catch (error) {
+    console.error("[madaf/actions] loadMoreMovementsAction failed:", error);
+    return { ok: false };
+  }
 }
 
 export async function adjustStockAction(input: {

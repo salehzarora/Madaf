@@ -1,6 +1,6 @@
 "use client";
 
-import { PackageSearch, Pencil, PowerOff, Power, Search } from "lucide-react";
+import { Download, PackageSearch, Pencil, PowerOff, Power, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -15,11 +15,12 @@ import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
 import { setProductActiveAction } from "@/lib/actions/products";
-import { packageLabel, productName } from "@/lib/catalog-helpers";
+import { isLowStock, packageLabel, productName } from "@/lib/catalog-helpers";
+import { downloadCsv, toCsv } from "@/lib/csv";
 import { getDataMode } from "@/lib/data/mode";
 import { formatCurrency } from "@/lib/format";
 import { useShopData } from "@/lib/shop-data-context";
-import type { Product } from "@/lib/types";
+import type { InventoryItem, Product } from "@/lib/types";
 
 /**
  * Admin products list — search + category filter. Products come from the
@@ -28,10 +29,16 @@ import type { Product } from "@/lib/types";
  */
 export function ProductsTable({
   products,
+  inventory = [],
+  canExport = false,
   locale,
   dict,
 }: {
   products: Product[];
+  /** Stock rows for the export's quantity/low-stock columns (M8C). */
+  inventory?: InventoryItem[];
+  /** Owner/admin (or mock demo) — shows the CSV export button. */
+  canExport?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
@@ -81,6 +88,50 @@ export function ProductsTable({
     activeFilter,
     locale,
   ]);
+
+  const inventoryByProduct = useMemo(
+    () => new Map(inventory.map((i) => [i.productId, i])),
+    [inventory],
+  );
+
+  function onExport() {
+    // Admin-only file over the CURRENT filtered rows (tenant-scoped data
+    // the admin already sees). Untracked products export empty stock cells.
+    const rows = filtered.map((product) => {
+      const inv = inventoryByProduct.get(product.id);
+      const category = categoryById.get(product.categoryId);
+      const manufacturer = manufacturerById.get(product.manufacturerId);
+      return [
+        productName(product, locale),
+        product.sku,
+        product.barcode ?? "",
+        category?.name[locale] ?? "",
+        manufacturer?.name[locale] ?? "",
+        product.wholesalePrice.toFixed(2),
+        product.isActive === false ? "inactive" : "active",
+        inv ? inv.stockPackages : "",
+        inv ? (isLowStock(inv) ? "yes" : "no") : "",
+      ];
+    });
+    const csv = toCsv(
+      [
+        "name",
+        "sku",
+        "barcode",
+        "category",
+        "manufacturer",
+        "price_excl_vat",
+        "status",
+        "stock_packages",
+        "low_stock",
+      ],
+      rows,
+    );
+    downloadCsv(
+      `madaf-products-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv,
+    );
+  }
 
   function toggleActive(product: Product) {
     startTransition(async () => {
@@ -135,6 +186,20 @@ export function ProductsTable({
             <option value="active">{t.statusActive}</option>
             <option value="inactive">{t.inactiveBadge}</option>
           </Select>
+        ) : null}
+        {canExport ? (
+          <button
+            type="button"
+            onClick={onExport}
+            disabled={filtered.length === 0}
+            title={
+              filtered.length === 0 ? dict.common.exportEmpty : undefined
+            }
+            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="size-4" aria-hidden />
+            {dict.common.exportCsv}
+          </button>
         ) : null}
       </div>
 

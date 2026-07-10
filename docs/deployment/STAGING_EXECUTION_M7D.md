@@ -780,3 +780,36 @@ No RLS/policy change (ledger read stays owner/admin), anon revoked on both
 new RPCs, no direct table writes, no service_role in client, no legal/
 payment change, `legal_effective` stays false. No hosted db reset, no config
 push.
+
+## 23. M8C — operations polish, CSV exports, customer lifecycle
+
+Full detail in `docs/product/M8C_OPERATIONS_EXPORTS_CUSTOMER_LIFECYCLE.md`.
+
+- **Orders:** source + date-range filters, phone search, owner/admin CSV
+  export of the filtered rows (internal number allowed — admin-only file);
+  `?status=` deep links from the dashboard.
+- **Products:** owner/admin CSV export (incl. stock + low-stock columns).
+- **Movements:** date-range + manual filters, load-more pagination (500/page,
+  RLS-scoped action), CSV export of the filtered loaded rows.
+- **Customer lifecycle:** `customers.is_active` + `set_customer_active`
+  (owner/admin). `_resolve_token` rejects inactive stores' links (catalog AND
+  ordering, P0005); `insert_customer_access_link` refuses new links (MDF33);
+  `/shop/<token>` shows a dedicated "store deactivated" message; picker/
+  lists/duplicates mark inactive; reactivation restores the same link.
+  No hard delete; history preserved. Known gap: admin-side ordering for an
+  inactive store is picker-disabled only (documented).
+- **Dashboard:** needs-confirmation + in-preparation cards (deep-linked),
+  today's sales value metric.
+
+**New migrations** (apply with `supabase db push` to Frankfurt
+`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+1. `20260724100000_customer_active_lifecycle.sql`
+2. `20260724110000_inactive_store_hardening.sql` (review follow-up: MDF34
+   inactive-order block on all channels + token rate-limiter fix)
+
+**Vercel:** no new envs. Redeploy with **build cache OFF**; the build must
+end with the route-guard OK line.
+
+No RLS/policy change, anon revoked on the new RPC, no direct table writes,
+no service_role in client, no legal/payment change, `legal_effective` stays
+false. No hosted db reset, no config push.

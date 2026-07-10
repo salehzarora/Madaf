@@ -3,18 +3,34 @@ import { OrdersTable } from "@/components/admin/orders-table";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listOrders } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import { getDataMode, listOrders } from "@/lib/data";
+import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
 export default async function AdminOrdersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ status?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.orders;
   const orders = await listOrders();
+
+  // CSV export is owner/admin (mock demo stays open); a sales_rep still sees
+  // only assigned-customer orders via RLS either way (M8C).
+  const isSupabase = getDataMode() === "supabase";
+  const role = isSupabase ? (await getSessionContext()).membership?.role : null;
+  const canExport = !isSupabase || role === "owner" || role === "admin";
+
+  // Dashboard cards deep-link with ?status=… (validated here).
+  const rawStatus = (await searchParams).status;
+  const initialStatus = ORDER_STATUSES.includes(rawStatus as OrderStatus)
+    ? (rawStatus as OrderStatus)
+    : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -28,7 +44,13 @@ export default async function AdminOrdersPage({
         <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
         <ShelfRule className="mt-4" />
       </div>
-      <OrdersTable orders={orders} locale={locale} dict={dict} />
+      <OrdersTable
+        orders={orders}
+        locale={locale}
+        dict={dict}
+        canExport={canExport}
+        initialStatus={initialStatus}
+      />
     </div>
   );
 }

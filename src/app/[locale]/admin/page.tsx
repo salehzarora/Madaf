@@ -35,7 +35,6 @@ import {
 import { listSignupRequests } from "@/lib/data/customer-signup";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import type { Locale } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const STATUS_COLOR = {
   new: "#3B62B8",
@@ -74,10 +73,14 @@ export default async function AdminDashboardPage({
   ]);
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [p.id, p]));
-  // `isActive !== false`: mock products omit the optional flag (implicitly
-  // active) — a truthy check would render "Active products: 0" in mock mode.
+  // `isActive !== false`: mock products/customers omit the optional flag
+  // (implicitly active) — a truthy check would render 0 in mock mode. Both
+  // KPIs count only ACTIVE rows now that M8C can deactivate customers.
   const activeProductCount = products.filter(
     (p) => p.isActive !== false,
+  ).length;
+  const activeShopCount = customers.filter(
+    (c) => c.isActive !== false,
   ).length;
 
   const live = orders.filter((o) => o.status !== "cancelled");
@@ -116,8 +119,13 @@ export default async function AdminDashboardPage({
   // At-a-glance counts. "Today" is the real current day; in supabase mode the
   // dashboard renders per-request (authenticated), so it stays accurate.
   const todayStr = new Date().toISOString().slice(0, 10);
-  const todayOrdersCount = orders.filter(
-    (o) => o.createdAt.slice(0, 10) === todayStr,
+  const todayOrders = live.filter((o) => o.createdAt.slice(0, 10) === todayStr);
+  const todayOrdersCount = todayOrders.length;
+  // M8C: today's order value (non-cancelled, ex-VAT) for the ops strip.
+  const todayTotal = todayOrders.reduce((s, o) => s + orderSubtotal(o), 0);
+  // Orders being worked right now (confirmed or preparing).
+  const inPreparation = orders.filter((o) =>
+    ["confirmed", "preparing"].includes(o.status),
   ).length;
 
   // Open-orders segmented mini-bar shares.
@@ -319,12 +327,17 @@ export default async function AdminDashboardPage({
       </div>
 
       {/* At-a-glance counts */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           label={t.metrics.todayOrders}
           value={formatNumber(todayOrdersCount, locale)}
           icon={<ClipboardList />}
           tone="brand"
+        />
+        <MetricCard
+          label={t.metrics.todayValue}
+          value={formatCurrency(todayTotal, locale)}
+          icon={<ClipboardList />}
         />
         <MetricCard
           label={t.metrics.activeProducts}
@@ -333,7 +346,7 @@ export default async function AdminDashboardPage({
         />
         <MetricCard
           label={t.metrics.activeShops}
-          value={formatNumber(customers.length, locale)}
+          value={formatNumber(activeShopCount, locale)}
           icon={<Store />}
         />
       </div>
@@ -341,10 +354,57 @@ export default async function AdminDashboardPage({
       {/* Operational alerts (M8B.4) — what needs the admin's attention NOW.
           Each card links to where the work happens; zero shows a calm
           "all clear" line instead of a number badge. */}
-      <div className={cn(
-        "grid grid-cols-1 gap-3 sm:grid-cols-2",
-        canSeeSignups ? "lg:grid-cols-3" : "",
-      )}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          href={`/${locale}/admin/orders?status=new`}
+          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
+            <ClipboardList className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">
+              {d.alerts.needsConfirmation}
+            </span>
+            <span className="block text-xs text-ink-soft">
+              {newOrders.length > 0
+                ? interpolate(d.alerts.needsConfirmationCount, {
+                    count: newOrders.length,
+                  })
+                : d.alerts.needsConfirmationNone}
+            </span>
+          </span>
+          {newOrders.length > 0 ? (
+            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
+              {formatNumber(newOrders.length, locale)}
+            </span>
+          ) : null}
+        </Link>
+
+        <Link
+          href={`/${locale}/admin/orders`}
+          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
+            <Package className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">
+              {d.alerts.preparing}
+            </span>
+            <span className="block text-xs text-ink-soft">
+              {inPreparation > 0
+                ? interpolate(d.alerts.preparingCount, { count: inPreparation })
+                : d.alerts.preparingNone}
+            </span>
+          </span>
+          {inPreparation > 0 ? (
+            <span className="shrink-0 rounded-badge bg-info-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-info">
+              {formatNumber(inPreparation, locale)}
+            </span>
+          ) : null}
+        </Link>
+
         <Link
           href={`/${locale}/admin/orders`}
           className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
