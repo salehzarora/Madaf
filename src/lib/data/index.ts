@@ -20,6 +20,7 @@ export {
   setProductActive,
   updateManufacturer,
   updateProduct,
+  uploadManufacturerLogo,
   uploadProductImage,
   upsertInventory,
   type InventoryWriteInput,
@@ -30,6 +31,7 @@ export {
   createCustomer,
   getCustomer,
   listCustomers,
+  searchCustomers,
   setCustomerActive,
   updateCustomer,
   type CustomerWriteInput,
@@ -62,4 +64,9 @@ export {
   listInventoryMovements,
   searchInventoryMovements,
 } from "./inventory";
-export { getSupplier } from "./supplier";
+export {
+  getSupplier,
+  updateTenantProfile,
+  uploadTenantLogo,
+  type TenantProfileInput,
+} from "./supplier";

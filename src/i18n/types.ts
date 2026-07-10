@@ -16,6 +16,10 @@ export interface Dictionary {
     /** M8C — admin CSV export button + empty tooltip (orders/products/movements). */
     exportCsv: string;
     exportEmpty: string;
+    /** M8E — CSV export in progress (server round-trip over all filtered rows). */
+    exporting: string;
+    /** M8E — shown when a filtered export hit the row cap; {count} = rows written. */
+    exportCapped: string;
     /** M8D — shown where a role-gated action is hidden for a sales_rep. */
     noPermission: string;
     search: string;
@@ -346,6 +350,15 @@ export interface Dictionary {
       nameEn: string;
       logoUrl: string;
       logoUrlHint: string;
+      /** M8E.3 — brand logo upload (private bucket, signed on read). */
+      logoLabel: string;
+      uploadLogo: string;
+      uploading: string;
+      logoOrUrl: string;
+      removeLogo: string;
+      uploadTypeError: string;
+      uploadSizeError: string;
+      uploadFailed: string;
       save: string;
       saving: string;
       mockNotice: string;
@@ -551,6 +564,15 @@ export interface Dictionary {
       /** M8B.5 — stores list search. */
       searchPlaceholder: string;
       noMatches: string;
+      /** M8E.2 — server-side pagination + private-link facet. */
+      loadMore: string;
+      loadingMore: string;
+      linkFilter: {
+        label: string;
+        all: string;
+        has: string;
+        none: string;
+      };
       /** M8C — store active/inactive lifecycle. */
       lifecycle: {
         activeBadge: string;
@@ -714,6 +736,43 @@ export interface Dictionary {
       saving: string;
       savedToast: string;
       saveError: string;
+      /** M8E.4 — business/profile settings (NON-LEGAL, display only). */
+      business: {
+        navLabel: string;
+        title: string;
+        subtitle: string;
+        sectionIdentity: string;
+        sectionAddress: string;
+        sectionContact: string;
+        sectionBranding: string;
+        nameAr: string;
+        nameHe: string;
+        nameEn: string;
+        phone: string;
+        email: string;
+        addressAr: string;
+        addressHe: string;
+        addressEn: string;
+        legalName: string;
+        companyId: string;
+        displayVatRate: string;
+        displayVatRateHint: string;
+        /** PERMANENT non-legal note — these settings issue no legal invoice. */
+        nonLegalNote: string;
+        logo: string;
+        uploadLogo: string;
+        uploading: string;
+        logoOrUrl: string;
+        removeLogo: string;
+        uploadTypeError: string;
+        uploadSizeError: string;
+        uploadFailed: string;
+        mockNotice: string;
+        save: string;
+        saving: string;
+        savedToast: string;
+        saveError: string;
+      };
     };
   };
   docs: {

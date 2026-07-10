@@ -16,4 +16,6 @@ export const supplier: Supplier = {
     ar: "شارع الميناء 12، حيفا",
     en: "12 HaNamal St., Haifa",
   },
+  email: "orders@madaf.demo",
+  // display VAT rate omitted → falls back to VAT_RATE (0.18) on estimates.
 };

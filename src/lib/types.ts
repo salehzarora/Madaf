@@ -23,6 +23,17 @@ export interface Supplier {
   companyId: string;
   phone: string;
   address: LocalizedText;
+  /** Business contact email (M8E.4). Optional; blank when unset. */
+  email?: string;
+  /** Business logo for display — an external http(s) URL or a short-lived
+   * signed Storage URL (M8E.4). Absent → the app LogoMark is used. */
+  logoUrl?: string;
+  /** RAW stored logo reference (Storage object path) when the logo lives in
+   * the private bucket — persist THIS on edit, never the signed `logoUrl`. */
+  logoStoragePath?: string;
+  /** Default VAT rate for INTERNAL/DRAFT display only (fraction in [0,1)).
+   * NON-LEGAL estimate input (M8E.4); falls back to VAT_RATE when unset. */
+  displayVatRate?: number;
 }
 
 export interface Category {
@@ -37,8 +48,13 @@ export interface Category {
 export interface Manufacturer {
   id: string;
   name: LocalizedText;
-  /** Optional brand logo (tenant-scoped). Shown as an avatar on chips. */
+  /** Optional brand logo (tenant-scoped). An external http(s) URL or a
+   * short-lived signed Storage URL. Shown as an avatar on chips. */
   logoUrl?: string;
+  /** The RAW stored logo reference (a Storage object path) when the logo lives
+   * in the private bucket — persist THIS on edit, never the signed `logoUrl`
+   * (which expires). Undefined for external logo URLs (M8E.3). */
+  logoStoragePath?: string;
 }
 
 export const PACKAGE_UNITS = ["carton", "pack", "unit"] as const;
@@ -172,6 +188,18 @@ export interface MovementQuery {
   productIds?: string[];
 }
 
+/** Server-side customer-list filters (M8E.2). All optional; omitted = no
+ * filter. Search runs across name / contact / phone / address / city. */
+export interface CustomerQuery {
+  /** Free-text term matched (ILIKE) across name, contact, phone, address, city. */
+  q?: string;
+  /** Lifecycle facet; omitted = all. */
+  status?: "active" | "inactive";
+  /** true = only stores with a live private link; false = only stores without
+   * one; omitted = no link filter. (Supabase only — mock has no link data.) */
+  hasLink?: boolean;
+}
+
 /** One append-only stock-movement ledger row (M8B admin history view). */
 export interface InventoryMovement {
   id: string;
@@ -266,6 +294,13 @@ export interface Order {
   /** ISO date-time the order request was placed. */
   createdAt: string;
   notes?: string;
+  /** Server-stored order totals (ILS, ex-VAT subtotal + VAT estimate + total),
+   * frozen at order time (M8E.5). Present in supabase mode so the document
+   * HTML preview shows the SAME totals the PDF renders from; mock orders omit
+   * them (the preview recomputes with the tenant display VAT rate). */
+  subtotal?: number;
+  vatTotal?: number;
+  total?: number;
 }
 
 export type DocumentType = "order" | "delivery" | "invoiceDraft";
