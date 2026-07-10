@@ -10,13 +10,17 @@ import { getDataMode, listInventory, listProducts } from "@/lib/data";
 
 export default async function AdminInventoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ low?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.inventory;
+  // Dashboard low-stock card deep-links with ?low=1 (M8D).
+  const initialLowOnly = (await searchParams).low === "1";
   // includeInactive: the warehouse still holds stock for DEACTIVATED
   // products — their rows must render, not crash (M8A). The shared shop-data
   // context stays active-only for the storefront, so this page passes its
@@ -67,6 +71,7 @@ export default async function AdminInventoryPage({
         products={products}
         today={today}
         canAdjust={canAdjust}
+        initialLowOnly={initialLowOnly}
         locale={locale}
         dict={dict}
       />

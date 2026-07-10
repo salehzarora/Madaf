@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Inbox } from "lucide-react";
+import { Download, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/empty-state";
@@ -45,35 +45,62 @@ export function OrdersTable({
   locale,
   dict,
   canExport = false,
-  initialStatus,
+  initialStatuses,
+  initialSource,
 }: {
   orders: Order[];
   locale: Locale;
   dict: Dictionary;
   /** Owner/admin (or mock demo) — shows the CSV export button. */
   canExport?: boolean;
-  /** Deep-link preselected status (e.g. dashboard “needs confirmation”). */
-  initialStatus?: OrderStatus;
+  /** Deep-link preselected statuses (dashboard cards may span two). */
+  initialStatuses?: OrderStatus[];
+  /** Deep-link preselected source facet (e.g. dashboard guest-orders card). */
+  initialSource?: SourceFilter;
 }) {
   const t = dict.admin.orders;
   const { customerById } = useShopData();
-  const [status, setStatus] = useState<OrderStatus | null>(
-    initialStatus && ORDER_STATUSES.includes(initialStatus)
-      ? initialStatus
-      : null,
+  // Multi-select status: empty set = all (M8D — a dashboard card can preselect
+  // a status GROUP like confirmed+preparing via ?status=confirmed,preparing).
+  const [statuses, setStatuses] = useState<Set<OrderStatus>>(
+    () => new Set((initialStatuses ?? []).filter((s) => ORDER_STATUSES.includes(s))),
   );
-  const [source, setSource] = useState<SourceFilter>("all");
+  const [source, setSource] = useState<SourceFilter>(initialSource ?? "all");
   const [preset, setPreset] = useState<DateRangePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [query, setQuery] = useState("");
+
+  const hasFilters =
+    statuses.size > 0 ||
+    source !== "all" ||
+    preset !== "all" ||
+    query.trim() !== "";
+
+  function toggleStatus(s: OrderStatus) {
+    setStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  }
+
+  function clearFilters() {
+    setStatuses(new Set());
+    setSource("all");
+    setPreset("all");
+    setCustomFrom("");
+    setCustomTo("");
+    setQuery("");
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const bounds = dateRangeBounds(preset, customFrom, customTo);
     return [...orders]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .filter((order) => (status ? order.status === status : true))
+      .filter((order) => (statuses.size === 0 ? true : statuses.has(order.status)))
       .filter((order) => (source === "all" ? true : sourceOf(order) === source))
       .filter((order) =>
         preset === "all" ? true : inDateRange(order.createdAt, bounds),
@@ -93,7 +120,7 @@ export function OrdersTable({
           .toLowerCase()
           .includes(q);
       });
-  }, [orders, status, source, preset, customFrom, customTo, query, customerById]);
+  }, [orders, statuses, source, preset, customFrom, customTo, query, customerById]);
 
   function onExport() {
     // Admin-only file: internal number allowed; phone comes from the store
@@ -114,18 +141,19 @@ export function OrdersTable({
         customer?.phone ?? order.customerSnapshot?.phone ?? "",
       ];
     });
+    const h = t.csv;
     const csv = toCsv(
       [
-        "order_number",
-        "public_ref",
-        "created_at",
-        "status",
-        "store",
-        "guest",
-        "source",
-        "subtotal_excl_vat",
-        "item_count",
-        "phone",
+        h.orderNumber,
+        h.publicRef,
+        h.date,
+        h.status,
+        h.store,
+        h.guest,
+        h.source,
+        h.total,
+        h.itemCount,
+        h.phone,
       ],
       rows,
     );
@@ -160,11 +188,11 @@ export function OrdersTable({
         ) : null}
       </div>
 
-      {/* Status */}
-      <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+      {/* Status — multi-select (empty = all) */}
+      <div className="scrollbar-none -mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         <Chip
-          selected={status === null}
-          onClick={() => setStatus(null)}
+          selected={statuses.size === 0}
+          onClick={() => setStatuses(new Set())}
           className="h-9 px-3 text-xs"
         >
           {dict.common.all}
@@ -172,13 +200,23 @@ export function OrdersTable({
         {ORDER_STATUSES.map((s) => (
           <Chip
             key={s}
-            selected={status === s}
-            onClick={() => setStatus((prev) => (prev === s ? null : s))}
+            selected={statuses.has(s)}
+            onClick={() => toggleStatus(s)}
             className="h-9 px-3 text-xs"
           >
             {dict.status[s]}
           </Chip>
         ))}
+        {hasFilters ? (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="ms-1 inline-flex h-9 shrink-0 items-center gap-1 rounded-field px-3 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-sunken hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          >
+            <X className="size-3.5" aria-hidden />
+            {t.clearFilters}
+          </button>
+        ) : null}
       </div>
 
       {/* Source + date range */}

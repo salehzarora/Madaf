@@ -96,7 +96,11 @@ export default async function AdminDashboardPage({
       : new Date().toISOString().slice(0, 7);
   const monthOrders = live.filter((o) => o.createdAt.startsWith(monthPrefix));
   const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
-  const lowStockItems = inventory.filter(isLowStock);
+  // Low stock excludes DEACTIVATED products (M8D) — no point flagging stock
+  // for a product no longer sold. productById includes inactive rows.
+  const lowStockItems = inventory.filter(
+    (i) => isLowStock(i) && productById.get(i.productId)?.isActive !== false,
+  );
   const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
 
   // ── Operational alerts (M8B.4) ──────────────────────────────────────────
@@ -382,7 +386,7 @@ export default async function AdminDashboardPage({
         </Link>
 
         <Link
-          href={`/${locale}/admin/orders`}
+          href={`/${locale}/admin/orders?status=confirmed,preparing`}
           className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
@@ -406,7 +410,7 @@ export default async function AdminDashboardPage({
         </Link>
 
         <Link
-          href={`/${locale}/admin/orders`}
+          href={`/${locale}/admin/orders?guest=true&status=new`}
           className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
@@ -460,7 +464,7 @@ export default async function AdminDashboardPage({
         ) : null}
 
         <Link
-          href={`/${locale}/admin/inventory`}
+          href={`/${locale}/admin/inventory?low=1`}
           className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-accent-wash text-warning">
@@ -591,7 +595,7 @@ export default async function AdminDashboardPage({
           <CardHeader variant="strip" className="bg-accent-wash">
             <CardTitle>{t.lowStockTitle}</CardTitle>
             <Link
-              href={`/${locale}/admin/inventory`}
+              href={`/${locale}/admin/inventory?low=1`}
               className="text-[13px] font-semibold text-brand-700 hover:underline"
             >
               {dict.common.viewAll}
