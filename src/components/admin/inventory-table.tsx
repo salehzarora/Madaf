@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle, Boxes } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, Boxes, PackagePlus } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { AdjustStockForm } from "@/components/admin/adjust-stock-form";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -21,11 +22,13 @@ const DEMO_TODAY = "2026-07-05";
 /** Inventory overview with low-stock filter and optional expiry column.
  * Rows AND products come from the server page (data layer) — products
  * include DEACTIVATED ones so tracked stock always renders (M8A crash fix;
- * the shared shop-data context stays active-only for the storefront). */
+ * the shared shop-data context stays active-only for the storefront).
+ * M8B: owner/admin (supabase mode) get an inline manual-adjustment row. */
 export function InventoryTable({
   inventory,
   products,
   today,
+  canAdjust = false,
   locale,
   dict,
 }: {
@@ -33,11 +36,14 @@ export function InventoryTable({
   products: Product[];
   /** Real current day (supabase mode); mock omits it → demo timeline. */
   today?: string;
+  /** Owner/admin in supabase mode — shows the manual adjust action (M8B). */
+  canAdjust?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.inventory;
   const [lowOnly, setLowOnly] = useState(false);
+  const [adjusting, setAdjusting] = useState<string | null>(null);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -93,12 +99,15 @@ export function InventoryTable({
                 <th className="px-4 py-3 text-end">{t.colStock}</th>
                 <th className="px-4 py-3 text-start">{t.colLocation}</th>
                 <th className="px-4 py-3 text-start">{t.colExpiry}</th>
+                {canAdjust ? (
+                  <th className="px-4 py-3 text-end">{dict.common.actions}</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {rows.map(({ item, product, low, expiringSoon }) => (
+                <Fragment key={item.productId}>
                 <tr
-                  key={item.productId}
                   className={cn(
                     "border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm",
                     low && "bg-accent-wash",
@@ -172,7 +181,37 @@ export function InventoryTable({
                       <span className="text-ink-muted">{t.noExpiry}</span>
                     )}
                   </td>
+                  {canAdjust ? (
+                    <td className="px-4 py-3.5 text-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAdjusting((prev) =>
+                            prev === item.productId ? null : item.productId,
+                          )
+                        }
+                        className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                      >
+                        <PackagePlus className="size-3.5" aria-hidden />
+                        {t.adjust.button}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
+                {canAdjust && adjusting === item.productId ? (
+                  <tr className="border-b border-line-hair last:border-0">
+                    <td colSpan={5} className="px-4 py-3">
+                      <AdjustStockForm
+                        productId={item.productId}
+                        currentQuantity={item.stockPackages}
+                        locale={locale}
+                        dict={dict}
+                        onClose={() => setAdjusting(null)}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>
