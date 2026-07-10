@@ -65,12 +65,24 @@ recorded as they happen, never fabricated.
       (§5). Never in the repo.
 - [ ] Create the **private** `documents` storage bucket (§6).
 
+> **✅ SOURCE OF TRUTH — staging Supabase project (verified 2026-07-11).**
+> Staging project name: **`madaf-staging-frankfurt`**; project ref:
+> **`xcfjxgdfgjvsqkhuiczu`** (20 chars). Verified against **both** the Supabase
+> CLI link (`supabase/.temp` linked-project metadata) **and** the live Vercel
+> staging client configuration (the public `NEXT_PUBLIC_SUPABASE_URL` inlined in
+> the deployed bundle → `https://xcfjxgdfgjvsqkhuiczu.supabase.co`). Earlier
+> copies of this doc and the M7-era product notes carried two **incorrect**
+> staging refs — one unrelated 20-character string, and one 19-character
+> transcription typo of the correct ref (missing the `g`). Both were wrong and
+> have all been corrected to `xcfjxgdfgjvsqkhuiczu` (2026-07-11). No secrets
+> (keys/tokens/passwords) were read or recorded during verification.
+
 | Field | Value (non-secret only) |
 | --- | --- |
-| Project name | `madaf-staging` |
-| Project ref | `bmqoajddxjmusaaflwma` ✅ verified (20 chars; corrected from an earlier copy slip) |
-| Project URL | `https://bmqoajddxjmusaaflwma.supabase.co` |
-| Region | `ap-southeast-1` (Singapore) — note: far from Israel; latency consideration for a future production region |
+| Project name | `madaf-staging-frankfurt` |
+| Project ref | `xcfjxgdfgjvsqkhuiczu` ✅ verified 2026-07-11 against the Supabase CLI link + the live Vercel client config |
+| Project URL | `https://xcfjxgdfgjvsqkhuiczu.supabase.co` |
+| Region | Frankfurt (`eu-central-1`) — EU region (name/`vercel.json` `fra1` confirm Frankfurt; an earlier copy that said `ap-southeast-1`/Singapore belonged to the wrong ref and was incorrect) |
 | Is this the STAGING (not production) project? | ✅ **confirmed** (operator: "staging only, do not use as production") |
 
 **Migration deploy (hosted) — SAFE pattern, no reset:**
@@ -92,8 +104,9 @@ recorded as they happen, never fabricated.
 - [ ] Run `bootstrap-auth.sql`? **NO** — it seeds local demo email users; do not
       run it against staging (see §11 demo-data rule).
 
-**Status: MIGRATIONS APPLIED** (`madaf-staging`, ref `bmqoajddxjmusaaflwma`,
-`ap-southeast-1`, staging-confirmed twice). `supabase migration list` shows all
+**Status: MIGRATIONS APPLIED** (`madaf-staging-frankfurt`, ref `xcfjxgdfgjvsqkhuiczu`,
+Frankfurt `eu-central-1`, staging-confirmed twice). At the M7D deploy `supabase
+migration list` showed the then-current
 **25** migrations (`20260705100000` … `20260714120000`) applied **remotely**,
 Local==Remote; `supabase db push` reported **no pending** migrations. **No
 `config push`** (local dummy Twilio/`test_otp` never pushed), **no hosted `db
@@ -167,7 +180,7 @@ build cleared the M7D.1 `generateStaticParams` fix. **Verified independently:**
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` — **only** if trusted document storage is on;
       server-only, from the Supabase dashboard.
 - [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE = enabled` — only if storage configured.
-- [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF = bmqoajddxjmusaaflwma`
+- [ ] `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF = xcfjxgdfgjvsqkhuiczu`
       — **required whenever storage is enabled** (M7C.1).
 
 **FORBIDDEN — must never be set anywhere:**
@@ -199,7 +212,7 @@ safety linter — see §7.
       direct authenticated upload blocked; only the service role writes after
       the route authorizes. (Applied by migration.)
 - [ ] Set `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` +
-      `..._PROJECT_REF=bmqoajddxjmusaaflwma` + `SUPABASE_SERVICE_ROLE_KEY`
+      `..._PROJECT_REF=xcfjxgdfgjvsqkhuiczu` + `SUPABASE_SERVICE_ROLE_KEY`
       (server-only) in **Vercel** to enable stored PDFs; otherwise the route
       safely streams (no storage).
 - [ ] Smoke: generate a draft document PDF, download via signed URL (60s TTL).
@@ -533,7 +546,7 @@ current M7E code renders correctly, including null-customer orders (customer →
 1. **The M7E migration is NOT applied to Frankfurt.** The success screen showing
    the sequential `MDF-1004` proves `create_order_request_from_token` is still
    the pre-M7E version → `20260716100000_order_public_ref` was never `db push`ed
-   to `xcfjxgdfjvsqkhuiczu`.
+   to `xcfjxgdfgjvsqkhuiczu`.
 2. **The Vercel deployment is very likely stale (pre-M7E guard).** A pre-M7E
    build has the *unguarded* getters, so a **null-customer order** → `getCustomer("")`
    → `.eq("id","")` on a uuid column → Postgres error → the exact server-error
@@ -576,7 +589,7 @@ staging:
   instead of an empty grid (supabase mode only; mock stays the public demo).
 
 **Operator steps (hosted — confirm STAGING first; never reset/config-push):**
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260717100000` **and** the still-pending `20260716100000` (M7E public
    ref). The latter is what makes the customer success screen show
    `MDF-XXXXXXXX` instead of the internal `MDF-N`.
@@ -623,7 +636,7 @@ Full detail in `docs/product/M7G_CUSTOMER_ORDER_PRIVACY_STORE_SIGNUP.md`.
   PENDING on `/admin/customers/signup`; approve creates the customer.
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260718100000_customer_facing_document_number.sql` — doc number from
    `public_ref` + a `(tenant_id, order_id, document_type)` unique.
 2. `20260719100000_store_signup_links.sql` — `customer_signup_links` +
@@ -653,14 +666,14 @@ Full detail in `docs/product/M7H_SHOP_LINK_INVENTORY.md`.
   insufficient stock blocks delivery; cancel doesn't deduct.
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260720100000_revoke_links_for_customer.sql`
 2. `20260720110000_deduct_inventory_on_delivery.sql`
 3. `20260720120000_catalog_showcase_links.sql`
 
 **Required Vercel envs for shop/showcase images (server-only):**
 `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled`,
-`MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=xcfjxgdfjvsqkhuiczu`,
+`MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=xcfjxgdfgjvsqkhuiczu`,
 `SUPABASE_SERVICE_ROLE_KEY=<service_role key>` (never NEXT_PUBLIC). Same envs the
 document PDFs already require; if unset, images show placeholders (external URLs
 still render).
@@ -696,7 +709,7 @@ Full detail in `docs/product/M7I_GUEST_SHOWCASE_ORDERING_INVENTORY.md`.
 - **E — Searchable shop picker** (name/contact/phone/city/address).
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260721100000_inventory_reservation_lifecycle.sql`
 2. `20260721110000_showcase_guest_order.sql`
 3. `20260721120000_update_order_items.sql`
@@ -733,7 +746,7 @@ Full detail in `docs/product/M8A_FULL_QA_STABILIZATION.md`.
   becomes SSG (`scripts/check-dynamic-routes.mjs`).
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260722100000_restore_shop_order_rate_limit.sql`
 2. `20260722110000_backfill_document_numbers.sql` (renumbers pre-M7G docs,
    clears their stale stored PDFs — regenerated on next download)
@@ -769,7 +782,7 @@ Full detail in `docs/product/M8B_INVENTORY_OPS_DASHBOARD_ALERTS.md`.
   (3 locales)/address.
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260723100000_manual_inventory_adjustments.sql`
 2. `20260723110000_link_order_to_customer.sql`
 
@@ -802,7 +815,7 @@ Full detail in `docs/product/M8C_OPERATIONS_EXPORTS_CUSTOMER_LIFECYCLE.md`.
   today's sales value metric.
 
 **New migrations** (apply with `supabase db push` to Frankfurt
-`xcfjxgdfjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
+`xcfjxgdfgjvsqkhuiczu` — confirm STAGING first; never reset/config-push):
 1. `20260724100000_customer_active_lifecycle.sql`
 2. `20260724110000_inactive_store_hardening.sql` (review follow-up: MDF34
    inactive-order block on all channels + token rate-limiter fix)

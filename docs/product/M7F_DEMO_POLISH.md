@@ -103,7 +103,7 @@ M7F adds a "keep this reference" hint and clarifying comments only.
 
 ## Manual staging steps required (operator)
 
-1. **Apply the migration to Frankfurt** (`xcfjxgdfjvsqkhuiczu`) — confirm it
+1. **Apply the migration to Frankfurt** (`xcfjxgdfgjvsqkhuiczu`) — confirm it
    is STAGING first, never reset/config-push:
    ```
    supabase db push

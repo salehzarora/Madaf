@@ -117,7 +117,7 @@ before commit.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260722100000_restore_shop_order_rate_limit`,
    `20260722110000_backfill_document_numbers`,
    `20260722120000_preserve_descriptions_on_product_update`.

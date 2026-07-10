@@ -186,7 +186,7 @@ image-signing `PROBE_PASS`.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260721100000_inventory_reservation_lifecycle`,
    `20260721110000_showcase_guest_order`,
    `20260721120000_update_order_items`.

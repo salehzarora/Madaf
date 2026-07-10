@@ -133,7 +133,7 @@ the migrated ledger. Adversarial multi-agent review ran before commit.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260723100000_manual_inventory_adjustments`,
    `20260723110000_link_order_to_customer`.
 2. No new env vars. Redeploy Vercel with **build cache OFF**; the build must

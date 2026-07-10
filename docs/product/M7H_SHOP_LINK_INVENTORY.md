@@ -65,10 +65,10 @@ Code improvements: extracted a shared `signOwnTenantPaths` (used by shop +
 showcase) and added an **actionable diagnostic** — when the trusted client is
 unavailable it logs a safe, non-secret one-liner naming the exact envs to set.
 
-**Required Vercel envs (server-only; project ref `xcfjxgdfjvsqkhuiczu`):**
+**Required Vercel envs (server-only; project ref `xcfjxgdfgjvsqkhuiczu`):**
 ```
 MADAF_TRUSTED_DOCUMENT_STORAGE=enabled
-MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=xcfjxgdfjvsqkhuiczu
+MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF=xcfjxgdfgjvsqkhuiczu
 SUPABASE_SERVICE_ROLE_KEY=<the project's service_role key>   # never NEXT_PUBLIC
 ```
 `MADAF_TRUSTED_DOCUMENT_STORAGE_PROJECT_REF` must match the host label of
@@ -114,7 +114,7 @@ issues. See probes above.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260720100000_revoke_links_for_customer`,
    `20260720110000_deduct_inventory_on_delivery`,
    `20260720120000_catalog_showcase_links`.

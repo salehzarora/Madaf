@@ -134,7 +134,7 @@ link) are all fixed and re-probed.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260724100000_customer_active_lifecycle` +
    `20260724110000_inactive_store_hardening`.
 2. No new env vars. Redeploy Vercel with **build cache OFF**; the build must

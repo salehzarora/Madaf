@@ -103,7 +103,7 @@ probes above.
 
 ## Hosted staging steps (operator — confirm STAGING first; never reset/config-push)
 
-1. `supabase db push` to Frankfurt (`xcfjxgdfjvsqkhuiczu`) — applies
+1. `supabase db push` to Frankfurt (`xcfjxgdfgjvsqkhuiczu`) — applies
    `20260718100000_customer_facing_document_number` and
    `20260719100000_store_signup_links`.
 2. Redeploy Vercel from the merged branch with **build cache OFF**; confirm the
