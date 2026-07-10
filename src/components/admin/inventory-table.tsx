@@ -29,6 +29,7 @@ export function InventoryTable({
   products,
   today,
   canAdjust = false,
+  initialLowOnly = false,
   locale,
   dict,
 }: {
@@ -38,11 +39,13 @@ export function InventoryTable({
   today?: string;
   /** Owner/admin in supabase mode — shows the manual adjust action (M8B). */
   canAdjust?: boolean;
+  /** Deep-link (?low=1) preselects the low-stock filter (M8D). */
+  initialLowOnly?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.inventory;
-  const [lowOnly, setLowOnly] = useState(false);
+  const [lowOnly, setLowOnly] = useState(initialLowOnly);
   const [adjusting, setAdjusting] = useState<string | null>(null);
 
   const productById = useMemo(
@@ -56,16 +59,19 @@ export function InventoryTable({
   const rows = useMemo(
     () =>
       inventory
-        .filter((item) => (lowOnly ? isLowStock(item) : true))
         .flatMap((item) => {
           // Guarded: never crash on a row whose product is missing entirely.
           const product = productById.get(item.productId);
           if (!product) return [];
+          const low = isLowStock(item);
+          // Low-stock filter excludes DEACTIVATED products (M8D) so the list
+          // matches the dashboard low-stock count that links here.
+          if (lowOnly && (!low || product.isActive === false)) return [];
           return [
             {
               item,
               product,
-              low: isLowStock(item),
+              low,
               expiringSoon: item.nearestExpiry
                 ? new Date(item.nearestExpiry).getTime() <= horizon
                 : false,
@@ -89,7 +95,10 @@ export function InventoryTable({
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState icon={<Boxes />} title={dict.catalog.noResults} />
+        <EmptyState
+          icon={<Boxes />}
+          title={lowOnly ? t.lowEmpty : dict.catalog.noResults}
+        />
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">

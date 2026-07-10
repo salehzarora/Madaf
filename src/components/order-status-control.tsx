@@ -24,12 +24,16 @@ export function OrderStatusControl({
   initialStatus,
   locale,
   live,
+  canManage = true,
   dict,
 }: {
   orderId: string;
   initialStatus: OrderStatus;
   locale: Locale;
   live: boolean;
+  /** M8D — owner/admin only (RPC enforces). A sales_rep sees the pipeline
+   * read-only instead of clickable transitions that would fail. */
+  canManage?: boolean;
   dict: Dictionary;
 }) {
   const [status, setStatus] = useState<OrderStatus>(initialStatus);
@@ -44,8 +48,11 @@ export function OrderStatusControl({
   const currentIndex = pipeline.indexOf(status);
   const allowed = ORDER_STATUS_TRANSITIONS[status];
 
+  // Read-only for a sales_rep in live mode — the pipeline is informational.
+  const readOnly = live && !canManage;
+
   function select(next: OrderStatus) {
-    if (next === status) return;
+    if (next === status || readOnly) return;
     if (!live) {
       setStatus(next);
       return;
@@ -97,7 +104,9 @@ export function OrderStatusControl({
           const reached = status !== "cancelled" && index <= currentIndex;
           const isLast = index === pipeline.length - 1;
           const clickable =
-            !pending && (!live || step === status || allowed.includes(step));
+            !pending &&
+            !readOnly &&
+            (!live || step === status || allowed.includes(step));
           return (
             <li key={step} className="flex items-center sm:flex-1">
               <button
@@ -140,28 +149,35 @@ export function OrderStatusControl({
         })}
       </ol>
 
-      {/* Cancel toggle (mock) / cancel action (live — terminal, no undo) */}
-      <button
-        type="button"
-        onClick={() =>
-          live
-            ? select("cancelled")
-            : setStatus((prev) => (prev === "cancelled" ? "new" : "cancelled"))
-        }
-        disabled={pending || (live && !allowed.includes("cancelled"))}
-        className={cn(
-          "inline-flex min-h-11 items-center self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
-          status === "cancelled"
-            ? "bg-danger-soft text-danger"
-            : "text-ink-muted hover:bg-danger-soft hover:text-danger",
-          live &&
-            !allowed.includes("cancelled") &&
-            status !== "cancelled" &&
-            "cursor-not-allowed hover:bg-transparent hover:text-ink-muted",
-        )}
-      >
-        {dict.status.cancelled}
-      </button>
+      {/* Cancel toggle (mock) / cancel action (live — terminal, no undo).
+          Hidden for a read-only (sales_rep) viewer. */}
+      {readOnly ? (
+        <p className="rounded-field bg-surface-sunken px-3 py-2 text-xs text-ink-muted">
+          {dict.common.noPermission}
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            live
+              ? select("cancelled")
+              : setStatus((prev) => (prev === "cancelled" ? "new" : "cancelled"))
+          }
+          disabled={pending || (live && !allowed.includes("cancelled"))}
+          className={cn(
+            "inline-flex min-h-11 items-center self-start rounded-field px-3 py-2 text-sm font-medium transition-colors",
+            status === "cancelled"
+              ? "bg-danger-soft text-danger"
+              : "text-ink-muted hover:bg-danger-soft hover:text-danger",
+            live &&
+              !allowed.includes("cancelled") &&
+              status !== "cancelled" &&
+              "cursor-not-allowed hover:bg-transparent hover:text-ink-muted",
+          )}
+        >
+          {dict.status.cancelled}
+        </button>
+      )}
 
       {outOfStock ? (
         <p

@@ -426,7 +426,9 @@ enum/column — derive it.)
 | ✅ Link guest order to existing store (M8B) | `guest-order-card.tsx` duplicate panel → `linkOrderToCustomerAction` → `link_order_to_customer()` RPC (owner/admin) | done — unlinked guest orders only, snapshot preserved |
 | ✅ Duplicate customer guard (M8B) | promote/approve/create actions → `findCustomerDuplicates` (RLS-scoped, normalized phone/name) → confirm-anyway or link | done — app-layer warning; RPCs remain the gate |
 | ✅ Customer lifecycle (M8C) | `customer-lifecycle-toggle.tsx` → `setCustomerActiveAction` → `set_customer_active()` RPC (owner/admin) | done — inactive stores' links dormant via `_resolve_token`; new links blocked |
-| ✅ Admin CSV exports (M8C) | orders/products/movements tables → `src/lib/csv.ts` (client-side, filtered rows, BOM) | done — owner/admin page-gated; no new data paths |
+| ✅ Admin CSV exports (M8C/M8D) | orders/products/movements tables → `src/lib/csv.ts` (client-side, filtered rows, BOM, locale headers M8D) | done — owner/admin page-gated; formula-injection-safe; no new data paths |
+| ✅ Server-side movement search (M8D) | `movements-table.tsx` → `searchMovementsAction` → `sbSearchInventoryMovements` (RLS-native PostgREST, date/reason/direction/product filters, deterministic paging) | done — RLS owner/admin; no RPC/migration |
+| ✅ Role-gated admin UI (M8D) | admin pages compute `canManage` (owner/admin) → hide status/edit/add actions for sales_rep | done — UI-only; backend RPC gates unchanged |
 | ✅ Product create/edit (M3B) | `admin/product-form.tsx` → `create/updateProductAction` → `create_product()`/`update_product()` RPCs | done — validated, tenant-safe, incl. inventory |
 | ✅ Product images (M3B) | `product-image.tsx` prefers `imageUrl`; upload via `uploadProductImageAction` → Storage `<tenant>/products/<id>/…`, signed on read | done — private bucket, gradient fallback |
 | ✅ Manufacturers + logos (M3B) | `admin/manufacturers-manager.tsx` → `create/updateManufacturerAction` → RPCs | done — logo on catalog chips |

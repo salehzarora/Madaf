@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, History, Search } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,27 +9,43 @@ import { Chip } from "@/components/ui/chip";
 import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { loadMoreMovementsAction } from "@/lib/actions/inventory";
+import { searchMovementsAction } from "@/lib/actions/inventory";
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
-import {
-  dateRangeBounds,
-  inDateRange,
-  type DateRangePreset,
-} from "@/lib/date-range";
+import { dateRangeBounds, type DateRangePreset } from "@/lib/date-range";
 import { formatDate, formatNumber } from "@/lib/format";
-import type { InventoryMovement, Order, Product } from "@/lib/types";
+import {
+  INVENTORY_MOVEMENT_REASONS,
+  type InventoryMovement,
+  type Order,
+  type Product,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Server page size - mirrors sbListInventoryMovements. */
-const PAGE_SIZE = 500;
+/** Server page size — mirrors MOVEMENTS_PAGE in the action. */
+const PAGE_SIZE = 50;
 
 type Direction = "all" | "in" | "out" | "manual";
 
+function productMatches(p: Product, q: string): boolean {
+  return [
+    p.translations.ar.name,
+    p.translations.he.name,
+    p.translations.en.name,
+    p.sku,
+    p.barcode ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+}
+
 /**
- * Stock-movement ledger table (M8B.1) with product search, reason and
- * direction filters. Rows/products/orders come from the server page; known
- * machine reasons map to localized labels, unknown ones render raw.
+ * Stock-movement ledger table (M8B.1 → M8D server-side). Date / reason /
+ * direction filters + product search now run in the DB query (RLS
+ * owner/admin) via searchMovementsAction — the client never loads more than
+ * one page. The product search term is resolved to product ids against the
+ * already-loaded catalog. The initial page is SSR'd (unfiltered).
  */
 export function MovementsTable({
   movements: initialMovements,
@@ -42,45 +58,24 @@ export function MovementsTable({
   movements: InventoryMovement[];
   products: Product[];
   orders: Order[];
-  /** Owner/admin (RLS gives others zero rows anyway) - shows CSV export. */
+  /** Owner/admin (RLS gives others zero rows anyway) — shows CSV export. */
   canExport?: boolean;
   locale: Locale;
   dict: Dictionary;
 }) {
   const t = dict.admin.inventory.movements;
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [reason, setReason] = useState<string>("all");
   const [direction, setDirection] = useState<Direction>("all");
   const [preset, setPreset] = useState<DateRangePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  // "Load more" appends older pages fetched through the RLS-scoped action.
-  const [extra, setExtra] = useState<InventoryMovement[]>([]);
+
+  const [rows, setRows] = useState<InventoryMovement[]>(initialMovements);
   const [hasMore, setHasMore] = useState(initialMovements.length >= PAGE_SIZE);
   const [loading, startLoading] = useTransition();
-  const movements = useMemo(
-    () => [...initialMovements, ...extra],
-    [initialMovements, extra],
-  );
-
-  function onLoadMore() {
-    startLoading(async () => {
-      const result = await loadMoreMovementsAction({
-        offset: movements.length,
-      });
-      if (!result.ok) return; // transient failure — keep the button to retry
-      const page = result.movements ?? [];
-      if (page.length > 0) {
-        // Dedup on id - a fresh movement written between pages shifts
-        // offsets, which could repeat a row at the boundary.
-        const seen = new Set(movements.map((m) => m.id));
-        setExtra((prev) => [...prev, ...page.filter((m) => !seen.has(m.id))]);
-      }
-      // Only a SHORT page means we reached the end (a failure never hides the
-      // button + truncation note).
-      setHasMore(page.length >= PAGE_SIZE);
-    });
-  }
+  const firstRun = useRef(true);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -91,66 +86,76 @@ export function MovementsTable({
     [orders],
   );
 
-  // Reason filter options: only reasons that actually occur in the data.
-  const presentReasons = useMemo(
-    () => [...new Set(movements.map((m) => m.reason))].sort(),
-    [movements],
-  );
+  // Debounce the product search (server round-trip per applied term).
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // Resolve the search term to product ids against the loaded catalog.
+  // undefined = no product filter; [] = matched nothing → zero rows.
+  const productIds = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return undefined;
+    return products.filter((p) => productMatches(p, q)).map((p) => p.id);
+  }, [debouncedQuery, products]);
+
+  const isDefault =
+    reason === "all" &&
+    direction === "all" &&
+    preset === "all" &&
+    productIds === undefined;
+
+  /** Serialize the current filters for the server action. `new Date()` here
+   * (effect/handler) is fine — it never runs during render. */
+  function currentQuery(offset: number) {
+    const bounds = dateRangeBounds(preset, customFrom, customTo);
+    return {
+      from: bounds.from !== undefined ? new Date(bounds.from).toISOString() : undefined,
+      to: bounds.to !== undefined ? new Date(bounds.to).toISOString() : undefined,
+      reason: reason === "all" ? undefined : reason,
+      direction: direction === "all" ? undefined : direction,
+      productIds,
+      offset,
+    };
+  }
+
+  // Re-query page 0 whenever a filter changes. Skip the very first run when
+  // filters are still default — the SSR'd initial page already covers it.
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      if (isDefault) return;
+    }
+    startLoading(async () => {
+      const result = await searchMovementsAction(currentQuery(0));
+      if (result.ok) {
+        setRows(result.movements ?? []);
+        setHasMore(!!result.hasMore);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reason, direction, preset, customFrom, customTo, productIds]);
+
+  function onLoadMore() {
+    startLoading(async () => {
+      const result = await searchMovementsAction(currentQuery(rows.length));
+      if (!result.ok) return; // transient — keep the button to retry
+      const page = result.movements ?? [];
+      if (page.length > 0) {
+        const seen = new Set(rows.map((m) => m.id));
+        setRows((prev) => [...prev, ...page.filter((m) => !seen.has(m.id))]);
+      }
+      setHasMore(!!result.hasMore && page.length > 0);
+    });
+  }
 
   const reasonLabel = (value: string): string =>
     (t.reasons as Record<string, string>)[value] ?? value;
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const bounds = dateRangeBounds(preset, customFrom, customTo);
-    return movements
-      .filter((m) => (reason === "all" ? true : m.reason === reason))
-      .filter((m) => {
-        switch (direction) {
-          case "in":
-            return m.quantityDelta > 0;
-          case "out":
-            return m.quantityDelta < 0;
-          case "manual":
-            return m.orderId === null;
-          default:
-            return true;
-        }
-      })
-      .filter((m) =>
-        preset === "all" ? true : inDateRange(m.createdAt, bounds),
-      )
-      .filter((m) => {
-        if (!q) return true;
-        const product = m.productId ? productById.get(m.productId) : undefined;
-        const order = m.orderId ? orderById.get(m.orderId) : undefined;
-        return [
-          product ? productName(product, locale) : "",
-          product?.sku ?? "",
-          order?.number ?? "",
-          order?.publicRef ?? "",
-          m.note ?? "",
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      });
-  }, [
-    movements,
-    query,
-    reason,
-    direction,
-    preset,
-    customFrom,
-    customTo,
-    productById,
-    orderById,
-    locale,
-  ]);
-
   function onExport() {
-    // Admin-only file over the CURRENT filtered (loaded) rows.
-    const rows = filtered.map((m) => {
+    // Admin-only file over the CURRENT loaded (server-filtered) rows.
+    const rowsCsv = rows.map((m) => {
       const product = m.productId ? productById.get(m.productId) : undefined;
       const order = m.orderId ? orderById.get(m.orderId) : undefined;
       return [
@@ -158,27 +163,19 @@ export function MovementsTable({
         product ? productName(product, locale) : "",
         product?.sku ?? "",
         m.quantityDelta,
-        m.reason,
+        reasonLabel(m.reason),
         m.note ?? "",
         order?.number ?? "",
         order?.publicRef ?? "",
       ];
     });
+    const h = t.csv;
     const csv = toCsv(
-      [
-        "created_at",
-        "product",
-        "sku",
-        "quantity_delta",
-        "reason",
-        "note",
-        "order_number",
-        "public_ref",
-      ],
-      rows,
+      [h.date, h.product, h.sku, h.delta, h.reason, h.note, h.order, h.publicRef],
+      rowsCsv,
     );
     downloadCsv(
-      `madaf-stock-movements-${new Date().toISOString().slice(0, 10)}.csv`,
+      `madaf-inventory-movements-${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
     );
   }
@@ -207,7 +204,7 @@ export function MovementsTable({
           className="sm:w-56"
         >
           <option value="all">{t.allReasons}</option>
-          {presentReasons.map((r) => (
+          {INVENTORY_MOVEMENT_REASONS.map((r) => (
             <option key={r} value={r}>
               {reasonLabel(r)}
             </option>
@@ -227,7 +224,7 @@ export function MovementsTable({
         </div>
       </div>
 
-      {/* Date range + export (M8C) */}
+      {/* Date range + export */}
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={preset}
@@ -267,8 +264,8 @@ export function MovementsTable({
           <button
             type="button"
             onClick={onExport}
-            disabled={filtered.length === 0}
-            title={filtered.length === 0 ? dict.common.exportEmpty : undefined}
+            disabled={rows.length === 0}
+            title={rows.length === 0 ? dict.common.exportEmpty : undefined}
             className="ms-auto inline-flex h-11 items-center gap-1.5 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="size-4" aria-hidden />
@@ -277,19 +274,11 @@ export function MovementsTable({
         ) : null}
       </div>
 
-      {/* Older rows exist beyond the loaded pages — say so instead of letting
-          a filtered miss read as "it never happened" (M8B/M8C). */}
-      {hasMore ? (
-        <p className="rounded-field bg-info-soft px-3 py-2 text-xs text-info">
-          {t.truncatedNote}
-        </p>
-      ) : null}
-
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           icon={<History />}
-          title={movements.length === 0 ? t.empty : dict.catalog.noResults}
-          hint={movements.length === 0 ? t.emptyHint : undefined}
+          title={isDefault ? t.empty : dict.catalog.noResults}
+          hint={isDefault ? t.emptyHint : undefined}
         />
       ) : (
         <Card className="overflow-x-auto">
@@ -305,7 +294,7 @@ export function MovementsTable({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((m) => {
+              {rows.map((m) => {
                 const product = m.productId
                   ? productById.get(m.productId)
                   : undefined;
@@ -347,10 +336,6 @@ export function MovementsTable({
                       {reasonLabel(m.reason)}
                     </td>
                     <td className="px-4 py-3">
-                      {/* "Manual" means the movement HAS no order (orderId
-                          null) — an order that merely failed to resolve
-                          (truncated orders list) renders "—", never a
-                          misleading Manual badge. */}
                       {m.orderId === null ? (
                         <span className="text-ink-muted">{t.manualBadge}</span>
                       ) : order ? (

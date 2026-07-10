@@ -7,12 +7,20 @@ import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, listOrders } from "@/lib/data";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
+type SourceFilter = "all" | "sales_visit" | "shop_link" | "guest";
+const SOURCE_FILTERS: readonly SourceFilter[] = [
+  "all",
+  "sales_visit",
+  "shop_link",
+  "guest",
+];
+
 export default async function AdminOrdersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; source?: string; guest?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
@@ -26,11 +34,20 @@ export default async function AdminOrdersPage({
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
   const canExport = !isSupabase || role === "owner" || role === "admin";
 
-  // Dashboard cards deep-link with ?status=… (validated here).
-  const rawStatus = (await searchParams).status;
-  const initialStatus = ORDER_STATUSES.includes(rawStatus as OrderStatus)
-    ? (rawStatus as OrderStatus)
-    : undefined;
+  // Dashboard cards deep-link with query params (M8D). Comma-separated status
+  // supports a status GROUP (e.g. confirmed,preparing). ?guest=true is an
+  // alias for the guest source facet.
+  const sp = await searchParams;
+  const initialStatuses = (sp.status ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is OrderStatus => ORDER_STATUSES.includes(s as OrderStatus));
+  const initialSource: SourceFilter =
+    sp.guest === "true"
+      ? "guest"
+      : SOURCE_FILTERS.includes(sp.source as SourceFilter)
+        ? (sp.source as SourceFilter)
+        : "all";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -49,7 +66,8 @@ export default async function AdminOrdersPage({
         locale={locale}
         dict={dict}
         canExport={canExport}
-        initialStatus={initialStatus}
+        initialStatuses={initialStatuses}
+        initialSource={initialSource}
       />
     </div>
   );

@@ -159,6 +159,19 @@ export const INVENTORY_MOVEMENT_REASONS = [
 export type InventoryMovementReason =
   (typeof INVENTORY_MOVEMENT_REASONS)[number];
 
+/** Server-side movement-search filters (M8D). All optional; omitted = no
+ * filter. `productIds` is resolved from the search term client-side. */
+export interface MovementQuery {
+  /** Inclusive ISO lower bound. */
+  from?: string;
+  /** Exclusive ISO upper bound. */
+  to?: string;
+  reason?: string;
+  direction?: "in" | "out" | "manual";
+  /** undefined = no product filter; [] = matched nothing → zero rows. */
+  productIds?: string[];
+}
+
 /** One append-only stock-movement ledger row (M8B admin history view). */
 export interface InventoryMovement {
   id: string;

@@ -25,7 +25,9 @@ export default async function AdminProductsPage({
   // CSV export is owner/admin (mock demo stays open) — M8C.
   const isSupabase = getDataMode() === "supabase";
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
-  const canExport = !isSupabase || role === "owner" || role === "admin";
+  // Owner/admin gate for BOTH export and the edit/activate actions (M8D —
+  // product writes are owner/admin; a sales_rep sees a read-only list).
+  const canManage = !isSupabase || role === "owner" || role === "admin";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -40,20 +42,23 @@ export default async function AdminProductsPage({
             </h1>
             <p className="mt-0.5 text-sm text-ink-muted">{t.subtitle}</p>
           </div>
-          <Link
-            href={`/${locale}/admin/products/new`}
-            className="inline-flex h-11 items-center gap-2 rounded-field bg-brand-600 px-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12),0_1px_2px_rgb(25_22_18/0.2)] transition-colors hover:bg-brand-700 active:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-          >
-            <PlusCircle className="size-4" aria-hidden />
-            {t.addProduct}
-          </Link>
+          {canManage ? (
+            <Link
+              href={`/${locale}/admin/products/new`}
+              className="inline-flex h-11 items-center gap-2 rounded-field bg-brand-600 px-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12),0_1px_2px_rgb(25_22_18/0.2)] transition-colors hover:bg-brand-700 active:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <PlusCircle className="size-4" aria-hidden />
+              {t.addProduct}
+            </Link>
+          ) : null}
         </div>
         <ShelfRule className="mt-4" />
       </div>
       <ProductsTable
         products={products}
         inventory={inventory}
-        canExport={canExport}
+        canExport={canManage}
+        canManage={canManage}
         locale={locale}
         dict={dict}
       />

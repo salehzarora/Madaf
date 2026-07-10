@@ -813,3 +813,28 @@ end with the route-guard OK line.
 No RLS/policy change, anon revoked on the new RPC, no direct table writes,
 no service_role in client, no legal/payment change, `legal_effective` stays
 false. No hosted db reset, no config push.
+
+## 24. M8D — server-side ops polish, localized exports, role UX
+
+Full detail in `docs/product/M8D_OPS_POLISH_PAGINATION_ROLE_UX.md`.
+**No migrations — pure app-layer.**
+
+- **Movements:** filters (date/reason/direction/manual/product search) now run
+  in the DB query (RLS owner/admin), deterministic order + load-more
+  pagination; sales_rep 0 rows, anon denied.
+- **Orders:** deep-link params (?status=confirmed,preparing multi-status,
+  ?source, ?guest=true) + clear-filters; dashboard cards now link with counts
+  that MATCH their filtered destination.
+- **CSV:** localized headers (ar/he/en) for orders/products/movements;
+  formula-injection defense + BOM intact.
+- **Role UX:** sales_rep sees read-only order status, no product/manufacturer
+  add-edit, no movements export — backend RPC gates UNCHANGED (UI-only).
+- **Low-stock:** dashboard/sidebar link to /admin/inventory?low=1; inactive
+  products excluded from count AND list.
+
+**Migrations:** none in M8D. Redeploy Vercel with **build cache OFF**; build
+must end with the route-guard OK line. (The M8C `20260724*` migrations remain
+the outstanding hosted `supabase db push` step if not already applied.)
+
+No RLS/policy/grant change, no service_role in client, no legal/payment
+change, `legal_effective` stays false. No hosted db reset, no config push.

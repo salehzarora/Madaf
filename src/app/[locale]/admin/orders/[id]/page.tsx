@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
+import { getSessionContext } from "@/lib/auth/session";
 import { orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
   getCustomer,
@@ -53,6 +54,11 @@ export default async function AdminOrderDetailPage({
   // Latest document record per type, for the documents history/generate card.
   const docsByType = new Map(orderDocs.map((doc) => [doc.type, doc]));
   const live = getDataMode() === "supabase";
+  // M8D: status changes, item editing and guest promotion are owner/admin
+  // (the RPCs enforce it). A sales_rep can VIEW an assigned order but not
+  // manage it — hide/disable those actions instead of showing failing ones.
+  const role = live ? (await getSessionContext()).membership?.role : null;
+  const canManage = !live || role === "owner" || role === "admin";
   // Guest (showcase) order — no linked shop, buyer details in the snapshot (M7I).
   const guest =
     !customer && order.customerSnapshot?.name ? order.customerSnapshot : null;
@@ -108,6 +114,7 @@ export default async function AdminOrderDetailPage({
                 initialStatus={order.status}
                 locale={locale}
                 live={live}
+                canManage={canManage}
                 dict={dict}
               />
             </CardContent>
@@ -178,7 +185,7 @@ export default async function AdminOrderDetailPage({
             products={products}
             categories={categories}
             locale={locale}
-            live={live}
+            live={live && canManage}
             dict={dict}
           />
         </div>
@@ -190,7 +197,7 @@ export default async function AdminOrderDetailPage({
               orderId={order.id}
               snapshot={guest}
               locale={locale}
-              live={live}
+              live={live && canManage}
               dict={dict}
             />
           ) : (

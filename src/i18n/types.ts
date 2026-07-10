@@ -16,6 +16,8 @@ export interface Dictionary {
     /** M8C — admin CSV export button + empty tooltip (orders/products/movements). */
     exportCsv: string;
     exportEmpty: string;
+    /** M8D — shown where a role-gated action is hidden for a sales_rep. */
+    noPermission: string;
     search: string;
     all: string;
     add: string;
@@ -265,6 +267,18 @@ export interface Dictionary {
       inactiveBadge: string;
       filterStatus: string;
       statusActive: string;
+      /** M8D — localized CSV headers for the products export. */
+      csv: {
+        name: string;
+        sku: string;
+        barcode: string;
+        category: string;
+        manufacturer: string;
+        price: string;
+        status: string;
+        stock: string;
+        lowStock: string;
+      };
       new: {
         title: string;
         subtitle: string;
@@ -349,6 +363,21 @@ export interface Dictionary {
       colDate: string;
       colRef: string;
       searchPlaceholder: string;
+      /** M8D — clear all active filters. */
+      clearFilters: string;
+      /** M8D — localized CSV headers for the orders export. */
+      csv: {
+        orderNumber: string;
+        publicRef: string;
+        date: string;
+        status: string;
+        store: string;
+        guest: string;
+        source: string;
+        total: string;
+        itemCount: string;
+        phone: string;
+      };
       /** M8C — order source facets. */
       sourceFilter: {
         sales_visit: string;
@@ -439,6 +468,8 @@ export interface Dictionary {
       noExpiry: string;
       lowOnly: string;
       expiringSoon: string;
+      /** M8D — empty state when the low-stock filter has no matches. */
+      lowEmpty: string;
       /** M8B.1 — stock-movement ledger history view. */
       movements: {
         navLabel: string;
@@ -452,6 +483,17 @@ export interface Dictionary {
         colReason: string;
         colOrder: string;
         colNote: string;
+        /** M8D — localized CSV headers for the movements export. */
+        csv: {
+          date: string;
+          product: string;
+          sku: string;
+          delta: string;
+          reason: string;
+          note: string;
+          order: string;
+          publicRef: string;
+        };
         /** Order column value for manual (order-less) adjustments. */
         manualBadge: string;
         /** Shown when older rows exist beyond the loaded pages. */

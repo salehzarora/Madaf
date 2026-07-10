@@ -8,7 +8,11 @@
  * Supabase-only (mock has no ledger and persists nothing).
  */
 import { inventory, inventoryByProductId } from "@/lib/mock";
-import type { InventoryItem, InventoryMovement } from "@/lib/types";
+import type {
+  InventoryItem,
+  InventoryMovement,
+  MovementQuery,
+} from "@/lib/types";
 
 import { getDataMode } from "./mode";
 
@@ -37,6 +41,23 @@ export async function listInventoryMovements(
 ): Promise<InventoryMovement[]> {
   if (getDataMode() === "supabase") {
     return (await import("./supabase-reads")).sbListInventoryMovements(offset);
+  }
+  return [];
+}
+
+/** M8D — server-side filtered movement search (Supabase-only). Mock has no
+ * ledger → empty. */
+export async function searchInventoryMovements(
+  query: MovementQuery,
+  offset = 0,
+  limit = 50,
+): Promise<InventoryMovement[]> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbSearchInventoryMovements(
+      query,
+      offset,
+      limit,
+    );
   }
   return [];
 }
