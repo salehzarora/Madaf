@@ -22,6 +22,11 @@ import { formatCurrency } from "@/lib/format";
 import { useShopData } from "@/lib/shop-data-context";
 import type { InventoryItem, Product } from "@/lib/types";
 
+/** Filtered-export ceiling (M8E.1). Products load fully client-side, so the
+ * export already covers every filtered row; the cap + warning bound a very
+ * large catalog defensively. */
+const EXPORT_CAP = 5000;
+
 /**
  * Admin products list — search + category filter. Products come from the
  * server page (data layer, includes inactive in Supabase mode). In
@@ -57,6 +62,7 @@ export function ProductsTable({
   const [activeFilter, setActiveFilter] = useState<
     "all" | "active" | "inactive"
   >("all");
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,7 +106,10 @@ export function ProductsTable({
   function onExport() {
     // Admin-only file over the CURRENT filtered rows (tenant-scoped data
     // the admin already sees). Untracked products export empty stock cells.
-    const rows = filtered.map((product) => {
+    // Bounded by EXPORT_CAP — past it export the first CAP rows and warn (M8E.1).
+    setExportNote(null);
+    const capped = filtered.length > EXPORT_CAP;
+    const rows = (capped ? filtered.slice(0, EXPORT_CAP) : filtered).map((product) => {
       const inv = inventoryByProduct.get(product.id);
       const category = categoryById.get(product.categoryId);
       const manufacturer = manufacturerById.get(product.manufacturerId);
@@ -135,6 +144,9 @@ export function ProductsTable({
       `madaf-products-${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
     );
+    if (capped) {
+      setExportNote(interpolate(dict.common.exportCapped, { count: EXPORT_CAP }));
+    }
   }
 
   function toggleActive(product: Product) {
@@ -206,6 +218,15 @@ export function ProductsTable({
           </button>
         ) : null}
       </div>
+
+      {exportNote ? (
+        <p
+          role="status"
+          className="rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
+        >
+          {exportNote}
+        </p>
+      ) : null}
 
       <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         <Chip

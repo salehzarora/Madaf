@@ -26,6 +26,11 @@ import {
   type OrderStatus,
 } from "@/lib/types";
 
+/** Filtered-export ceiling (M8E.1). Orders load fully client-side, so the
+ * export already covers every filtered row; the cap + warning are a defensive
+ * bound so a very large tenant never ships an unbounded file silently. */
+const EXPORT_CAP = 5000;
+
 /** Order-source facets (M8C): how the order reached the warehouse. */
 type SourceFilter = "all" | "sales_visit" | "shop_link" | "guest";
 
@@ -70,6 +75,7 @@ export function OrdersTable({
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [query, setQuery] = useState("");
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   const hasFilters =
     statuses.size > 0 ||
@@ -124,8 +130,11 @@ export function OrdersTable({
 
   function onExport() {
     // Admin-only file: internal number allowed; phone comes from the store
-    // record / guest snapshot the admin already sees on screen.
-    const rows = filtered.map((order) => {
+    // record / guest snapshot the admin already sees on screen. Bounded by
+    // EXPORT_CAP — past it we export the first CAP rows and warn (M8E.1).
+    setExportNote(null);
+    const capped = filtered.length > EXPORT_CAP;
+    const rows = (capped ? filtered.slice(0, EXPORT_CAP) : filtered).map((order) => {
       const customer = customerById.get(order.customerId);
       const src = sourceOf(order);
       return [
@@ -161,6 +170,9 @@ export function OrdersTable({
       `madaf-orders-${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
     );
+    if (capped) {
+      setExportNote(interpolate(dict.common.exportCapped, { count: EXPORT_CAP }));
+    }
   }
 
   return (
@@ -187,6 +199,15 @@ export function OrdersTable({
           </button>
         ) : null}
       </div>
+
+      {exportNote ? (
+        <p
+          role="status"
+          className="rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
+        >
+          {exportNote}
+        </p>
+      ) : null}
 
       {/* Status — multi-select (empty = all) */}
       <div className="scrollbar-none -mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
