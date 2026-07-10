@@ -15,6 +15,11 @@ import {
   uploadProductImageAction,
 } from "@/lib/actions/products";
 import { getDataMode } from "@/lib/data/mode";
+import {
+  IMAGE_ACCEPT,
+  MAX_PRODUCT_IMAGE_BYTES,
+  preValidateImage,
+} from "@/lib/image-upload";
 import { useShopData } from "@/lib/shop-data-context";
 import { BASE_UNITS, PACKAGE_UNITS, type InventoryItem, type Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -73,6 +78,12 @@ export function ProductForm({
 
   async function onUpload(file: File) {
     setUploadError(null);
+    // Fast client-side reject before any upload starts (server re-validates).
+    const pre = preValidateImage(file, MAX_PRODUCT_IMAGE_BYTES);
+    if (pre) {
+      setUploadError(pre === "size" ? t.uploadSizeError : t.uploadTypeError);
+      return;
+    }
     // Mock mode never persists — show a local, client-only preview so the
     // upload flow is demonstrable in the zero-env default. Never persist the
     // blob URL (imageUrl stays empty).
@@ -95,12 +106,15 @@ export function ProductForm({
         setImageUrl(result.path);
         setPreview(result.previewUrl);
       } else {
+        // The current image/preview is untouched on failure.
         setUploadError(
           result.reason === "type"
             ? t.uploadTypeError
             : result.reason === "size"
               ? t.uploadSizeError
-              : t.uploadFailed,
+              : result.reason === "invalid"
+                ? dict.common.uploadInvalid
+                : t.uploadFailed,
         );
       }
     } catch {
@@ -381,7 +395,7 @@ export function ProductForm({
           {/* Device upload — works in create & edit (M7F.1); mock mode shows a
               local, client-only preview (see onUpload). */}
           <div>
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
+              <input ref={fileRef} type="file" accept={IMAGE_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];

@@ -315,8 +315,11 @@ export interface UploadImageResult {
   path?: string;
   /** Short-lived signed URL for immediate preview. */
   previewUrl?: string;
-  /** Reason surfaced to the UI for a localized message. */
-  reason?: "type" | "size" | "failed";
+  /** Reason surfaced to the UI for a localized message. "type" = unsupported
+   * MIME; "invalid" = declared image but the bytes are not a real/matching
+   * image (magic-byte mismatch, corrupt); "size" = too large; "failed" =
+   * storage/transport/unknown error. */
+  reason?: "type" | "invalid" | "size" | "failed";
 }
 
 export async function uploadProductImageAction(
@@ -347,7 +350,9 @@ export async function uploadProductImageAction(
     // match the declared type — a spoofed Content-Type is rejected.
     const sniffed = sniffImageMime(bytes);
     if (!sniffed || sniffed !== file.type) {
-      return { ok: false, reason: "type" };
+      // Declared an image but the bytes don't match a real allowed image
+      // (spoofed Content-Type / corrupt) → distinct "invalid" reason.
+      return { ok: false, reason: "invalid" };
     }
     const result = await uploadProductImage({
       ...(productId ? { productId } : {}),
@@ -392,7 +397,9 @@ export async function uploadManufacturerLogoAction(
     const bytes = new Uint8Array(await file.arrayBuffer());
     const sniffed = sniffImageMime(bytes);
     if (!sniffed || sniffed !== file.type) {
-      return { ok: false, reason: "type" };
+      // Declared an image but the bytes don't match a real allowed image
+      // (spoofed Content-Type / corrupt) → distinct "invalid" reason.
+      return { ok: false, reason: "invalid" };
     }
     const result = await uploadManufacturerLogo({
       ...(manufacturerId ? { manufacturerId } : {}),
@@ -430,7 +437,9 @@ export async function uploadTenantLogoAction(
     const bytes = new Uint8Array(await file.arrayBuffer());
     const sniffed = sniffImageMime(bytes);
     if (!sniffed || sniffed !== file.type) {
-      return { ok: false, reason: "type" };
+      // Declared an image but the bytes don't match a real allowed image
+      // (spoofed Content-Type / corrupt) → distinct "invalid" reason.
+      return { ok: false, reason: "invalid" };
     }
     const result = await uploadTenantLogo({
       fileName: file.name || "logo",

@@ -16,6 +16,16 @@ const nextConfig: NextConfig = {
       "./src/lib/pdf/fonts/*.ttf",
     ],
   },
+  experimental: {
+    // Image/logo uploads go through Server Actions, whose request body is
+    // capped at 1MB by default — smaller than the app's own image limits
+    // (5MB product images, 2MB logos). A valid image between 1MB and the app
+    // limit would otherwise be rejected at the transport layer (a rejected
+    // action promise), so raise the cap to cover the largest allowed upload.
+    serverActions: {
+      bodySizeLimit: "6mb",
+    },
+  },
 };
 
 export default nextConfig;
