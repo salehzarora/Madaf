@@ -443,6 +443,7 @@ export type Database = {
           created_at: string
           customer_type: Database["public"]["Enums"]["customer_type"]
           id: string
+          is_active: boolean
           name: string
           notes: string | null
           phone: string | null
@@ -458,6 +459,7 @@ export type Database = {
           created_at?: string
           customer_type?: Database["public"]["Enums"]["customer_type"]
           id?: string
+          is_active?: boolean
           name: string
           notes?: string | null
           phone?: string | null
@@ -473,6 +475,7 @@ export type Database = {
           created_at?: string
           customer_type?: Database["public"]["Enums"]["customer_type"]
           id?: string
+          is_active?: boolean
           name?: string
           notes?: string | null
           phone?: string | null
@@ -2119,6 +2122,10 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: Json
+      }
+      set_customer_active: {
+        Args: { p_active: boolean; p_customer_id: string; p_tenant_id: string }
+        Returns: boolean
       }
       set_document_storage: {
         Args: {

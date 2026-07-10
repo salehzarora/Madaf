@@ -142,6 +142,20 @@ export async function sbAdjustInventoryStock(
   return { newQuantity: data as number };
 }
 
+/** M8C.3 — owner/admin toggle a store's active lifecycle flag. */
+export async function sbSetCustomerActive(
+  customerId: string,
+  active: boolean,
+): Promise<void> {
+  const { client, tenantId } = await getDataContext();
+  const { error } = await client.rpc("set_customer_active", {
+    p_tenant_id: tenantId,
+    p_customer_id: customerId,
+    p_active: active,
+  });
+  if (error) fail("setCustomerActive", error.message);
+}
+
 /** M8B.3 — owner/admin link a GUEST order to an EXISTING customer (instead
  * of promoting the snapshot into a duplicate). Snapshot is preserved. */
 export async function sbLinkOrderToCustomer(

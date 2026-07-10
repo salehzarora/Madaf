@@ -29,11 +29,14 @@ export function CustomerLinksManager({
   dict,
   customerId,
   initialLinks,
+  customerInactive = false,
 }: {
   locale: Locale;
   dict: Dictionary;
   customerId: string;
   initialLinks: CustomerLink[];
+  /** M8C — deactivated store: no new/regenerated links until reactivation. */
+  customerInactive?: boolean;
 }) {
   const t = dict.access.links;
   const router = useRouter();
@@ -65,7 +68,7 @@ export function CustomerLinksManager({
         setExpiryDays(0);
         router.refresh();
       } else {
-        setError(t.error);
+        setError(result.reason === "inactive" ? t.inactiveError : t.error);
       }
     });
   }
@@ -128,7 +131,7 @@ export function CustomerLinksManager({
         setCreatedUrl(`${origin}${result.url}`);
         router.refresh();
       } else {
-        setError(t.error);
+        setError(result.reason === "inactive" ? t.inactiveError : t.error);
       }
     });
   }
@@ -151,8 +154,16 @@ export function CustomerLinksManager({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* M8C: a deactivated store gets no new credentials — the create form
+          is replaced by a clear notice (the RPC blocks regardless). */}
+      {customerInactive ? (
+        <p className="rounded-field bg-warning-soft px-4 py-3 text-sm font-medium text-warning">
+          {t.inactiveError}
+        </p>
+      ) : null}
+
       {/* Create */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+      <div className={customerInactive ? "hidden" : "flex flex-col gap-4 sm:flex-row sm:items-end"}>
         <div className="flex-1">
           <Label htmlFor="link-label">{t.label}</Label>
           <Input
@@ -267,6 +278,9 @@ export function CustomerLinksManager({
                     <td className="px-3 py-3 text-end">
                       {status === "active" ? (
                         <div className="inline-flex items-center justify-end gap-1">
+                          {/* No regeneration for a deactivated store (M8C);
+                              revoke stays available. */}
+                          {customerInactive ? null : (
                           <button
                             type="button"
                             onClick={() => onRegenerate(link)}
@@ -276,6 +290,7 @@ export function CustomerLinksManager({
                             <RefreshCw className="size-3.5" aria-hidden />
                             {t.regenerate}
                           </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => onRevoke(link.id)}

@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -36,11 +36,19 @@ export function CustomersTable({
 }) {
   const t = dict.admin.customers;
   const [query, setQuery] = useState("");
+  const [lifecycle, setLifecycle] = useState<"all" | "active" | "inactive">(
+    "all",
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) =>
+    const base = customers.filter((c) => {
+      if (lifecycle === "active") return c.isActive !== false;
+      if (lifecycle === "inactive") return c.isActive === false;
+      return true;
+    });
+    if (!q) return base;
+    return base.filter((c) =>
       [
         c.name,
         c.contactName ?? "",
@@ -54,23 +62,37 @@ export function CustomersTable({
         .toLowerCase()
         .includes(q),
     );
-  }, [customers, query]);
+  }, [customers, query, lifecycle]);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative sm:max-w-sm">
-        <Search
-          className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-ink-muted"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t.searchPlaceholder}
-          aria-label={t.searchPlaceholder}
-          className="ps-9"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative sm:max-w-sm sm:flex-1">
+          <Search
+            className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-ink-muted"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchPlaceholder}
+            aria-label={t.searchPlaceholder}
+            className="ps-9"
+          />
+        </div>
+        <Select
+          value={lifecycle}
+          onChange={(e) =>
+            setLifecycle(e.target.value as "all" | "active" | "inactive")
+          }
+          aria-label={t.lifecycle.filterLabel}
+          className="sm:w-44"
+        >
+          <option value="all">{dict.common.all}</option>
+          <option value="active">{t.lifecycle.activeBadge}</option>
+          <option value="inactive">{t.lifecycle.inactiveBadge}</option>
+        </Select>
       </div>
 
       {filtered.length === 0 ? (
@@ -103,8 +125,13 @@ export function CustomersTable({
                           <Store className="size-4" aria-hidden />
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-ink">
+                          <p className="flex items-center gap-1.5 truncate font-semibold text-ink">
                             {customer.name}
+                            {customer.isActive === false ? (
+                              <span className="shrink-0 rounded-badge bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                                {t.lifecycle.inactiveBadge}
+                              </span>
+                            ) : null}
                           </p>
                           <p className="truncate text-xs text-ink-muted">
                             {customer.contactName}

@@ -21,6 +21,21 @@ export async function getCustomer(id: string): Promise<Customer | undefined> {
   return customerById.get(id);
 }
 
+/** M8C.3 — owner/admin deactivate/reactivate a store (Supabase-only write).
+ * Inactive stores keep their history; their private links go dormant. */
+export async function setCustomerActive(
+  customerId: string,
+  active: boolean,
+): Promise<void> {
+  if (getDataMode() !== "supabase") {
+    throw new Error("[madaf/data] setCustomerActive is a Supabase-only write.");
+  }
+  return (await import("./supabase-writes")).sbSetCustomerActive(
+    customerId,
+    active,
+  );
+}
+
 // ── Duplicate detection (M8B.3) ────────────────────────────────────────────
 
 /** Digits-only phone, Israeli-prefix folded: "+972 50-123…" ≡ "050123…". */
@@ -45,6 +60,8 @@ export interface CustomerDuplicate {
   city: { ar: string; he: string; en: string };
   /** "phone" = same normalized phone (strong); "name" = same name (soft). */
   matchType: "phone" | "name";
+  /** M8C — inactive duplicates are shown separately in the warnings. */
+  isActive: boolean;
 }
 
 /**
@@ -76,6 +93,7 @@ export async function findCustomerDuplicates(input: {
       phone: c.phone || undefined,
       city: c.city,
       matchType,
+      isActive: c.isActive !== false,
     });
   }
   return out.sort((a, b) =>

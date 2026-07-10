@@ -242,6 +242,37 @@ function mapTokenManufacturer(m: any): Manufacturer {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
+ * M8C — is this (otherwise well-formed) shop link dead ONLY because its
+ * store was deactivated? Lets /shop/<token> show the specific "هذا الدكان
+ * غير مفعّل" message instead of the generic invalid-link screen. Checked
+ * server-side by token_hash on the trusted service client. FAIL-OPEN to
+ * false (generic message) — the RPCs remain the security boundary either
+ * way (an inactive store can neither browse nor order).
+ */
+export async function isShopLinkInactive(rawToken: string): Promise<boolean> {
+  try {
+    const client = getProductImageStorageClient();
+    const { data: link, error } = await client
+      .from("customer_access_links")
+      .select("customer_id, revoked_at, expires_at")
+      .eq("token_hash", hashToken(rawToken))
+      .maybeSingle();
+    if (error || !link || link.revoked_at) return false;
+    if (link.expires_at && new Date(link.expires_at).getTime() <= Date.now()) {
+      return false;
+    }
+    const { data: customer } = await client
+      .from("customers")
+      .select("is_active")
+      .eq("id", link.customer_id)
+      .maybeSingle();
+    return customer ? customer.is_active === false : false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve a token to its scoped catalog, or null if the token is invalid /
  * revoked / expired (the RPC raises; we translate to null so the route can
  * render a clean "link no longer valid" message).

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CustomerLifecycleToggle } from "@/components/admin/customer-lifecycle-toggle";
 import { CustomerLinksManager } from "@/components/admin/customer-links-manager";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
@@ -70,6 +71,11 @@ export default async function AdminCustomerDetailPage({
               <Badge tone="neutral" dot>
                 {dict.admin.customers.types[customer.type]}
               </Badge>
+              {customer.isActive === false ? (
+                <Badge tone="danger" dot>
+                  {dict.admin.customers.lifecycle.inactiveBadge}
+                </Badge>
+              ) : null}
             </div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft">
               {customer.contactName ? (
@@ -102,13 +108,23 @@ export default async function AdminCustomerDetailPage({
             </div>
           </div>
           {canEdit ? (
-            <Link
-              href={`/${locale}/admin/customers/${id}/edit`}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-            >
-              <Pencil className="size-3.5" aria-hidden />
-              {dict.admin.customers.edit}
-            </Link>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <Link
+                href={`/${locale}/admin/customers/${id}/edit`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line-strong px-3 text-xs font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              >
+                <Pencil className="size-3.5" aria-hidden />
+                {dict.admin.customers.edit}
+              </Link>
+              {/* Lifecycle (M8C.3): deactivation freezes the store's private
+                  links + new-link creation; history stays. */}
+              <CustomerLifecycleToggle
+                customerId={id}
+                isActive={customer.isActive !== false}
+                locale={locale}
+                dict={dict}
+              />
+            </div>
           ) : null}
         </div>
       </Card>
@@ -127,6 +143,7 @@ export default async function AdminCustomerDetailPage({
                 dict={dict}
                 customerId={id}
                 initialLinks={links}
+                customerInactive={customer.isActive === false}
               />
             ) : (
               <p className="rounded-field bg-surface-sunken px-4 py-3 text-sm text-ink-soft">

@@ -16,6 +16,7 @@ import {
   revokeCustomerLink,
   revokeCustomerLinksForCustomer,
 } from "@/lib/data/customer-links";
+import { getCustomer } from "@/lib/data";
 import { hashToken } from "@/lib/data/token";
 
 const MAX_LABEL = 80;
@@ -34,6 +35,8 @@ export interface CreateLinkResult {
   ok: boolean;
   /** The full shop URL — shown/copied once, never retrievable again. */
   url?: string;
+  /** M8C — the store is deactivated; no new links until reactivation. */
+  reason?: "inactive";
 }
 
 export async function createCustomerLinkAction(input: {
@@ -64,6 +67,14 @@ export async function createCustomerLinkAction(input: {
       expiresAt = new Date(Date.now() + days * 86400_000).toISOString();
     }
 
+    // M8C: refuse BEFORE revoking — the revoke-then-insert sequence would
+    // otherwise strand the store linkless when the insert is rejected for
+    // an inactive customer (the RPC also blocks with MDF33 as the real gate).
+    const customer = await getCustomer(input.customerId);
+    if (customer && customer.isActive === false) {
+      return { ok: false, reason: "inactive" };
+    }
+
     // M7H.1: a store keeps exactly ONE live link. Revoke every currently-active
     // link for this customer BEFORE issuing the new one, so any previously
     // copied URL stops working immediately.
@@ -79,6 +90,9 @@ export async function createCustomerLinkAction(input: {
     revalidatePath(`/${locale}/admin/customers/${input.customerId}`);
     return { ok: true, url: `/${locale}/shop/${rawToken}` };
   } catch (error) {
+    if (error instanceof Error && error.message.includes("inactive")) {
+      return { ok: false, reason: "inactive" };
+    }
     console.error("[madaf/actions] createCustomerLinkAction failed:", error);
     return { ok: false };
   }
