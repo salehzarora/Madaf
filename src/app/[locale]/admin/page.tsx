@@ -73,10 +73,14 @@ export default async function AdminDashboardPage({
   ]);
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [p.id, p]));
-  // `isActive !== false`: mock products omit the optional flag (implicitly
-  // active) — a truthy check would render "Active products: 0" in mock mode.
+  // `isActive !== false`: mock products/customers omit the optional flag
+  // (implicitly active) — a truthy check would render 0 in mock mode. Both
+  // KPIs count only ACTIVE rows now that M8C can deactivate customers.
   const activeProductCount = products.filter(
     (p) => p.isActive !== false,
+  ).length;
+  const activeShopCount = customers.filter(
+    (c) => c.isActive !== false,
   ).length;
 
   const live = orders.filter((o) => o.status !== "cancelled");
@@ -342,7 +346,7 @@ export default async function AdminDashboardPage({
         />
         <MetricCard
           label={t.metrics.activeShops}
-          value={formatNumber(customers.length, locale)}
+          value={formatNumber(activeShopCount, locale)}
           icon={<Store />}
         />
       </div>
