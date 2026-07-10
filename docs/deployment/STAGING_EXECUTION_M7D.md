@@ -869,3 +869,22 @@ rows). Then redeploy Vercel with **build cache OFF**.
 No RLS loosened, no table write re-enabled, no anon/public read added, no
 service_role in client, no new bucket, no legal/payment change,
 `legal_effective` stays false. No hosted db reset, no config push.
+
+## 26. M8E.1 — logo upload hotfix + logo visibility
+
+Full detail in `docs/product/M8E_SCALE_POLISH_CUSTOMER_BRANDING_DOCS.md`
+("M8E.1" section). **No migration.**
+
+- Fixes the logo-upload hang (`try/catch/finally` in every upload handler) and
+  raises the Server Action body limit to **6MB** in `next.config.ts` (the 1MB
+  default was smaller than the 2/5MB image caps, so valid >1MB uploads were
+  rejected). Adds a distinct "invalid/corrupt" error + a "current image kept"
+  reassurance + client-side pre-validation.
+- Surfaces the tenant logo in the admin shell (every page), document preview,
+  and shop/showcase headers (server-only own-tenant signing), and the
+  manufacturer logo in product cards + filter chips.
+
+**Migrations:** none. Redeploy Vercel with **build cache OFF**; the build must
+end with the route-guard OK line. No RLS change, no new bucket, product-images
+stays private, no legal/payment change, `legal_effective` stays false. No
+hosted db reset, no config push.
