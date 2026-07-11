@@ -244,15 +244,33 @@ server-only, not run at build). It reports `{ ok, errors, warnings }` — run it
 against the staging env **names/flags** and report **pass/fail + issue names
 only** (never values).
 
+**M8E.2 — this assessment is now a REAL BUILD GATE.** `npm run build` runs
+`npm run check:deploy-safety` (→ `scripts/check-deployment-safety.ts`) BEFORE
+`next build`; a hosted Supabase build with a missing/invalid/conflicting/loopback/
+preview-host canonical URL **exits nonzero and fails the build**. Zero-config
+local/mock builds stay green. On Vercel the gate reads the auto-provided
+`VERCEL_PROJECT_PRODUCTION_URL`, so a `*.vercel.app` canonical (e.g. the staging
+alias) is allowed ONLY when it equals that production alias — the manual snippet
+below therefore passes `VERCEL_PROJECT_PRODUCTION_URL` to mimic the real deploy.
+
 **Manual usage (local, against a sanitized name-only env — do NOT paste secret
 values):**
 
 ```bash
-NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/deployment-safety.ts').then(m=>{const r=m.assessDeploymentSafety({NEXT_PUBLIC_SUPABASE_URL:'https://<ref>.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'x',NEXT_PUBLIC_MADAF_DATA_MODE:'supabase',NEXT_PUBLIC_APP_URL:'https://<staging>',MADAF_AUTH_PRIMARY_METHOD:'phone',MADAF_TAX_PROVIDER_MODE:'disabled'},{treatAsDeploy:true});console.log('ok:',r.ok);console.log('errors:',r.errors);console.log('warnings:',r.warnings)})"
+# The REAL build gate (same command `npm run build` runs before `next build`),
+# fed a sanitized name-only env. Prints safe diagnostics; exits nonzero on any
+# blocking issue. VERCEL_PROJECT_PRODUCTION_URL mimics the Vercel-provided value
+# so a *.vercel.app canonical is accepted (it must equal the production alias).
+VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase \
+  NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x \
+  NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app \
+  VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app \
+  npm run check:deploy-safety
 ```
 
 - [ ] Run against the intended staging config; **expected: `ok: true`**, no
-      errors. Paste only `ok` + issue names below.
+      errors. Paste only `ok` + issue names below. (A `*.vercel.app` canonical
+      WITHOUT a matching `VERCEL_PROJECT_PRODUCTION_URL` is correctly rejected.)
 
 | Field | Result |
 | --- | --- |

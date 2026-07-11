@@ -54,6 +54,30 @@ jobs:
       - name: Test (canonical public-link validator — M8E.2)
         run: npm run test:public-url
 
+      # M8E.2 — exercise the deployment-safety build GATE against representative
+      # SYNTHETIC hosted configs (no secrets/values, only shapes). A hosted
+      # Supabase deploy with a missing / preview-host / conflicting canonical URL
+      # must make the gate exit nonzero; a valid one must pass. This proves the
+      # errors are consumed by a real command, not just an unused report.
+      - name: Deployment-safety gate — synthetic hosted configs
+        run: |
+          set -u
+          HOSTED="VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x"
+          expect_pass() { if eval "$1 npm run check:deploy-safety" >/dev/null 2>&1; then echo "PASS(ok): $2"; else echo "FAIL(expected ok): $2"; exit 1; fi; }
+          expect_fail() { if eval "$1 npm run check:deploy-safety" >/dev/null 2>&1; then echo "FAIL(expected error): $2"; exit 1; else echo "PASS(errored): $2"; fi; }
+          # Local/mock build stays green even in a deploy context.
+          expect_pass "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=mock" "local/mock deploy"
+          # Valid hosted: production-alias canonical, distinct per-deploy host.
+          expect_pass "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app VERCEL_URL=madaf-abc123.vercel.app" "valid hosted (production alias)"
+          # Valid hosted: custom domain.
+          expect_pass "$HOSTED NEXT_PUBLIC_APP_URL=https://shop.madaf.example" "valid hosted (custom domain)"
+          # Missing canonical → fail.
+          expect_fail "$HOSTED" "missing canonical URL"
+          # Canonical == this deploy's per-deploy Vercel host → fail.
+          expect_fail "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_URL=madaf-drab.vercel.app" "preview/per-deploy host"
+          # Conflicting APP/SITE origins → fail.
+          expect_fail "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app NEXT_PUBLIC_SITE_URL=https://other.example VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app" "conflicting APP/SITE"
+
       - name: Build (mock mode, zero backend env)
         run: npm run build
 

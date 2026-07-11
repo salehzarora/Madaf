@@ -52,8 +52,10 @@ export interface CreateShowcaseLinkResult {
   ok: boolean;
   /** Full showcase URL — shown/copied once, never retrievable again. */
   url?: string;
-  /** M8E.2 — canonical public app URL missing/invalid; no link created. */
-  reason?: "config";
+  /** Failure category (M8E.2 review #7): "config" — canonical public app URL
+   * missing/invalid/conflict; "validation" — a part was invalid; "persistence"
+   * — the DB/transport insert failed (nothing partially created). */
+  reason?: "config" | "validation" | "persistence";
 }
 
 export async function createShowcaseLinkAction(input: {
@@ -90,12 +92,12 @@ export async function createShowcaseLinkAction(input: {
         });
       },
     });
-    if (!created.ok) return { ok: false, reason: "config" };
+    if (!created.ok) return { ok: false, reason: created.reason };
     revalidatePath(`/${locale}/admin/customers/signup`);
     return { ok: true, url: created.url };
   } catch (error) {
     console.error("[madaf/actions] createShowcaseLinkAction failed:", error);
-    return { ok: false };
+    return { ok: false, reason: "persistence" };
   }
 }
 

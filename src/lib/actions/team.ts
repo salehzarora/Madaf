@@ -58,8 +58,10 @@ export interface CreateInviteResult {
   ok: boolean;
   /** The full invite URL — shown/copied once, never retrievable again. */
   url?: string;
-  /** M8E.2 — canonical public app URL missing/invalid; no link created. */
-  reason?: "config";
+  /** Failure category (M8E.2 review #7): "config" — canonical public app URL
+   * missing/invalid/conflict; "validation" — a part was invalid; "persistence"
+   * — the DB/transport insert failed (nothing partially created). */
+  reason?: "config" | "validation" | "persistence";
 }
 
 export async function createInviteAction(input: {
@@ -75,7 +77,7 @@ export async function createInviteAction(input: {
     // Narrow with type guards on `const`s so the values stay narrowed inside
     // the persist closure below.
     if (!isEmail(email) || !isInviteRole(role)) {
-      return { ok: false };
+      return { ok: false, reason: "validation" };
     }
 
     let expiresAt: string | undefined;
@@ -101,13 +103,13 @@ export async function createInviteAction(input: {
         });
       },
     });
-    if (!created.ok) return { ok: false, reason: "config" };
+    if (!created.ok) return { ok: false, reason: created.reason };
 
     revalidatePath(`/${locale}/admin/team`);
     return { ok: true, url: created.url };
   } catch (error) {
     console.error("[madaf/actions] createInviteAction failed:", error);
-    return { ok: false };
+    return { ok: false, reason: "persistence" };
   }
 }
 

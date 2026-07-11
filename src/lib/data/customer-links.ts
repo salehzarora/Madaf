@@ -60,15 +60,25 @@ export async function listCustomerLinks(
   }));
 }
 
-export async function insertCustomerLink(input: {
+/**
+ * ATOMICALLY replace a customer's private shop link (M8E.2). One RPC
+ * (`replace_customer_access_link`) locks the customer row, re-checks its active
+ * state, revokes ALL currently-active links, and inserts the new hash-only link
+ * — all in a SINGLE transaction. Either the revoke AND insert commit together
+ * or neither does; concurrent replacements for the same customer serialize and
+ * leave exactly one active link. Only the token HASH reaches this layer.
+ * Returns the new (non-secret) link id. Throws with `MDF33`/"deactivated" in
+ * the message when the store is inactive (so the caller maps it to "inactive").
+ */
+export async function replaceCustomerLink(input: {
   customerId: string;
   tokenHash: string;
   tokenPreview: string;
   label?: string;
   expiresAt?: string;
-}): Promise<string> {
+}): Promise<{ linkId: string }> {
   const { client, tenantId } = await getDataContext();
-  const { data, error } = await client.rpc("insert_customer_access_link", {
+  const { data, error } = await client.rpc("replace_customer_access_link", {
     p_tenant_id: tenantId,
     p_customer_id: input.customerId,
     p_token_hash: input.tokenHash,
@@ -76,12 +86,16 @@ export async function insertCustomerLink(input: {
     ...(input.label ? { p_label: input.label } : {}),
     ...(input.expiresAt ? { p_expires_at: input.expiresAt } : {}),
   });
-  if (error || !data) {
+  if (error) {
     throw new Error(
-      `[madaf/data] insertCustomerLink failed: ${error?.message ?? "no id"}`,
+      `[madaf/data] replaceCustomerLink failed: ${error.message}`,
     );
   }
-  return data as string;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.id) {
+    throw new Error("[madaf/data] replaceCustomerLink failed: no row returned");
+  }
+  return { linkId: row.id as string };
 }
 
 export async function revokeCustomerLink(linkId: string): Promise<void> {
@@ -92,22 +106,5 @@ export async function revokeCustomerLink(linkId: string): Promise<void> {
   });
   if (error) {
     throw new Error(`[madaf/data] revokeCustomerLink failed: ${error.message}`);
-  }
-}
-
-/** Revoke ALL currently-active links for a customer (M7H.1) — so issuing a new
- * link leaves the store with exactly one live link and every old URL dies. */
-export async function revokeCustomerLinksForCustomer(
-  customerId: string,
-): Promise<void> {
-  const { client, tenantId } = await getDataContext();
-  const { error } = await client.rpc(
-    "revoke_customer_access_links_for_customer",
-    { p_tenant_id: tenantId, p_customer_id: customerId },
-  );
-  if (error) {
-    throw new Error(
-      `[madaf/data] revokeCustomerLinksForCustomer failed: ${error.message}`,
-    );
   }
 }

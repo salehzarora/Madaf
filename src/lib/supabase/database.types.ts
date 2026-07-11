@@ -2069,6 +2069,23 @@ export type Database = {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined
       }
+      replace_customer_access_link: {
+        Args: {
+          p_customer_id: string
+          p_expires_at?: string
+          p_label?: string
+          p_tenant_id: string
+          p_token_hash: string
+          p_token_preview?: string
+        }
+        Returns: {
+          created_at: string
+          expires_at: string
+          id: string
+          label: string
+          token_preview: string
+        }[]
+      }
       revoke_catalog_showcase_link: {
         Args: { p_link_id: string; p_tenant_id: string }
         Returns: string

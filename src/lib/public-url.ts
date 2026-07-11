@@ -2,10 +2,14 @@
  * Canonical public URL contract for TOKENIZED customer links (M8E.2).
  *
  * PURE + dependency-light (only the i18n locale source of truth). No
- * `server-only`, no `window`, no env/header reads — those live in
+ * `server-only`, no `window`, no request/header reads. The ONLY env it reads
+ * is the build-time-inlined, NON-SECRET public origin (`NEXT_PUBLIC_APP_URL` /
+ * `NEXT_PUBLIC_SITE_URL`) via `clientCanonicalOrigin()` — safe in the client
+ * bundle. Secret env + request headers + Vercel runtime metadata live in
  * `public-url-server.ts` and `deployment-safety.ts`. This module is the single
  * validator used by the server actions (which build the absolute link BEFORE
- * any token mutation), the deployment-safety linter, and the tests.
+ * any token mutation), the deployment-safety linter/gate, the client display
+ * guard, and the tests.
  *
  * WHY it exists: shop / showcase / store-signup / team-invite links are opened
  * by people who are NOT the warehouse owner (and NOT logged into Vercel).
@@ -13,6 +17,12 @@
  * Vercel PREVIEW host — gated by Deployment Protection — so recipients were
  * bounced to the Vercel login. All public links must come from ONE configured
  * canonical origin, validated here.
+ *
+ * STRICT contract (fail-fast, never silently repair): a canonical origin must
+ * be an absolute http(s) URL with no userinfo, query, fragment, or path beyond
+ * an empty root, no backslash, no leading/trailing/embedded whitespace or
+ * control chars, no non-ASCII, and no terminal DNS dot. The SOLE normalization
+ * is dropping a single trailing root slash.
  */
 import { isLocale, type Locale } from "@/i18n/config";
 
@@ -43,19 +53,6 @@ export type OriginResult =
   | { ok: true; origin: string }
   | { ok: false; reason: OriginErrorReason };
 
-/** Extract a hostname for comparison (e.g. Vercel preview detection). Accepts a
- * bare host or a URL; returns null on anything unparseable. */
-export function hostnameOf(value: string | undefined | null): string | null {
-  if (typeof value !== "string" || !value.trim()) return null;
-  const raw = value.trim();
-  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  try {
-    return new URL(candidate).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
 /** True if the string contains only printable-ASCII characters (0x21–0x7E) —
  * no control chars, no spaces/whitespace, no DEL, and no deceptive non-ASCII
  * (homograph) characters. A canonical origin is always printable ASCII. */
@@ -68,28 +65,56 @@ function isPrintableAscii(value: string): boolean {
 }
 
 /**
+ * Extract a NORMALIZED hostname for comparison (preview-host detection).
+ * Accepts a bare host or a URL. Lower-cased, with a single terminal DNS dot
+ * stripped so `host.` and `host` compare equal — a trailing-dot value can
+ * never bypass the preview-host check. Returns null on anything unparseable or
+ * containing a backslash / whitespace / control char.
+ */
+export function hostnameOf(value: string | undefined | null): string | null {
+  if (typeof value !== "string" || value === "") return null;
+  if (value.includes("\\")) return null;
+  if (!isPrintableAscii(value)) return null;
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  let host: string;
+  try {
+    host = new URL(candidate).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  // Strip a single terminal DNS dot for comparison (see doc above).
+  if (host.endsWith(".")) host = host.slice(0, -1);
+  return host === "" ? null : host;
+}
+
+/**
  * Strict canonical-origin contract. Accepts ONLY an absolute http(s) URL with:
- * no userinfo, no query, no fragment, and no path beyond an empty root (`/`).
- * Rejects protocol-relative forms, non-http(s) schemes (javascript:/data:/
- * file:/ftp:/…), control characters, whitespace, and non-ASCII. On success,
- * returns the ORIGIN only (scheme + host + non-default port) — the sole
- * normalization is dropping the root slash. It never silently strips an
- * unexpected path/query/hash: their presence is a hard rejection.
+ * no userinfo, no query, no fragment, no path beyond an empty root (`/`), no
+ * backslash, no leading/trailing/embedded whitespace or control chars, no
+ * non-ASCII, and no terminal DNS dot on the host. On success, returns the
+ * ORIGIN only (scheme + host + non-default port) — the sole normalization is
+ * dropping the root slash. It NEVER silently trims or strips: any deviation is
+ * a hard rejection.
  */
 export function normalizeCanonicalOrigin(
   raw: string | undefined | null,
 ): OriginResult {
   if (typeof raw !== "string") return { ok: false, reason: "missing" };
-  const trimmed = raw.trim();
-  if (!trimmed) return { ok: false, reason: "missing" };
-  // No control chars, whitespace, or non-ASCII anywhere in the value.
-  if (!isPrintableAscii(trimmed)) return { ok: false, reason: "invalid" };
+  if (raw === "") return { ok: false, reason: "missing" };
+  // Do NOT trim — leading/trailing whitespace is a malformed value, not
+  // something to silently repair. isPrintableAscii also rejects embedded
+  // whitespace, control chars, and non-ASCII.
+  if (!isPrintableAscii(raw)) return { ok: false, reason: "invalid" };
+  // Reject backslashes BEFORE WHATWG parsing: the parser rewrites `\` to `/`
+  // in http(s) URLs, which can silently split host/path (e.g. `https://a\b.com`
+  // parses to host `a`). Refuse the whole value instead.
+  if (raw.includes("\\")) return { ok: false, reason: "invalid" };
   // Require an EXPLICIT http(s) scheme — this also rejects protocol-relative
   // (`//host`), scheme-relative, and dangerous schemes before parsing.
-  if (!/^https?:\/\//i.test(trimmed)) return { ok: false, reason: "invalid" };
+  if (!/^https?:\/\//i.test(raw)) return { ok: false, reason: "invalid" };
   let url: URL;
   try {
-    url = new URL(trimmed);
+    url = new URL(raw);
   } catch {
     return { ok: false, reason: "invalid" };
   }
@@ -101,6 +126,9 @@ export function normalizeCanonicalOrigin(
   if (url.hash) return { ok: false, reason: "invalid" }; // no fragment
   if (url.pathname !== "/" && url.pathname !== "") {
     return { ok: false, reason: "invalid" }; // no path beyond root
+  }
+  if (url.hostname.endsWith(".")) {
+    return { ok: false, reason: "invalid" }; // no terminal DNS dot
   }
   return { ok: true, origin: url.origin };
 }
@@ -138,13 +166,17 @@ export function isLoopbackOrigin(origin: string): boolean {
  *    and invalid → error.
  *  - If both are present and normalize to DIFFERENT origins → `conflict`.
  *  - If neither is present → `missing`.
+ *
+ * "Present" means a non-empty string. A whitespace-only value is PRESENT (and
+ * therefore validated → rejected as invalid), not treated as absent — a
+ * malformed primary must never silently fall through to the secondary.
  */
 export function resolveConfiguredOrigin(
   appUrl: string | undefined | null,
   siteUrl: string | undefined | null,
 ): OriginResult {
-  const hasApp = typeof appUrl === "string" && appUrl.trim() !== "";
-  const hasSite = typeof siteUrl === "string" && siteUrl.trim() !== "";
+  const hasApp = typeof appUrl === "string" && appUrl !== "";
+  const hasSite = typeof siteUrl === "string" && siteUrl !== "";
 
   if (hasApp) {
     const primary = normalizeCanonicalOrigin(appUrl);
@@ -165,6 +197,55 @@ export function resolveConfiguredOrigin(
     return secondary;
   }
   return { ok: false, reason: "missing" };
+}
+
+/**
+ * SHARED preview-host contract (used by BOTH the deployment-safety linter/gate
+ * and the server-only runtime resolver, so they agree exactly). Given a valid
+ * canonical origin and the current deploy's Vercel metadata, returns true when
+ * the canonical must be REJECTED because it is a per-deploy/preview host:
+ *  - equal to this deploy's `VERCEL_URL` (per-deploy host), or
+ *  - equal to `VERCEL_BRANCH_URL` (per-branch host), or
+ *  - any other `*.vercel.app` host that is NOT the stable
+ *    `VERCEL_PROJECT_PRODUCTION_URL` alias.
+ * A custom (non-`.vercel.app`) canonical domain is always allowed. All
+ * comparisons go through `hostnameOf` (lower-cased, terminal-dot-stripped), so
+ * a trailing-dot metadata value cannot slip a preview host past the check.
+ */
+export function isRejectedVercelHost(
+  canonicalOrigin: string,
+  vercel: {
+    url?: string | null;
+    branchUrl?: string | null;
+    productionUrl?: string | null;
+  },
+): boolean {
+  const host = hostnameOf(canonicalOrigin);
+  if (!host) return false; // unparseable origins are rejected upstream
+  const perDeploy = hostnameOf(vercel.url);
+  const perBranch = hostnameOf(vercel.branchUrl);
+  if (perDeploy && host === perDeploy) return true;
+  if (perBranch && host === perBranch) return true;
+  if (host.endsWith(".vercel.app")) {
+    const production = hostnameOf(vercel.productionUrl);
+    // A *.vercel.app canonical is allowed ONLY when it is the stable production
+    // alias; an unknown/absent production alias means reject (fail safe).
+    if (!production || host !== production) return true;
+  }
+  return false;
+}
+
+/**
+ * Resolve the client-visible expected canonical origin from the build-time
+ * inlined, NON-SECRET public env vars. Used ONLY by the client display guard to
+ * assert the server-built link uses the configured origin. Reads no secrets and
+ * no Vercel metadata.
+ */
+export function clientCanonicalOrigin(): OriginResult {
+  return resolveConfiguredOrigin(
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+  );
 }
 
 export type BuildErrorReason = "origin" | "locale" | "route" | "token";
@@ -200,23 +281,46 @@ export function buildPublicTokenUrl(input: {
 }
 
 /**
- * Client-side display guard: a URL is safe to show/copy only if it is an
- * absolute http(s) URL to a supported `/<locale>/<routeType>/<token>` path
- * (no credentials/query/fragment). The server already builds + validates the
- * link; this is a belt-and-suspenders check so a copy control can NEVER expose
- * a null, relative, malformed, or otherwise unexpected value.
+ * EXACT client-side display guard: a URL is safe to show/copy only if it is the
+ * exact canonical token link the caller expects. The manager supplies its OWN
+ * `locale` and `routeType`, and the expected origin is the configured canonical
+ * (or, when unconfigured — local dev — a loopback origin only). The check is an
+ * EXACT string match against `${origin}/<locale>/<routeType>/<token>`, so a
+ * doubled slash, trailing slash, extra segment, query, fragment, credentials,
+ * backslash, wrong locale, wrong route type, or a preview/unrelated authority
+ * are ALL rejected — a shop manager can never display a showcase/invite/join
+ * URL, and the client never accepts a preview host merely because the path
+ * looks token-shaped. The server already builds + validates the link; this is
+ * defense in depth so a copy control can NEVER expose anything else.
  */
-export function isDisplayablePublicUrl(value: unknown): value is string {
-  if (typeof value !== "string" || !/^https?:\/\//.test(value)) return false;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
+export function isDisplayablePublicUrl(
+  value: unknown,
+  expected: { locale: Locale; routeType: PublicRouteType },
+): value is string {
+  if (typeof value !== "string" || value === "") return false;
+  if (value.includes("\\")) return false;
+  if (!isPrintableAscii(value)) return false; // no whitespace/control/non-ASCII
+  // Determine the expected authority: the configured canonical origin, or (only
+  // when nothing is configured, i.e. local dev) a loopback origin.
+  let expectedOrigin: string;
+  const configured = clientCanonicalOrigin();
+  if (configured.ok) {
+    expectedOrigin = configured.origin;
+  } else {
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      return false;
+    }
+    if (!isLoopbackOrigin(parsed.origin)) return false;
+    expectedOrigin = parsed.origin;
   }
-  if (url.username || url.password || url.search || url.hash) return false;
-  const segments = url.pathname.split("/").filter((s) => s.length > 0);
-  if (segments.length !== 3) return false;
-  const [locale, routeType, token] = segments;
-  return isLocale(locale) && isPublicRouteType(routeType) && isValidPublicToken(token);
+  // Exact-match the whole value: prefix is the canonical origin + locale +
+  // route; the remainder must be a single valid token (no further `/`, query,
+  // fragment, dot-segment, or encoded char survives isValidPublicToken).
+  const prefix = `${expectedOrigin}/${expected.locale}/${expected.routeType}/`;
+  if (!value.startsWith(prefix)) return false;
+  const token = value.slice(prefix.length);
+  return isValidPublicToken(token);
 }

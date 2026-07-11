@@ -31,6 +31,7 @@ import {
 import type { InviteStatus, TenantInvite, TenantMember } from "@/lib/data/team";
 import { formatDate } from "@/lib/format";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
+import { linkErrorMessage } from "./link-error-message";
 import { cn } from "@/lib/utils";
 
 const INVITE_ROLES = ["admin", "sales_rep"] as const;
@@ -74,22 +75,30 @@ export function TeamManager({
     setError(null);
     setCopied(false);
     startTransition(async () => {
-      const result = await createInviteAction({
-        email: email.trim(),
-        role,
-        expiresInDays: expiryDays > 0 ? expiryDays : undefined,
-        locale,
-      });
-      // The action returns the ABSOLUTE canonical URL, built + validated
-      // server-side before any mutation (M8E.2); on failure keep any prior link.
-      if (result.ok && isDisplayablePublicUrl(result.url)) {
-        setCreatedUrl(result.url);
-        setEmail("");
-        router.refresh();
-      } else {
-        setError(
-          result.reason === "config" ? dict.common.linkUrlError : t.error,
-        );
+      try {
+        const result = await createInviteAction({
+          email: email.trim(),
+          role,
+          expiresInDays: expiryDays > 0 ? expiryDays : undefined,
+          locale,
+        });
+        // The action returns the EXACT ABSOLUTE canonical URL, built + validated
+        // server-side before any mutation (M8E.2). Show it only if it is the
+        // exact canonical invite link; on failure keep any prior link.
+        if (
+          result.ok &&
+          isDisplayablePublicUrl(result.url, { locale, routeType: "invite" })
+        ) {
+          setCreatedUrl(result.url);
+          setEmail("");
+          router.refresh();
+        } else {
+          setError(linkErrorMessage(dict.common, result.reason));
+        }
+      } catch {
+        // Transport/network/action rejection — keep any displayed link and show
+        // a generic operation error (never a config-URL error).
+        setError(dict.common.actionError);
       }
     });
   }

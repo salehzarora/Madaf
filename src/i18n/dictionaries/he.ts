@@ -16,6 +16,8 @@ const he: Dictionary = {
     uploadInvalid: "התמונה אינה תקינה או פגומה.",
     uploadKeepCurrent: "התמונה הנוכחית לא שונתה.",
     linkUrlError: "לא ניתן ליצור קישור ציבורי — כתובת האפליקציה הציבורית לא הוגדרה. פנו למנהל.",
+    linkGenerationError: "לא ניתן ליצור את הקישור. נסו שוב.",
+    actionError: "משהו השתבש. נסו שוב.",
     noPermission: "אין לכם הרשאה לפעולה זו",
     search: "חיפוש",
     all: "הכול",

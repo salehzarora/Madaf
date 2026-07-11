@@ -16,6 +16,8 @@ const ar: Dictionary = {
     uploadInvalid: "الصورة غير صالحة أو تالفة.",
     uploadKeepCurrent: "لم يتم تغيير الصورة الحالية.",
     linkUrlError: "تعذّر إنشاء رابط عام — لم يتم ضبط عنوان التطبيق العام. تواصل مع المسؤول.",
+    linkGenerationError: "تعذّر إنشاء الرابط. حاول مرة أخرى.",
+    actionError: "حدث خطأ ما. حاول مرة أخرى.",
     noPermission: "لا تملك صلاحية تنفيذ هذا الإجراء",
     search: "بحث",
     all: "الكل",

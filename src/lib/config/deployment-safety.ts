@@ -15,8 +15,8 @@ import "server-only";
  */
 
 import {
-  hostnameOf,
   isLoopbackOrigin,
+  isRejectedVercelHost,
   resolveConfiguredOrigin,
 } from "@/lib/public-url";
 
@@ -196,19 +196,21 @@ export function assessDeploymentSafety(
           "The canonical public URL is a localhost/loopback origin — a hosted deployment must use the public app URL, not localhost.",
         );
       }
-      // Preview-host guard: the canonical must be the STABLE public alias, never
-      // this deployment's per-deploy / per-branch Vercel hostname (those are
-      // gated by Deployment Protection). VERCEL_PROJECT_PRODUCTION_URL (the
-      // stable production alias) is fine and intentionally NOT flagged.
-      const canonicalHost = hostnameOf(canonical.origin);
-      for (const perDeploy of [env.VERCEL_URL, env.VERCEL_BRANCH_URL]) {
-        const host = hostnameOf(perDeploy);
-        if (canonicalHost && host && canonicalHost === host) {
-          errors.push(
-            "The canonical public URL matches this deployment's per-deploy Vercel hostname — use the stable public alias (a per-deploy/preview host is Deployment-Protection-gated and unreachable to recipients).",
-          );
-          break;
-        }
+      // Preview-host guard (SHARED contract with the server-only runtime
+      // resolver): the canonical must be the STABLE public alias, never this
+      // deploy's per-deploy / per-branch Vercel hostname, and any *.vercel.app
+      // canonical must equal VERCEL_PROJECT_PRODUCTION_URL. Those per-deploy
+      // hosts are Deployment-Protection-gated and unreachable to recipients.
+      else if (
+        isRejectedVercelHost(canonical.origin, {
+          url: env.VERCEL_URL,
+          branchUrl: env.VERCEL_BRANCH_URL,
+          productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
+        })
+      ) {
+        errors.push(
+          "The canonical public URL matches this deployment's per-deploy Vercel hostname (or is a non-production *.vercel.app host) — use the stable public alias (a per-deploy/preview host is Deployment-Protection-gated and unreachable to recipients).",
+        );
       }
     }
   } else if (isDeploy && !env.NEXT_PUBLIC_APP_URL && !env.NEXT_PUBLIC_SITE_URL) {

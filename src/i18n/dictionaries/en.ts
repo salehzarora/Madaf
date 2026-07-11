@@ -16,6 +16,8 @@ const en: Dictionary = {
     uploadInvalid: "The image is invalid or corrupted.",
     uploadKeepCurrent: "The current image was not changed.",
     linkUrlError: "Couldn't generate a public link — the public app URL is not configured. Contact the administrator.",
+    linkGenerationError: "Couldn't generate the link. Please try again.",
+    actionError: "Something went wrong. Please try again.",
     noPermission: "You don't have permission for this action",
     search: "Search",
     all: "All",

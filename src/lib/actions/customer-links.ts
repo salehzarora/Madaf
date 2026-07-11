@@ -10,14 +10,14 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  insertCustomerLink,
+  replaceCustomerLink,
   revokeCustomerLink,
-  revokeCustomerLinksForCustomer,
 } from "@/lib/data/customer-links";
 import { getCustomer } from "@/lib/data";
 import { hashToken } from "@/lib/data/token";
 import { createCanonicalLink } from "@/lib/public-link";
 import { resolveServerCanonicalOrigin } from "@/lib/public-url-server";
+import { isInactiveStoreError } from "@/lib/actions/link-errors";
 
 const MAX_LABEL = 80;
 const MAX_EXPIRY_DAYS = 365;
@@ -36,9 +36,16 @@ export interface CreateLinkResult {
   /** The full ABSOLUTE canonical shop URL — shown/copied once, never
    * retrievable again. Built + validated server-side before any mutation. */
   url?: string;
-  /** "inactive" — store deactivated (M8C); "config" — the canonical public app
-   * URL is missing/invalid so NO link was created/revoked (M8E.2). */
-  reason?: "inactive" | "config";
+  /**
+   * Failure category (M8E.2 review #7 — never mislabel one as another):
+   *  - "inactive"    — the store is deactivated (MDF33); no link created/revoked.
+   *  - "config"      — the canonical public app URL is missing/invalid/conflict;
+   *                    nothing revoked or persisted.
+   *  - "validation"  — an input/part was invalid when building the URL.
+   *  - "persistence" — the atomic DB replacement (or transport) failed; the
+   *                    transaction rolled back, so the previous link survives.
+   */
+  reason?: "inactive" | "config" | "validation" | "persistence";
 }
 
 export async function createCustomerLinkAction(input: {
@@ -48,7 +55,9 @@ export async function createCustomerLinkAction(input: {
   locale: string;
 }): Promise<CreateLinkResult> {
   try {
-    if (!isPlausibleId(input.customerId)) return { ok: false };
+    if (!isPlausibleId(input.customerId)) {
+      return { ok: false, reason: "validation" };
+    }
     const locale =
       typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)
         ? input.locale
@@ -66,23 +75,23 @@ export async function createCustomerLinkAction(input: {
     }
 
     // M8C: refuse BEFORE any mutation — an inactive store gets no new link
-    // (the RPC also blocks with MDF33 as the real gate). Read only.
+    // (the atomic RPC also blocks with MDF33 as the real gate). Read only.
     const customer = await getCustomer(input.customerId);
     if (customer && customer.isActive === false) {
       return { ok: false, reason: "inactive" };
     }
 
     // M8E.2: generate + validate the ABSOLUTE canonical link, and ONLY on
-    // success revoke every active link + issue the fresh one (M7H.1 — a store
-    // keeps exactly ONE live link). If the canonical URL can't be produced,
-    // NOTHING is revoked or persisted.
+    // success run the ATOMIC replace (revoke ALL active links + insert the
+    // fresh one in ONE transaction — a store keeps exactly ONE live link, and a
+    // failed insert rolls back the revoke). If the canonical URL can't be
+    // produced, NOTHING is revoked or persisted.
     const created = await createCanonicalLink({
       locale,
       routeType: "shop",
       resolveOrigin: resolveServerCanonicalOrigin,
       persist: async ({ rawToken }) => {
-        await revokeCustomerLinksForCustomer(input.customerId);
-        await insertCustomerLink({
+        await replaceCustomerLink({
           customerId: input.customerId,
           tokenHash: hashToken(rawToken),
           tokenPreview: rawToken.slice(-6),
@@ -91,16 +100,18 @@ export async function createCustomerLinkAction(input: {
         });
       },
     });
-    if (!created.ok) return { ok: false, reason: "config" };
+    if (!created.ok) return { ok: false, reason: created.reason };
 
     revalidatePath(`/${locale}/admin/customers/${input.customerId}`);
     return { ok: true, url: created.url };
   } catch (error) {
-    if (error instanceof Error && error.message.includes("inactive")) {
+    // A deactivated store racing the pre-check surfaces as MDF33 from the RPC —
+    // the transaction rolled back, so the previous link survives.
+    if (isInactiveStoreError(error)) {
       return { ok: false, reason: "inactive" };
     }
     console.error("[madaf/actions] createCustomerLinkAction failed:", error);
-    return { ok: false };
+    return { ok: false, reason: "persistence" };
   }
 }
 
@@ -119,7 +130,7 @@ export async function regenerateCustomerLinkAction(input: {
 }): Promise<CreateLinkResult> {
   try {
     if (!isPlausibleId(input.linkId) || !isPlausibleId(input.customerId)) {
-      return { ok: false };
+      return { ok: false, reason: "validation" };
     }
     return await createCustomerLinkAction({
       customerId: input.customerId,
@@ -129,7 +140,7 @@ export async function regenerateCustomerLinkAction(input: {
     });
   } catch (error) {
     console.error("[madaf/actions] regenerateCustomerLinkAction failed:", error);
-    return { ok: false };
+    return { ok: false, reason: "persistence" };
   }
 }
 

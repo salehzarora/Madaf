@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/check-dynamic-routes.mjs",
+    "check:deploy-safety": "tsx --conditions=react-server scripts/check-deployment-safety.ts",
+    "build": "npm run check:deploy-safety && next build && node scripts/check-dynamic-routes.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --conditions=react-server --test src/lib/public-url.test.ts",

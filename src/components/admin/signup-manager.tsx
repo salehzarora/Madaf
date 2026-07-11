@@ -26,6 +26,7 @@ import type {
 } from "@/lib/data/customer-signup";
 import { formatDate } from "@/lib/format";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
+import { linkErrorMessage } from "./link-error-message";
 
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
 
@@ -60,22 +61,30 @@ export function SignupManager({
     setError(null);
     setCopied(false);
     startTransition(async () => {
-      const result = await createSignupLinkAction({
-        label: label.trim() || undefined,
-        expiresInDays: expiryDays > 0 ? expiryDays : undefined,
-        locale,
-      });
-      // The action returns the ABSOLUTE canonical URL, built + validated
-      // server-side before any mutation (M8E.2); on failure keep any prior link.
-      if (result.ok && isDisplayablePublicUrl(result.url)) {
-        setCreatedUrl(result.url);
-        setLabel("");
-        setExpiryDays(0);
-        router.refresh();
-      } else {
-        setError(
-          result.reason === "config" ? dict.common.linkUrlError : t.error,
-        );
+      try {
+        const result = await createSignupLinkAction({
+          label: label.trim() || undefined,
+          expiresInDays: expiryDays > 0 ? expiryDays : undefined,
+          locale,
+        });
+        // The action returns the EXACT ABSOLUTE canonical URL, built + validated
+        // server-side before any mutation (M8E.2). Show it only if it is the
+        // exact canonical join link; on failure keep any prior link.
+        if (
+          result.ok &&
+          isDisplayablePublicUrl(result.url, { locale, routeType: "join" })
+        ) {
+          setCreatedUrl(result.url);
+          setLabel("");
+          setExpiryDays(0);
+          router.refresh();
+        } else {
+          setError(linkErrorMessage(dict.common, result.reason));
+        }
+      } catch {
+        // Transport/network/action rejection — keep any displayed link and show
+        // a generic operation error (never a config-URL error).
+        setError(dict.common.actionError);
       }
     });
   }

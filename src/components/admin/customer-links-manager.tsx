@@ -17,6 +17,7 @@ import {
 import { isDisplayablePublicUrl } from "@/lib/public-url";
 import type { CustomerLink, LinkStatus } from "@/lib/data/customer-links";
 import { formatDate } from "@/lib/format";
+import { linkErrorMessage } from "./link-error-message";
 
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
 
@@ -56,28 +57,35 @@ export function CustomerLinksManager({
     setError(null);
     setCopied(false);
     startTransition(async () => {
-      const result = await createCustomerLinkAction({
-        customerId,
-        label: label.trim() || undefined,
-        expiresInDays: expiryDays > 0 ? expiryDays : undefined,
-        locale,
-      });
-      // The action returns the ABSOLUTE canonical URL, built + validated
-      // server-side before any mutation (M8E.2). Display only a valid absolute
-      // public link; on failure keep the previously displayed one.
-      if (result.ok && isDisplayablePublicUrl(result.url)) {
-        setCreatedUrl(result.url);
-        setLabel("");
-        setExpiryDays(0);
-        router.refresh();
-      } else {
-        setError(
-          result.reason === "config"
-            ? dict.common.linkUrlError
-            : result.reason === "inactive"
+      try {
+        const result = await createCustomerLinkAction({
+          customerId,
+          label: label.trim() || undefined,
+          expiresInDays: expiryDays > 0 ? expiryDays : undefined,
+          locale,
+        });
+        // The action returns the EXACT ABSOLUTE canonical URL, built + validated
+        // server-side before any mutation (M8E.2). Display only the exact
+        // canonical shop link; on failure keep the previously displayed one.
+        if (
+          result.ok &&
+          isDisplayablePublicUrl(result.url, { locale, routeType: "shop" })
+        ) {
+          setCreatedUrl(result.url);
+          setLabel("");
+          setExpiryDays(0);
+          router.refresh();
+        } else {
+          setError(
+            result.reason === "inactive"
               ? t.inactiveError
-              : t.error,
-        );
+              : linkErrorMessage(dict.common, result.reason),
+          );
+        }
+      } catch {
+        // Transport/network/action rejection — the atomic replace rolled back,
+        // so the previous link survives. Show a generic operation error.
+        setError(dict.common.actionError);
       }
     });
   }
@@ -128,24 +136,31 @@ export function CustomerLinksManager({
             ),
           )
         : undefined;
-      const result = await regenerateCustomerLinkAction({
-        linkId: link.id,
-        customerId,
-        label: link.label ?? undefined,
-        expiresInDays,
-        locale,
-      });
-      if (result.ok && isDisplayablePublicUrl(result.url)) {
-        setCreatedUrl(result.url);
-        router.refresh();
-      } else {
-        setError(
-          result.reason === "config"
-            ? dict.common.linkUrlError
-            : result.reason === "inactive"
+      try {
+        const result = await regenerateCustomerLinkAction({
+          linkId: link.id,
+          customerId,
+          label: link.label ?? undefined,
+          expiresInDays,
+          locale,
+        });
+        if (
+          result.ok &&
+          isDisplayablePublicUrl(result.url, { locale, routeType: "shop" })
+        ) {
+          setCreatedUrl(result.url);
+          router.refresh();
+        } else {
+          setError(
+            result.reason === "inactive"
               ? t.inactiveError
-              : t.error,
-        );
+              : linkErrorMessage(dict.common, result.reason),
+          );
+        }
+      } catch {
+        // Transport/network/action rejection — the atomic replace rolled back,
+        // so the previously displayed link survives. Show a generic op error.
+        setError(dict.common.actionError);
       }
     });
   }

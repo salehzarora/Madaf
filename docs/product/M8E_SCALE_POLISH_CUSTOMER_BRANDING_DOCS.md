@@ -354,23 +354,33 @@ generation and the deployment-safety linter (`assessDeploymentSafety`, §7) now
 **fail/ERROR** rather than producing a broken link. Because `NEXT_PUBLIC_*`
 inlines at **build time**, **a redeploy is required** after setting it.
 
-**No migration, no RLS/storage/legal/payment change. No token-hashing, anon-access,
-service-role, or revocation-semantics change.**
+**No RLS/storage/legal/payment change. No token-hashing, anon-access, service-role,
+one-time-URL, or revocation-semantics change.**
 
-**Tests** (`src/lib/public-url.test.ts`, run via `npm run test:public-url` →
-`tsx --conditions=react-server --test`; the runner resolves `@/*` aliases and
-type-checks, so the file is **no longer excluded** from `tsconfig`/eslint and is
-part of `npx tsc --noEmit` + `npm run lint`; also wired into CI). 28 adversarial
-cases cover: the origin contract (credentials/path/query/fragment/protocol-
-relative/dangerous-scheme/control-char rejected, trailing slash normalized);
-precedence + conflict (invalid primary fails without fallthrough, different
-origins conflict, identical succeed); loopback-only (`.local`/LAN/lookalike
-rejected); token format; per-route/per-locale URL building + every rejected part;
-the client display guard; **mutation ordering** (`createCanonicalLink` with an
-injected failing resolver / invalid part proves `persist` is NOT called, and the
-success path persists exactly once with a valid token + absolute canonical URL);
-**no raw token is ever logged**; and deployment-safety canonical enforcement
-(missing/invalid/conflict/loopback/per-deploy-host all ERROR, local/mock stays OK).
+**Tests.** `src/lib/public-url.test.ts` — run via `npm run test:public-url`
+(`tsx --conditions=react-server --test`). **`tsx` EXECUTES the focused suite; it
+does NOT type-check** — TypeScript checking is a SEPARATE `npx tsc --noEmit`
+step. The file is **no longer excluded** from `tsconfig`/eslint, so it is part of
+`npx tsc --noEmit` + `npm run lint`; both plus the test run are wired into CI.
+The 34 adversarial cases cover: the origin contract (credentials/path/query/
+fragment/protocol-relative/dangerous-scheme + **backslash / trailing-DNS-dot /
+leading-trailing-embedded-whitespace** rejected, only the root slash normalized);
+precedence + conflict (invalid/whitespace-only primary fails without fallthrough,
+different origins conflict); loopback-only; token format; the shared
+`isRejectedVercelHost` preview-host contract (per-deploy / per-branch / non-prod
+`*.vercel.app` rejected, production alias + custom domain allowed); per-route/
+per-locale URL building; the **exact** client display guard (wrong/preview
+authority, doubled/trailing slash, extra segment, wrong locale/route, query/
+hash/encoded/backslash all rejected; loopback-only fallback when unconfigured);
+**mutation ordering + reason categories** (`createCanonicalLink` → `config` on
+origin failure and `validation` on a bad part, with `persist` NOT called; a
+`persist` throw PROPAGATES rather than being mislabeled `config`; success
+persists exactly once); the client category→message mapping; **no raw token
+logged**; and deployment-safety canonical enforcement. The atomic replacement
+RPC's DB-side behaviour (one-active invariant, rollback-on-failure, hash-only,
+tenant scoping, FOR UPDATE lock) is covered by
+`supabase/tests/replace_customer_access_link.test.sql` (pgTAP, `supabase test
+db`), plus a live two-session concurrency proof.
 
 **Manual incognito verification.** Generate each link type in the admin, open in a
 private window (not logged into Vercel), confirm it loads the storefront/accept
@@ -380,14 +390,54 @@ link intact. Do not paste real tokens into docs.
 
 ### M8E.2 correction pass (post-review hardening)
 
-Addressed the independent review's blocking findings on the initial hotfix:
-validation + URL construction moved **server-side before any mutation** (the old
-client `window.location.origin` prepend and the `absolutePublicUrl`/`canonicalOrigin`
-helpers are removed); the origin contract, precedence/conflict handling, and
-loopback-only fallback were hardened; typed route/locale/token validation now uses
-the repo's `isLocale` source of truth and the generator-derived token format; the
-deployment-safety linter now **ERRORS** (not warns) for a hosted Supabase deploy
-with a missing/invalid/conflicting/loopback/per-deploy-host canonical URL, plus a
-Vercel preview-host check (`VERCEL_URL`/`VERCEL_BRANCH_URL`); the test file is no
-longer build/lint-excluded and runs on a stable runner (`tsx`, no experimental
-Node type-stripping) wired into CI. No security/product boundary changed.
+**Pass 2** addressed the first review: validation + URL construction moved
+**server-side before any mutation** (the old client `window.location.origin`
+prepend and `absolutePublicUrl`/`canonicalOrigin` helpers are removed); the origin
+contract, precedence/conflict handling, and loopback-only fallback were hardened;
+typed route/locale/token validation uses `isLocale` + the generator-derived token
+format; the deployment-safety linter ERRORS for a hosted Supabase deploy with a
+bad canonical URL; the test file is no longer build/lint-excluded and runs on a
+stable runner (`tsx`).
+
+**Pass 3** (this pass) addressed the second review's six remaining blockers:
+
+1. **Atomic shop-link replacement.** New additive migration
+   `20260726100000_atomic_replace_customer_link.sql` adds the SECURITY DEFINER
+   RPC `public.replace_customer_access_link` (`authorize_tenant` owner/admin,
+   tenant derived from membership, `search_path=''`, authenticated/service_role
+   grants only). It locks the customer row `FOR UPDATE`, re-checks active state
+   (MDF33) UNDER the lock, revokes ALL active links, and inserts the new hash-only
+   link — **all in ONE transaction**, so revoke+insert commit together or neither
+   does (no "all revoked, none inserted" state), and concurrent replacements for
+   the same customer SERIALIZE (exactly one active link). The data layer now calls
+   this single RPC (`replaceCustomerLink`); the old two-step `insertCustomerLink`
+   + `revokeCustomerLinksForCustomer` path is removed. **This pass adds ONE
+   migration; it has NOT been applied to hosted Supabase.**
+2. **Real build gate.** `scripts/check-deployment-safety.ts` runs the assessment
+   against the actual build env and exits nonzero on `report.ok === false`; it is
+   wired into `npm run build` **before** `next build` (so the sequence is
+   deploy-safety → build → dynamic-route guard). Zero-config local/mock builds
+   stay green (the canonical requirement only triggers for a hosted Supabase
+   deploy). CI exercises the gate against representative synthetic hosted configs.
+3. **Runtime preview defense.** `resolveServerCanonicalOrigin` now REJECTS a
+   configured canonical that is this deploy's `VERCEL_URL`/`VERCEL_BRANCH_URL`, or
+   a `*.vercel.app` host that is not the stable `VERCEL_PROJECT_PRODUCTION_URL`
+   alias — using the SAME `isRejectedVercelHost` contract as the linter. Vercel
+   metadata is read server-side only and never exposed to the client.
+4. **Hostname/URL hardening.** Trailing DNS dot rejected in the contract and
+   stripped in `hostnameOf` comparison; any backslash rejected before WHATWG
+   parsing; leading/trailing/embedded whitespace fails fast (no silent trim).
+5. **Manager rejection safety.** Every manager wraps its Server Action in
+   `try/catch` inside the transition: a rejected action keeps the displayed link,
+   settles loading, and shows a generic operation error (`common.actionError`) —
+   never mislabeled as a canonical-config failure.
+6. **Exact display guard + error semantics.** `isDisplayablePublicUrl(url,
+   {locale, routeType})` now requires an EXACT match of the configured canonical
+   origin + `/<locale>/<routeType>/<token>` (each manager passes its own locale +
+   route), and actions return distinct `config` / `validation` / `persistence`
+   categories (customer links also `inactive`) mapped to safe localized messages
+   (`common.linkUrlError` / `common.linkGenerationError` / `common.actionError`).
+
+No token generation/hashing, hash-only persistence, one-time-URL, tenant
+authorization, RLS, anon-access, storage, service-role, legal, payment, SMS, or
+Vercel-Deployment-Protection boundary changed.

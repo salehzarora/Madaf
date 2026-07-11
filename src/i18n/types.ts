@@ -26,6 +26,10 @@ export interface Dictionary {
     uploadKeepCurrent: string;
     /** M8E.2 — a tokenized public link could not be built (app URL unconfigured). */
     linkUrlError: string;
+    /** M8E.2 — a link could not be generated due to an internal validation issue. */
+    linkGenerationError: string;
+    /** M8E.2 — a generic operation/persistence/transport failure (safe, no details). */
+    actionError: string;
     /** M8D — shown where a role-gated action is hidden for a sales_rep. */
     noPermission: string;
     search: string;
