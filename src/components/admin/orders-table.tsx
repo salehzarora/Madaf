@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, Download, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Card } from "@/components/ui/card";
@@ -17,9 +17,11 @@ import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { exportOrdersAction } from "@/lib/actions/orders";
 import {
   hasActiveFilters,
+  marketToday,
   orderSourceFacet,
   ordersQueryToParams,
   ORDERS_EXPORT_CAP,
+  toggleStatusFilter,
   withFilterChange,
   type OrderSourceFacet,
   type OrdersListResult,
@@ -36,21 +38,20 @@ const SOURCE_FACETS: readonly OrderSourceFacet[] = [
 
 type DatePreset = "today" | "7d" | "month";
 
-/** UTC calendar-date bounds for a quick preset — computed in UTC to match the
- * server/mock date filter (which treats `from`/`to` as UTC calendar dates), so
- * the preset and the filter never disagree by a timezone offset. */
-function utcPresetRange(preset: DatePreset): { from: string; to: string } {
-  const now = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const to = iso(now);
+/** MARKET-timezone calendar-date bounds for a quick preset — computed in the
+ * market tz (via marketToday) to match the server/mock date filter, so a preset
+ * and a manually-typed range use identical calendar-day semantics. */
+function marketPresetRange(preset: DatePreset): { from: string; to: string } {
+  const to = marketToday(); // YYYY-MM-DD in the market timezone
   if (preset === "today") return { from: to, to };
+  const [y, m, d] = to.split("-").map(Number);
   if (preset === "7d") {
-    const d = new Date(now);
-    d.setUTCDate(d.getUTCDate() - 6);
-    return { from: iso(d), to };
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() - 6); // last 7 days inclusive
+    return { from: dt.toISOString().slice(0, 10), to };
   }
-  // month-to-date
-  return { from: iso(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))), to };
+  // month-to-date: the 1st of the market's current month
+  return { from: `${to.slice(0, 8)}01`, to };
 }
 
 /**
@@ -81,20 +82,33 @@ export function OrdersTable({
   const [isExporting, startExport] = useTransition();
   const [exportNote, setExportNote] = useState<string | null>(null);
 
-  const { rows, total, page, totalPages } = result;
-  const statusSet = new Set(query.statuses);
+  // Optimistic filter state: reflects the LATEST intended query while a
+  // navigation is pending, so every change composes against it (not the stale
+  // server `query` prop). Two quick toggles both land; it resets to the server
+  // query when navigation settles (and on back/forward). The URL stays the
+  // single source of truth after settle.
+  const [optimisticQuery, setOptimisticQuery] = useOptimistic(
+    query,
+    (_current, next: OrdersQuery) => next,
+  );
 
-  /** Navigate to a new query. Filter changes reset to page 1; pagination keeps
-   * the active filters. The URL stays the single source of truth. */
+  // Page/rows/count come from the SERVER result (result.page is the clamped
+  // page); the FILTER controls render + compose against optimisticQuery.
+  const { rows, total, page, totalPages } = result;
+  const statusSet = new Set(optimisticQuery.statuses);
+
+  /** Push a new query + optimistically apply it. Filter helpers reset page to 1;
+   * pagination keeps the (optimistic) filters. */
   function navigate(next: OrdersQuery) {
     const qs = ordersQueryToParams(next).toString();
     startTransition(() => {
+      setOptimisticQuery(next);
       router.push(`/${locale}/admin/orders${qs ? `?${qs}` : ""}`);
     });
   }
   const applyFilter = (patch: Partial<OrdersQuery>) =>
-    navigate(withFilterChange(query, patch));
-  const goToPage = (p: number) => navigate({ ...query, page: p });
+    navigate(withFilterChange(optimisticQuery, patch));
+  const goToPage = (p: number) => navigate({ ...optimisticQuery, page: p });
 
   function onSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,10 +117,7 @@ export function OrdersTable({
   }
 
   function toggleStatus(s: OrderStatus) {
-    const next = new Set(statusSet);
-    if (next.has(s)) next.delete(s);
-    else next.add(s);
-    applyFilter({ statuses: [...next] });
+    navigate(toggleStatusFilter(optimisticQuery, s));
   }
 
   function onPreset(value: string) {
@@ -115,7 +126,7 @@ export function OrdersTable({
       return;
     }
     if (value === "today" || value === "7d" || value === "month") {
-      const { from, to } = utcPresetRange(value);
+      const { from, to } = marketPresetRange(value);
       applyFilter({ dateFrom: from, dateTo: to });
     }
   }
@@ -135,12 +146,12 @@ export function OrdersTable({
     setExportNote(null);
     startExport(async () => {
       const res = await exportOrdersAction({
-        q: query.search || undefined,
-        status: query.statuses.length ? query.statuses.join(",") : undefined,
-        source: query.source !== "all" ? query.source : undefined,
-        customer: query.customerId ?? undefined,
-        from: query.dateFrom ?? undefined,
-        to: query.dateTo ?? undefined,
+        q: optimisticQuery.search || undefined,
+        status: optimisticQuery.statuses.length ? optimisticQuery.statuses.join(",") : undefined,
+        source: optimisticQuery.source !== "all" ? optimisticQuery.source : undefined,
+        customer: optimisticQuery.customerId ?? undefined,
+        from: optimisticQuery.dateFrom ?? undefined,
+        to: optimisticQuery.dateTo ?? undefined,
       });
       if (!res.ok || !res.rows) {
         setExportNote(dict.common.actionError);
@@ -189,7 +200,7 @@ export function OrdersTable({
     });
   }
 
-  const filtersActive = hasActiveFilters(query);
+  const filtersActive = hasActiveFilters(optimisticQuery);
 
   return (
     <div className="flex flex-col gap-4">
@@ -198,10 +209,10 @@ export function OrdersTable({
           {/* Uncontrolled: `key` re-seeds it from the URL on navigation/clear;
               submitting (Enter) navigates with the new term (URL is truth). */}
           <Input
-            key={query.search}
+            key={optimisticQuery.search}
             type="search"
             name="q"
-            defaultValue={query.search}
+            defaultValue={optimisticQuery.search}
             placeholder={t.searchPlaceholder}
             aria-label={t.searchPlaceholder}
           />
@@ -251,7 +262,7 @@ export function OrdersTable({
         {filtersActive ? (
           <button
             type="button"
-            onClick={() => navigate(withFilterChange(query, {
+            onClick={() => navigate(withFilterChange(optimisticQuery, {
               search: "",
               statuses: [],
               source: "all",
@@ -273,7 +284,7 @@ export function OrdersTable({
           {SOURCE_FACETS.map((s) => (
             <Chip
               key={s}
-              selected={query.source === s}
+              selected={optimisticQuery.source === s}
               onClick={() => applyFilter({ source: s })}
               className="h-9 px-3 text-xs"
             >
@@ -287,7 +298,7 @@ export function OrdersTable({
               lives in the two date inputs + the URL, so there is no misleading
               "current preset" state and no dead control. */}
           <Select
-            key={`${query.dateFrom ?? ""}-${query.dateTo ?? ""}`}
+            key={`${optimisticQuery.dateFrom ?? ""}-${optimisticQuery.dateTo ?? ""}`}
             defaultValue=""
             onChange={(e) => onPreset(e.target.value)}
             aria-label={t.dateFilter.label}
@@ -313,8 +324,8 @@ export function OrdersTable({
               <Input
                 type="date"
                 name="from"
-                key={`from-${query.dateFrom ?? ""}`}
-                defaultValue={query.dateFrom ?? ""}
+                key={`from-${optimisticQuery.dateFrom ?? ""}`}
+                defaultValue={optimisticQuery.dateFrom ?? ""}
                 className="h-9 w-38"
                 aria-label={t.dateFilter.from}
               />
@@ -324,8 +335,8 @@ export function OrdersTable({
               <Input
                 type="date"
                 name="to"
-                key={`to-${query.dateTo ?? ""}`}
-                defaultValue={query.dateTo ?? ""}
+                key={`to-${optimisticQuery.dateTo ?? ""}`}
+                defaultValue={optimisticQuery.dateTo ?? ""}
                 className="h-9 w-38"
                 aria-label={t.dateFilter.to}
               />

@@ -42,9 +42,7 @@ Supabase (`sbSearchOrders`/`sbListOrdersForExport`, server-only, under RLS):
   then range-fetches — so a stale/shared/hand-edited `?page=` never triggers a
   PostgREST 416; mock clamps the same way.
 - A present-but-non-UUID `?customer=` matches no order (uuid column) and returns
-  zero rows rather than a DB cast error. Date filter bounds are treated as **UTC
-  calendar dates**; the quick presets (today / last-7 / month) are computed in
-  UTC so preset and filter never disagree by a timezone offset.
+  zero rows rather than a DB cast error.
 
 Mock (`data/orders.ts`) reproduces the same filter/sort/paginate/count contract
 over the demo array so zero-config dev keeps working.
@@ -59,15 +57,34 @@ over the demo array so zero-config dev keeps working.
 - `customer_snapshot ->> name`  (buyer name at order time)
 - `customer_snapshot ->> phone` (buyer phone at order time)
 
-`customer_snapshot` is populated for EVERY order at creation — for a linked
-customer by `_order_create_core` (name+phone), for a guest by the showcase RPC.
-So the search is **complete** (no order is missed) in a single RLS-native query
-with **no join, no capped customer-id pre-scan, and no migration**. Semantics:
-it searches the buyer name/phone **as recorded on the order** (point-in-time),
-which equals the live customer for un-renamed stores; a store renamed *after*
-ordering is found by its name at order time. The internal `order_number` stays
-admin-only — customer surfaces/documents continue to show `public_ref` only
-(unchanged).
+**Snapshot-population guarantee (verified from migrations).** `customer_snapshot`
+has been written with `name` + `phone` for EVERY known-customer order since the
+FIRST order-create path — the original M3A RPC (`20260705130000_order_write_rpcs`,
+lines 126-138) sets it, and every later redefinition of `_order_create_core`
+keeps doing so; guests get it from the showcase guest-order RPC
+(`20260721110000`). There is **no historical window** where a known-customer
+order was created without a snapshot, so **no order is silently unsearchable by
+buyer name/phone**. (`customers.name` is `NOT NULL`, so the snapshot name is
+always present; phone may be null if the store has no phone.)
+
+So the search is **complete** in a single RLS-native query with **no join, no
+customer-id pre-scan (capped or otherwise), no full-order fetch, and no
+migration** — every order is findable by `order_number`, `public_ref`, or the
+buyer name/phone recorded on it, for both known-customer and guest orders.
+
+**Contract: point-in-time.** Search matches the buyer name/phone **as recorded
+on the order** (the snapshot at creation), which equals the live customer for
+un-renamed stores. A store renamed (or with a changed phone) *after* ordering is
+found by its **name at order time**, not the brand-new name. This is a
+deliberate, complete, server-side contract. (The previous client-side search
+additionally matched the *current* customer row via a full client-side customer
+list; that required loading every customer + every order into the browser — the
+scaling problem M8F.1 removes. Current-name search would need either an unbounded
+customer-id `.in()` — a URL-length hazard — or a DB search column/RPC, i.e. a
+migration, which is out of scope; it is **not** required for completeness since
+every order is already searchable by its recorded buyer.) The internal
+`order_number` stays admin-only — customer surfaces/documents show `public_ref`
+only (unchanged).
 
 ### Supported filters (URL params — existing names preserved)
 
@@ -78,7 +95,7 @@ admin-only — customer surfaces/documents continue to show `public_ref` only
 | `source` | facet: `all` \| `sales_visit` \| `shop_link` \| `guest` |
 | `guest` | legacy alias: `guest=true` ⇒ source facet `guest` (dashboard card) |
 | `customer` | scope to one customer id |
-| `from`, `to` | inclusive calendar-date range (`YYYY-MM-DD`) on `created_at` |
+| `from`, `to` | inclusive market-timezone calendar-date range (`YYYY-MM-DD`) on `created_at` |
 | `page` | 1-based page |
 | `pageSize` | optional; bounded 1–100 |
 
@@ -86,6 +103,24 @@ Source facet → DB predicates (mirrors the client `sourceOf`): `guest` =
 `source='remote_customer' AND customer_id IS NULL`; `shop_link` =
 `source='remote_customer' AND customer_id IS NOT NULL`; `sales_visit` =
 `source <> 'remote_customer'`.
+
+### Date-filter timezone contract
+
+There is **no per-tenant/business timezone** in the schema or settings, and the
+app serves a single market (Israel — see `CLAUDE.md`). Date filters are therefore
+interpreted as **calendar days in the market timezone (`Asia/Jerusalem`)**, not
+UTC: `from=2026-07-05` means the whole of July 5 *in the market* (its lower bound
+is `2026-07-04T21:00Z` in summer / `22:00Z` in winter — DST-aware via `Intl`),
+and `to` is inclusive of its whole day (exclusive upper = the next day's market
+start). This matches how an Israel-market admin reads the dates and avoids UTC
+clipping the first ~3 local hours of a day (which would exclude early-morning
+orders the admin sees dated that day). The list, the export, the mock, and the
+quick presets (today / last-7 / month, computed via `marketToday()`) all use the
+**identical** bounds, so there is no client/server drift; URL values stay stable
+`YYYY-MM-DD` and are locale-independent. **Limitation:** the market timezone is a
+hard-coded single-market assumption; a non-Israel admin's date *display*
+(`formatDate`, browser-local) could differ from the filter near midnight. A
+per-tenant timezone is future work (M8F.2+) — no migration/setting added here.
 
 ### Pagination
 
@@ -106,6 +141,16 @@ Source facet → DB predicates (mirrors the client `sourceOf`): `guest` =
 The URL is the single source of truth: the client table navigates
 (`router.push`) on every filter/page change; there is no client-only filter
 state that can drift. Back/forward and shared links restore the exact view.
+
+**Race-free composition.** While a navigation is pending, the table holds an
+**optimistic** copy of the intended query (`useOptimistic`) and composes every
+change against it (via `toggleStatusFilter` / `withFilterChange`) — never against
+the stale server prop. So two quick filter toggles both land (the second is not
+computed off pre-toggle state), a filter change during a pending page navigation
+still resets to page 1 and preserves unrelated filters, and the search + date
+inputs are uncontrolled forms that read the DOM. The optimistic state resets to
+the server query when navigation settles (and on back/forward), keeping the URL
+authoritative.
 
 ### Dashboard / deep-link compatibility
 
@@ -137,7 +182,7 @@ no RLS/`service_role`/storage/legal/payment boundary changed.
 
 ## Test coverage
 
-`src/lib/orders-query.test.ts` (23 tests, `npm run test:orders-search`; also part
+`src/lib/orders-query.test.ts` (38 tests, `npm run test:orders-search`; also part
 of `npm test` + CI) — exercises the PRODUCTION functions:
 
 default parsing · invalid page/page-size normalization · search trimming/cap ·
@@ -151,9 +196,19 @@ combined search+status · export ignores pagination but keeps filters + cap ·
 no tenant/role in the query state · list rows expose both order_number +
 public_ref.
 
+**Correction pass:** race composition — two rapid status toggles both retained,
+toggle-off, status+source together, filter-during-pending-page resets page 1 +
+keeps filters, search/date don't drop status/source, clearing one keeps others ·
+search semantics — `orderMatchesSearch` for known + guest by name/phone,
+renamed-customer point-in-time (recorded matches, current doesn't), no-snapshot,
+mock known-customer-by-name via the synthesized snapshot · date bounds —
+`marketDayStartUtcIso` DST-aware (summer +3 / winter +2), `nextCalendarDay`
+month/leap/year boundaries, just-after-market-midnight inclusion (no UTC
+clipping), from/to inclusivity, and list/export date parity.
+
 sales_rep RLS scoping and the live PostgREST round-trip (jsonb `->>` search,
-`order_items(count)` aggregate embed, `count:exact`) are validated against the
-local DB and by the manual staging smoke below.
+`order_items(count)` aggregate embed, `count:exact`, market-tz date bounds) are
+validated against the local DB and by the manual staging smoke below.
 
 ## Migration
 

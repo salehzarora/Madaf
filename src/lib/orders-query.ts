@@ -246,3 +246,116 @@ export function orderSourceFacet(row: {
   if (row.source === "remote_customer") return "shop_link";
   return "sales_visit";
 }
+
+/**
+ * Toggle a status in the filter and reset to page 1 — COMPOSING against the
+ * passed query. The Orders table calls this with the LATEST intended query
+ * (its optimistic state), so two quick toggles both land instead of the second
+ * overwriting the first off a stale prop.
+ */
+export function toggleStatusFilter(q: OrdersQuery, status: OrderStatus): OrdersQuery {
+  const next = new Set(q.statuses);
+  if (next.has(status)) next.delete(status);
+  else next.add(status);
+  return withFilterChange(q, { statuses: [...next] });
+}
+
+/**
+ * Does an order row match a free-text term? Mirrors the supabase `.or()` search
+ * EXACTLY: internal order_number, customer-facing public_ref, and the buyer
+ * name/phone RECORDED ON THE ORDER (customer_snapshot — populated for every
+ * order at creation). Point-in-time by design; used by the mock data layer and
+ * the tests so mock and supabase agree.
+ */
+export function orderMatchesSearch(
+  row: {
+    number: string;
+    publicRef: string | null;
+    customerSnapshot?: { name?: string; phone?: string };
+  },
+  term: string,
+): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    row.number,
+    row.publicRef ?? "",
+    row.customerSnapshot?.name ?? "",
+    row.customerSnapshot?.phone ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+}
+
+// ── Market-timezone date bounds (M8F.1 correction) ─────────────────────────
+// The app serves a SINGLE market (Israel — see CLAUDE.md); there is no
+// per-tenant timezone contract. Date filters are interpreted as calendar days
+// in this market timezone so "from 2026-07-05" means the WHOLE of July 5 in the
+// market — not UTC (which would clip the first ~3 local hours and exclude
+// orders the admin sees dated that day). DST-aware via Intl. URL values stay
+// stable YYYY-MM-DD; list + export use identical bounds. A per-tenant timezone
+// is future work.
+export const ORDERS_MARKET_TIME_ZONE = "Asia/Jerusalem";
+
+function tzOffsetMs(instant: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(instant)) p[part.type] = part.value;
+  const asUtc = Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(p.hour),
+    Number(p.minute),
+    Number(p.second),
+  );
+  return asUtc - instant.getTime();
+}
+
+/** The UTC instant (ISO) at which YYYY-MM-DD STARTS in the market timezone —
+ * the inclusive lower / exclusive upper `created_at` bound. Null if malformed. */
+export function marketDayStartUtcIso(dateStr: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
+  if (Number.isNaN(utcGuess)) return null;
+  // Reject impossible calendar dates (e.g. 2026-13-40) — Date.UTC rolls them
+  // over, so confirm the components round-trip.
+  const check = new Date(utcGuess);
+  if (
+    check.getUTCFullYear() !== y ||
+    check.getUTCMonth() !== m - 1 ||
+    check.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  const offset = tzOffsetMs(check, ORDERS_MARKET_TIME_ZONE);
+  return new Date(utcGuess - offset).toISOString();
+}
+
+/** The calendar day AFTER dateStr (YYYY-MM-DD) — for the exclusive upper bound
+ * (`to` is INCLUSIVE of its whole day). Pure date arithmetic (tz-independent). */
+export function nextCalendarDay(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Today's calendar date (YYYY-MM-DD) in the market timezone — for date presets
+ * so a preset ("today"/last-7/month) agrees with the market-timezone filter. */
+export function marketToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ORDERS_MARKET_TIME_ZONE,
+  }).format(new Date());
+}

@@ -12,17 +12,22 @@ import { test } from "node:test";
 
 import {
   hasActiveFilters,
+  marketDayStartUtcIso,
+  marketToday,
+  nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
   ORDERS_PAGE_SIZE,
+  orderMatchesSearch,
   orderSourceFacet,
   ordersQueryToParams,
   parseOrdersQuery,
+  toggleStatusFilter,
   totalPagesFor,
   withFilterChange,
   type OrdersQuery,
 } from "./orders-query";
 import { listOrdersForExport, searchOrders } from "./data/orders";
-import { orders as mockOrders } from "./mock";
+import { customers as mockCustomers, orders as mockOrders } from "./mock";
 
 const MOCK_TOTAL = mockOrders.length;
 
@@ -305,4 +310,159 @@ test("list rows expose BOTH the admin order number and the customer public_ref",
   assert.ok("number" in row); // internal (admin-only surface)
   assert.ok("publicRef" in row); // customer-facing reference
   assert.equal(typeof row.number, "string");
+});
+
+// ── CORRECTION 1: filter-navigation race composition ───────────────────────
+// The Orders table composes every change against its LATEST intended state
+// (useOptimistic), so these sequential compositions reflect the real UI. Two
+// quick changes must both survive — the exact defect being fixed.
+test("two rapid status toggles are BOTH retained (compose against latest)", () => {
+  let q = parseOrdersQuery({ page: "4" }); // pretend we were on page 4
+  q = toggleStatusFilter(q, "new"); // toggle 1
+  q = toggleStatusFilter(q, "confirmed"); // toggle 2 (composes on toggle-1 result)
+  assert.deepEqual([...q.statuses].sort(), ["confirmed", "new"]);
+  assert.equal(q.page, 1); // any change resets to page 1
+});
+
+test("toggling the same status twice removes it (deselect)", () => {
+  let q = parseOrdersQuery({});
+  q = toggleStatusFilter(q, "new");
+  assert.deepEqual(q.statuses, ["new"]);
+  q = toggleStatusFilter(q, "new");
+  assert.deepEqual(q.statuses, []);
+});
+
+test("a rapid status + source change retains BOTH", () => {
+  let q = toggleStatusFilter(parseOrdersQuery({}), "new");
+  q = withFilterChange(q, { source: "guest" }); // source change composes on the status
+  assert.deepEqual(q.statuses, ["new"]);
+  assert.equal(q.source, "guest");
+  assert.equal(q.page, 1);
+});
+
+test("a filter change DURING a pending page navigation resets page 1 + keeps the filter", () => {
+  // Optimistic state is on page 3 with a source facet; a status toggle composes.
+  const pending: OrdersQuery = { ...parseOrdersQuery({ source: "shop_link" }), page: 3 };
+  const next = toggleStatusFilter(pending, "preparing");
+  assert.equal(next.page, 1);
+  assert.deepEqual(next.statuses, ["preparing"]);
+  assert.equal(next.source, "shop_link"); // unrelated filter preserved
+});
+
+test("search + date changes do NOT drop existing status/source filters", () => {
+  const base: OrdersQuery = {
+    ...parseOrdersQuery({ status: "confirmed", source: "shop_link" }),
+  };
+  const afterSearch = withFilterChange(base, { search: "acme" });
+  assert.deepEqual(afterSearch.statuses, ["confirmed"]);
+  assert.equal(afterSearch.source, "shop_link");
+  assert.equal(afterSearch.search, "acme");
+  const afterDate = withFilterChange(afterSearch, { dateFrom: "2026-07-01" });
+  assert.deepEqual(afterDate.statuses, ["confirmed"]);
+  assert.equal(afterDate.source, "shop_link");
+  assert.equal(afterDate.search, "acme");
+  assert.equal(afterDate.dateFrom, "2026-07-01");
+});
+
+test("clearing one filter does NOT clear unrelated filters", () => {
+  const q = parseOrdersQuery({
+    status: "new",
+    source: "guest",
+    from: "2026-07-01",
+    to: "2026-07-31",
+  });
+  const cleared = withFilterChange(q, { dateFrom: null, dateTo: null });
+  assert.deepEqual(cleared.statuses, ["new"]);
+  assert.equal(cleared.source, "guest");
+  assert.equal(cleared.dateFrom, null);
+  assert.equal(cleared.dateTo, null);
+});
+
+// ── CORRECTION 2: customer/guest search semantics (point-in-time snapshot) ──
+// Search matches order_number, public_ref and the buyer name/phone RECORDED on
+// the order (customer_snapshot) — populated for EVERY order since the first
+// M3A create path (proven from migrations). Identical fields to the supabase
+// `.or()`. Known + guest orders are covered; renamed customers are found by
+// their name AT ORDER TIME.
+test("orderMatchesSearch: known + guest by name and phone", () => {
+  const known = { number: "MDF-1042", publicRef: "MDF-ABCD1234", customerSnapshot: { name: "Acme Grocery", phone: "04-555-0102" } };
+  assert.equal(orderMatchesSearch(known, "acme"), true); // known name
+  assert.equal(orderMatchesSearch(known, "555-0102"), true); // known phone
+  assert.equal(orderMatchesSearch(known, "MDF-1042"), true); // internal number
+  assert.equal(orderMatchesSearch(known, "ABCD1234"), true); // public ref
+  const guest = { number: "MDF-1050", publicRef: "MDF-GUEST999", customerSnapshot: { name: "Walk-in Kiosk", phone: "050-123-4567", guest: true } };
+  assert.equal(orderMatchesSearch(guest, "walk-in"), true); // guest name
+  assert.equal(orderMatchesSearch(guest, "050-123"), true); // guest phone
+});
+
+test("orderMatchesSearch: renamed customer is found by name AT ORDER TIME (point-in-time)", () => {
+  // Snapshot holds the name recorded on the order ("Old Name"). A store renamed
+  // to "New Name" AFTER ordering is found by the recorded name, not the new one.
+  const row = { number: "MDF-9", publicRef: null, customerSnapshot: { name: "Old Name", phone: "1" } };
+  assert.equal(orderMatchesSearch(row, "old name"), true);
+  assert.equal(orderMatchesSearch(row, "new name"), false);
+});
+
+test("orderMatchesSearch: order with NO snapshot is unmatched by name (documented contract)", () => {
+  // No historical order actually lacks a snapshot (M3A onward populates it), but
+  // the guard is explicit: name search relies on the recorded snapshot.
+  const row = { number: "MDF-7", publicRef: "MDF-XY", customerSnapshot: undefined };
+  assert.equal(orderMatchesSearch(row, "someone"), false);
+  assert.equal(orderMatchesSearch(row, "MDF-7"), true); // number still matches
+  assert.equal(orderMatchesSearch(row, ""), true); // empty term matches all
+});
+
+test("searchOrders (mock): finds a KNOWN customer's order by the customer name", async () => {
+  // Mock orders carry a synthesized snapshot from the linked customer, so the
+  // demo search finds a known customer by name — same contract as supabase.
+  const linked = mockOrders.find((o) => o.customerId);
+  const customer = mockCustomers.find((c) => c.id === linked?.customerId);
+  assert.ok(customer, "a mock order links to a customer");
+  const term = customer.name.slice(0, 4);
+  const res = await searchOrders(parseOrdersQuery({ q: term, pageSize: "100" }));
+  assert.ok(res.rows.some((r) => r.customerId === customer.id), `search '${term}' finds the customer's order`);
+});
+
+// ── CORRECTION 3: market-timezone date bounds ──────────────────────────────
+test("marketDayStartUtcIso: DST-aware market-day start (Asia/Jerusalem)", () => {
+  assert.equal(marketDayStartUtcIso("2026-07-05"), "2026-07-04T21:00:00.000Z"); // IDT +3
+  assert.equal(marketDayStartUtcIso("2026-01-05"), "2026-01-04T22:00:00.000Z"); // IST +2
+  assert.equal(marketDayStartUtcIso("2026-13-40"), null); // impossible date
+  assert.equal(marketDayStartUtcIso("2026/07/05"), null); // malformed
+});
+
+test("nextCalendarDay: month / leap / year boundaries", () => {
+  assert.equal(nextCalendarDay("2026-07-31"), "2026-08-01");
+  assert.equal(nextCalendarDay("2024-02-28"), "2024-02-29"); // leap year
+  assert.equal(nextCalendarDay("2024-02-29"), "2024-03-01");
+  assert.equal(nextCalendarDay("2026-12-31"), "2027-01-01");
+});
+
+test("marketToday returns a stable YYYY-MM-DD", () => {
+  assert.match(marketToday(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("date bounds include a just-after-market-midnight order (no UTC clipping)", () => {
+  // An order at 00:30 market time on 2026-07-05 (= 2026-07-04T21:30Z). With the
+  // market-tz lower bound (2026-07-04T21:00Z) it is INCLUDED; a naive UTC bound
+  // (2026-07-05T00:00Z) would wrongly EXCLUDE it.
+  const orderMs = Date.parse("2026-07-05T00:30:00+03:00");
+  const marketBound = Date.parse(marketDayStartUtcIso("2026-07-05")!);
+  assert.ok(orderMs >= marketBound, "market-tz bound includes the early-morning local order");
+  assert.ok(orderMs < Date.parse("2026-07-05T00:00:00Z"), "a naive UTC bound would have excluded it");
+});
+
+test("searchOrders (mock): date-from/to boundaries + list/export parity", async () => {
+  // All mock orders sit on 2026-07-05 (market time). from=that day includes them.
+  const incl = await searchOrders(parseOrdersQuery({ from: "2026-07-05", to: "2026-07-05", pageSize: "100" }));
+  assert.ok(incl.total > 0, "orders on 2026-07-05 are included by from=to=2026-07-05");
+  // to is INCLUSIVE of its whole day.
+  const exportRows = await listOrdersForExport(parseOrdersQuery({ from: "2026-07-05", to: "2026-07-05" }), 5000);
+  assert.equal(exportRows.length, incl.total, "list + export apply IDENTICAL date bounds");
+  // A range entirely OUTSIDE the mock orders (which span 2026-06-27..07-05).
+  const outside = await searchOrders(parseOrdersQuery({ from: "2026-05-01", to: "2026-05-31" }));
+  assert.equal(outside.total, 0);
+  // to is exclusive of the NEXT day: an order on 07-05 is excluded by to=07-04.
+  const upTo04 = await searchOrders(parseOrdersQuery({ to: "2026-07-04", pageSize: "100" }));
+  assert.ok(upTo04.rows.every((r) => Date.parse(r.createdAt) < Date.parse(marketDayStartUtcIso("2026-07-05")!)));
 });

@@ -39,6 +39,8 @@ import type {
   Supplier,
 } from "@/lib/types";
 import {
+  marketDayStartUtcIso,
+  nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
   type OrderListRow,
@@ -764,13 +766,6 @@ function mapOrderListRow(row: OrderListDbRow): OrderListRow {
   };
 }
 
-/** Next calendar day (UTC) for an inclusive YYYY-MM-DD upper date bound. */
-function nextUtcDay(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
 /** Build the tenant-scoped, filtered orders query (no order/range yet). Shared
  * by the count, the paged list, and the export so their filter semantics are
  * identical. `select` is caller-chosen ("id" for a head count, ORDER_LIST_SELECT
@@ -802,8 +797,16 @@ function buildOrdersQuery(
 
   if (query.customerId) qb = qb.eq("customer_id", query.customerId);
 
-  if (query.dateFrom) qb = qb.gte("created_at", `${query.dateFrom}T00:00:00Z`);
-  if (query.dateTo) qb = qb.lt("created_at", `${nextUtcDay(query.dateTo)}T00:00:00Z`);
+  // Market-timezone calendar-day bounds (from inclusive, to inclusive of its
+  // whole day via the next-day exclusive upper) — see orders-query.ts.
+  if (query.dateFrom) {
+    const iso = marketDayStartUtcIso(query.dateFrom);
+    if (iso) qb = qb.gte("created_at", iso);
+  }
+  if (query.dateTo) {
+    const iso = marketDayStartUtcIso(nextCalendarDay(query.dateTo));
+    if (iso) qb = qb.lt("created_at", iso);
+  }
 
   // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
   // then union order_number / public_ref / recorded buyer name+phone.

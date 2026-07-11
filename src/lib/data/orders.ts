@@ -22,7 +22,10 @@ import {
 } from "@/lib/mock";
 import { orderSubtotal } from "@/lib/catalog-helpers";
 import {
+  marketDayStartUtcIso,
+  nextCalendarDay,
   ORDERS_EXPORT_CAP,
+  orderMatchesSearch,
   orderSourceFacet,
   totalPagesFor,
   type OrderListRow,
@@ -97,6 +100,14 @@ const mockCustomerById = new Map(mockCustomers.map((c) => [c.id, c]));
 
 function toMockListRow(order: Order): OrderListRow {
   const c = order.customerId ? mockCustomerById.get(order.customerId) : undefined;
+  // Every real order carries a buyer snapshot (name+phone) recorded at creation
+  // (_order_create_core / the guest RPC). The mock order fixtures predate that
+  // field, so synthesize it from the linked customer for KNOWN orders — keeping
+  // mock search snapshot-based and identical to supabase. (No `guest` flag, so
+  // the source facet + display are unaffected.)
+  const customerSnapshot =
+    order.customerSnapshot ??
+    (c ? { name: c.name, phone: c.phone ?? undefined } : undefined);
   return {
     id: order.id,
     number: order.number,
@@ -107,7 +118,7 @@ function toMockListRow(order: Order): OrderListRow {
     customerId: order.customerId,
     customerName: c?.name ?? null,
     customerPhone: c?.phone ?? null,
-    customerSnapshot: order.customerSnapshot,
+    customerSnapshot,
     itemCount: order.items.length,
     subtotalAmount: orderSubtotal(order),
   };
@@ -116,15 +127,14 @@ function toMockListRow(order: Order): OrderListRow {
 /** ALL matching mock rows, filtered + deterministically sorted (created_at
  * DESC, then id DESC) — mirrors the supabase filters/sort/search semantics. */
 function filterMockOrders(query: OrdersQuery): OrderListRow[] {
-  const term = query.search.trim().toLowerCase();
   const statusSet = new Set(query.statuses);
-  // UTC calendar-date bounds, consistent with the supabase gte/lt filter.
+  // Market-timezone calendar-day bounds — identical to the supabase filter.
   const fromMs = query.dateFrom
-    ? Date.parse(`${query.dateFrom}T00:00:00Z`)
-    : undefined;
+    ? Date.parse(marketDayStartUtcIso(query.dateFrom) ?? "")
+    : NaN;
   const toMs = query.dateTo
-    ? Date.parse(`${query.dateTo}T00:00:00Z`) + 86_400_000
-    : undefined;
+    ? Date.parse(marketDayStartUtcIso(nextCalendarDay(query.dateTo)) ?? "")
+    : NaN;
 
   return orders
     .map(toMockListRow)
@@ -132,27 +142,14 @@ function filterMockOrders(query: OrdersQuery): OrderListRow[] {
     .filter((r) => query.source === "all" || orderSourceFacet(r) === query.source)
     .filter((r) => !query.customerId || r.customerId === query.customerId)
     .filter((r) => {
-      if (fromMs === undefined && toMs === undefined) return true;
+      if (Number.isNaN(fromMs) && Number.isNaN(toMs)) return true;
       const t = Date.parse(r.createdAt);
       if (Number.isNaN(t)) return false;
-      if (fromMs !== undefined && t < fromMs) return false;
-      if (toMs !== undefined && t >= toMs) return false;
+      if (!Number.isNaN(fromMs) && t < fromMs) return false;
+      if (!Number.isNaN(toMs) && t >= toMs) return false;
       return true;
     })
-    .filter((r) => {
-      if (!term) return true;
-      return [
-        r.number,
-        r.publicRef ?? "",
-        r.customerName ?? "",
-        r.customerPhone ?? "",
-        r.customerSnapshot?.name ?? "",
-        r.customerSnapshot?.phone ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(term);
-    })
+    .filter((r) => orderMatchesSearch(r, query.search))
     .sort(
       (a, b) =>
         b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
