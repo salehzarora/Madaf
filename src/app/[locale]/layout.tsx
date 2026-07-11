@@ -4,14 +4,6 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { dirFor, isLocale, locales, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { CartProvider } from "@/lib/cart-context";
-import {
-  listCategories,
-  listCustomers,
-  listManufacturers,
-  listProducts,
-} from "@/lib/data";
-import { ShopDataProvider } from "@/lib/shop-data-context";
 import "../globals.css";
 
 /**
@@ -64,33 +56,20 @@ export default async function RootLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
-  // Server-side reads through the data layer (mock by default). The shop
-  // data context hydrates every client consumer (cart, pickers, order
-  // pad, catalog filters) so no client component fetches or imports mock
-  // data itself.
-  const [products, categories, manufacturers, customers] = await Promise.all([
-    listProducts(),
-    listCategories(),
-    listManufacturers(),
-    listCustomers(),
-  ]);
-
+  // No catalog data is loaded here. The full ShopData (products/customers/…)
+  // is scoped to the routes that need it: the storefront `(shop)` layout
+  // hydrates the FULL context + cart; the `admin` layout hydrates only the
+  // bounded category/manufacturer reference lists. This keeps the full product
+  // and customer collections OFF admin routes (e.g. the paginated Products
+  // list) — M8F.2. Auth/token pages (login, invite, shop/showcase tokens) are
+  // self-contained and need neither provider.
   return (
     <html
       lang={locale}
       dir={dirFor(locale as Locale)}
       className={`${rubik.variable} ${plexMono.variable} antialiased`}
     >
-      <body className="min-h-dvh">
-        <ShopDataProvider
-          products={products}
-          categories={categories}
-          manufacturers={manufacturers}
-          customers={customers}
-        >
-          <CartProvider>{children}</CartProvider>
-        </ShopDataProvider>
-      </body>
+      <body className="min-h-dvh">{children}</body>
     </html>
   );
 }

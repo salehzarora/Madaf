@@ -19,12 +19,12 @@ The admin Products page loaded the **entire catalog** into the browser:
 
 This does not scale: payload and client work grow linearly with the catalog.
 
-> Note: the root layout (`app/[locale]/layout.tsx`) still hydrates
-> `ShopDataProvider` with the full **active** product list for the shopping
-> flows (cart, catalog, order pad, pickers). That is a shared, cross-cutting
-> concern **outside M8F.2's scope** (M8F.1 left the analogous customers
-> hydration in place). M8F.2 fixes the admin Products **list** itself; see
-> _Deferred_ below.
+Additionally, the **root layout** (`app/[locale]/layout.tsx`) hydrated
+`ShopDataProvider` with the full **active** product list **and** the full
+customer list for **every** route — including admin routes — so opening the
+admin Products list serialized the whole catalog + customer collections into the
+browser regardless of pagination. The correction pass fixes this too (see
+**Admin-route payload**).
 
 ## New server-side query contract
 
@@ -56,36 +56,49 @@ to 1 (`withProductFilterChange`); pagination links keep all active filters
 
 ## Supported search fields
 
-Free-text `q` matches the product's **own top-level columns** — complete and
-safe in a single query with exact count and pagination:
+Free-text `q` matches (complete, server-side, exact-count- and
+pagination-compatible):
 
 - product name (`name_ar`, `name_he`, `name_en`)
 - SKU (`sku`)
-- barcode (`barcode`)
+- barcode (`barcode`) — **added** in M8F.2 (the old UI didn't search it)
+- **manufacturer / brand name (all three locales)** — the pre-M8F.2 search
+  matched the manufacturer name (current locale only); **restored** here and
+  **improved** to all three locales.
 
-Supabase uses one `.or(... ilike ...)` (or-grammar metacharacters sanitized,
-mirroring `sbSearchCustomers`); mock mirrors it exactly via
-`productMatchesSearch`, so mock and supabase agree and the tests exercise the
-production function.
+### Previous search contract (verified against base `c4e9929`)
 
-### Why manufacturer/category name are NOT free-text searched
+The base `ProductsTable` predicate matched: `translations.{he,ar,en}.name`,
+`sku`, and `manufacturer.name[locale]` (current locale only). It did **not**
+match barcode or category name. So the previously-searchable fields were
+**product name (3 locales), SKU, and manufacturer name (current locale)**.
+M8F.2 preserves all of them (manufacturer name broadened to 3 locales) and adds
+barcode. **Category name was never searchable and is not added.**
 
-The old client search also substring-matched the **manufacturer name** (it had
-the full manufacturer list in memory). Reproducing OR-across-relations
-server-side (name OR sku OR manufacturer-name) is **not expressible in one
-PostgREST query** without a migration / view / RPC / generated search column —
-and a capped id pre-scan or an unbounded `.in()` is explicitly disallowed.
+### How the manufacturer-name search stays complete + safe (no migration)
 
-Per the phase rules we did **not** create a migration and did **not** silently
-degrade. Instead manufacturer and category are **first-class filters** (the
-existing dropdown + chips, now server-side and URL-controlled), which finds
-products of a manufacturer/category **more** precisely than a substring match,
-and we **added barcode** to free-text search (the old UI lacked it). Net
-operator capability increases; the one removed behavior (typing a brand name in
-the search box) is replaced by the manufacturer filter and documented here — it
-is not silent. This is **not** `BLOCKED ON DATABASE DESIGN`: the phase goal
-(stop the full-catalog load; server search/filter/sort/paginate/count) is fully
-met on the securely-supported fields.
+Product-name/SKU/barcode are the product's own columns → one `.or(... ilike)`.
+Manufacturer name lives on the related `manufacturers` table; PostgREST can't
+`OR` a top-level column with a related-table column in one query. Rather than a
+migration, M8F.2 resolves the matching brand ids **first** and unions them in:
+
+1. `sbManufacturerIdsMatching(client, tenant, term)` — a **complete (uncapped),
+   tenant-scoped** query over the `manufacturers` reference table returning
+   **all** brand ids whose `name_ar/he/en` match. This is **not** a capped
+   pre-scan of a large relation and **not** an unbounded id list: `manufacturers`
+   is bounded per-tenant reference data — the very set already loaded once for
+   the filter dropdown. Precedent: `sbSearchCustomers` (`hasLink`) and
+   `sbSearchInventoryMovements` (`productIds`) use the same pattern.
+2. The products `.or()` adds `manufacturer_id.in.(…thoseIds)` alongside the
+   name/sku/barcode `ilike`s. The **same** pre-resolved id set feeds the count,
+   the page, and the export, so count == list and pagination is exact.
+
+Mock mirrors this exactly: `filterMockProducts` passes each product's
+manufacturer name (via `manufacturerById`) to `productMatchesSearch`, which ORs
+the product's own columns with the brand name (all locales). Because the brand
+pre-query is **complete** and expressible with the **existing schema +
+authenticated PostgREST**, this is the "implement it" path — **not**
+`BLOCKED ON DATABASE DESIGN`.
 
 ## Filters
 
@@ -115,20 +128,67 @@ page** — never a 500, a PostgREST 416, or a redirect loop. Defaults: page size
 **50**, max **100** (`PRODUCTS_PAGE_SIZE` / `PRODUCTS_MAX_PAGE_SIZE`). Mock
 mirrors count/clamp/slice identically.
 
+## Admin-route payload (full catalog no longer shipped)
+
+The provider tree was split by route so admin routes receive **only** bounded
+reference data:
+
+- **Root layout** — hydrates **no** catalog data and renders **no**
+  `ShopDataProvider`/`CartProvider` (just `<html>/<body>`).
+- **Storefront `(shop)` layout** — hydrates the **full** `ShopDataProvider`
+  (products, categories, manufacturers, customers) **+** `CartProvider`. The
+  shop flows (catalog, cart, order pad, pickers, checkout) legitimately browse
+  the whole catalog client-side; unchanged behavior, just scoped here.
+- **`admin` layout** — hydrates a **slim** `ShopDataProvider`:
+  `categories` + `manufacturers` only (the filter/label reference data),
+  `products={[]}` and `customers={[]}`. The paginated Products list fetches only
+  its current page via `searchProducts`.
+- **`admin/documents/[id]`** — the one admin route whose `DocumentView` needs
+  line-item + customer names provides `products` + `customers` **locally** via a
+  nested `ShopDataProvider` on that route only.
+- **Auth/token pages** (login, onboarding, reset-password, invite/join/shop/
+  showcase tokens) are self-contained and use neither provider.
+
+Result on `/admin/products`: the browser receives the **current page of
+products** + the bounded **categories/manufacturers** reference lists — never
+the full product, customer, or inventory collections. Guarded by source-level
+tests (`guard:` cases in `products-query.test.ts`) so a regression that
+reintroduces `listProducts`/`listInventory` on the admin products page or the
+admin/root layout fails the suite. Only the current page's images are signed
+(the list route). Category/manufacturer option lists come from the complete,
+uncapped, tenant-scoped `listCategories`/`listManufacturers`.
+
 ## Deterministic sorting
 
-**`sku` ascending (empty/NULL SKUs last), then `id` ascending** — a unique
-tie-breaker so paging is skip-/dup-free. Supabase:
-`.order("sku", { ascending: true, nullsFirst: false }).order("id")`; mock:
-`compareProductsForList`.
+**The single mock/supabase contract:**
+
+1. Non-blank SKUs sort **before** blank ones. A SKU is **blank** when it is
+   NULL/missing, empty (`""`), or whitespace-only.
+2. Among non-blank SKUs: ascending by raw SKU, **by UTF-16 code unit**
+   (`<`/`>`) — **not** `localeCompare` (whose result varies by environment
+   locale). For the ASCII SKUs the app produces this equals the DB byte order.
+3. Case: code-unit, so uppercase sorts before lowercase (`'D'`=0x44 < `'a'`=0x61).
+4. Numeric-looking SKUs: plain string order (`"A-10"` < `"A-2"` because
+   `'1'` < `'2'`) — no natural/numeric sort.
+5. Duplicate SKUs → the **id** tie-break.
+6. Final unique tie-breaker: `id` ascending (code-unit).
+
+Mock: `compareProductsForList` (+ `isBlankSku`). Supabase:
+`.order("sku", { ascending: true, nullsFirst: false }).order("id")`. **Parity:**
+the product write path (`readProductInput` → `str()` trims blanks to
+`undefined` → stored **NULL**) never stores empty/whitespace SKUs, so the DB
+only holds a non-blank value or NULL — for which `nullsFirst:false` (NULL last)
++ ASCII code-unit ordering matches the mock exactly. The fixture test
+(`A-2`, `A-10`, lowercase, duplicate, empty, whitespace, NULL, equal-SKU
+distinct ids) asserts the exact order and **no duplicate or skipped row across
+pages**. (A hand-inserted empty-string SKU is the one value the app can't
+produce; fully DB-guaranteed byte ordering for arbitrary SKUs would need a
+`COLLATE "C"`/generated sort column — a migration, out of scope.)
 
 The old list sorted by **category shelf order then SKU**, but shelf order lives
-on the `categories` relation and can't be expressed in a single server-side
-products query without a denormalized sort column (a migration — out of scope).
-We therefore promoted the existing **secondary** key (SKU) to primary. Within a
-selected category the order is identical to before (SKU); across categories the
-grouping is dropped in favor of a global, deterministic SKU order. Documented
-and tested (`compareProductsForList` + a "page is globally sorted" assertion).
+on the `categories` relation and can't be expressed server-side without a
+denormalized column (migration). SKU (the old **secondary** key) is promoted to
+primary; within a selected category the order is identical to before.
 
 ## URL state & rapid-filter behavior
 
@@ -199,12 +259,28 @@ under the products SELECT policy; no role's product visibility is broadened.
 
 ## Activity Log / audit
 
-M8F.2 is **read-only** (search / filter / paginate / list / image signing /
-export). **No new mutative operational action is introduced**, so **no audit
-event** is created for browsing or exporting. The existing product
-create/edit/activate/deactivate/inventory actions retain their current behavior
-verbatim (`setProductActiveAction` etc. are unchanged). Nothing falls into
-"Other".
+Madaf's audit surface is the append-only `public.audit_events` table
+(`event_type` e.g. `product.created`, `order.status_changed`,
+`document.voided`), written **only by DB triggers / service-role on MUTATIONS**
+(RLS: members `SELECT` only; no client/app inserts). It records **state
+changes**, never reads.
+
+- **Did Product CSV export already have an audit event?** No. The base export
+  (`c4e9929`) was a **client-side** `downloadCsv` built from already-loaded data
+  — no server action, no audit.
+- **Does M8F.2 change the export's user-visible action or data scope?** No. Same
+  owner/admin action, same filtered rows (up to the cap); it just moved to a
+  server action so the browser no longer holds the full catalog.
+- **Sensitivity:** the export projects tenant-scoped catalog data the owner/
+  admin already sees (no secrets, no cross-tenant data, no image paths).
+- **New audit event required?** **No.** Export — like search, filtering,
+  pagination, list-opening and signed-image resolution — is a **read**;
+  `audit_events` is mutation-only, so logging a read would be inconsistent with
+  the established model and is explicitly out of scope. Nothing falls into
+  "Other" (no new `event_type` is introduced).
+- Existing product create/edit/activate/deactivate/inventory mutations retain
+  their current audit behavior verbatim (`setProductActiveAction` etc.
+  unchanged). M8F.2 introduces **no new mutative action**.
 
 ## Test coverage
 
@@ -230,12 +306,16 @@ product/inventory lifecycle, legal, or payment change; no hosted command.
 
 ## Deferred (not done in this phase)
 
-- **Slim `ShopData` for admin routes.** The root layout still ships the full
-  active product list to every route via `ShopDataProvider` (needed by the shop
-  flows). Splitting admin vs shop hydration is a separate phase.
-- **Category-shelf-ordered server sort / relation-name search.** Would need a
-  denormalized `category_sort_order` and/or a generated `search_text` column on
-  `products` (a migration). Deferred index note below.
+- **Category-shelf-ordered server sort.** Would need a denormalized
+  `category_sort_order` column on `products` (a migration). SKU order is used
+  instead (documented above).
+- **DB-guaranteed byte-exact SKU ordering for pathological SKUs** (empty/
+  whitespace/collation-sensitive). Would need a `COLLATE "C"`/generated sort
+  column (migration). The app write path prevents such SKUs, so mock/supabase
+  agree for all app-producible data.
+- **Full-catalog reads on other admin routes** (e.g. `admin/orders/[id]`,
+  `admin/manufacturers`, `admin/documents/[id]`) load their own products as
+  props — pre-existing, out of M8F.2 scope (which targets the Products list).
 
 ### Deferred index recommendation (do NOT add now)
 

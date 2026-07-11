@@ -8,11 +8,15 @@
  * Runner: `npm run test:products-search` (tsx → node:test).
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import {
   compareProductsForList,
   hasActiveProductFilters,
+  isBlankSku,
+  manufacturerMatchesSearch,
   parseProductsQuery,
   productMatchesSearch,
   productMatchesStatus,
@@ -24,12 +28,24 @@ import {
   type ProductsQuery,
 } from "./products-query";
 import { listProductsForExport, searchProducts } from "./data/products";
-import { products as mockProducts } from "./mock";
-import type { Product } from "./types";
+import { manufacturerById, products as mockProducts } from "./mock";
+import type { LocalizedText, Product } from "./types";
 
 const TOTAL = mockProducts.length; // 34 mock catalog rows
 const DRINKS = "cat-drinks"; // 7 products
 const COCA = "m-coca"; // 6 products
+const STRAUSS = "m-strauss"; // 4 products; brand name "Strauss" not in product names
+
+/** The manufacturer name for a product (mirrors what the data layer passes to
+ * productMatchesSearch), so the tests derive the SAME expected set as the
+ * mock/supabase search. */
+function manOf(p: Product): LocalizedText | undefined {
+  return manufacturerById.get(p.manufacturerId)?.name;
+}
+/** Full search match INCLUDING manufacturer name — the data-layer contract. */
+function matches(p: Product, term: string): boolean {
+  return productMatchesSearch(p, term, manOf(p));
+}
 
 /** Base query = no filters, page 1, default size. */
 const base = (patch: Partial<ProductsQuery> = {}): ProductsQuery => ({
@@ -269,10 +285,10 @@ test("URL state round-trips through parse → serialize → parse", () => {
 // ── 23. Product search by name ─────────────────────────────────────────────
 test("searchProducts (mock): finds products by name (all locales)", async () => {
   const res = await searchProducts(base({ search: "cola", pageSize: 100 }));
-  const expected = mockProducts.filter((p) => productMatchesSearch(p, "cola")).length;
+  const expected = mockProducts.filter((p) => matches(p, "cola")).length;
   assert.ok(expected > 0);
   assert.equal(res.total, expected);
-  assert.ok(res.products.every((p) => productMatchesSearch(p, "cola")));
+  assert.ok(res.products.every((p) => matches(p, "cola")));
 });
 
 test("productMatchesSearch: matches name in ar / he / en", () => {
@@ -288,7 +304,7 @@ test("searchProducts (mock): finds a product by exact SKU", async () => {
   const sample = mockProducts[0];
   const res = await searchProducts(base({ search: sample.sku, pageSize: 100 }));
   assert.ok(res.products.some((p) => p.id === sample.id));
-  assert.ok(res.products.every((p) => productMatchesSearch(p, sample.sku)));
+  assert.ok(res.products.every((p) => matches(p, sample.sku)));
 });
 
 // ── 25. Product search by barcode ──────────────────────────────────────────
@@ -400,4 +416,132 @@ test("searchProducts (mock): every row carries an id (edit/detail links work)", 
   const res = await searchProducts(base({ pageSize: 100 }));
   assert.ok(res.products.length > 0);
   assert.ok(res.products.every((p) => typeof p.id === "string" && p.id.length > 0));
+});
+
+// ── 37. Manufacturer/brand-name search (all locales) — restored in M8F.2 ───
+// The pre-M8F.2 client search matched the manufacturer name (current locale);
+// M8F.2 restores it (supabase via a complete tenant-scoped brand pre-query →
+// manufacturer_id.in.(…)) and improves it to all three locales.
+test("manufacturerMatchesSearch: matches brand name in ar / he / en", () => {
+  const strauss = manufacturerById.get(STRAUSS)!.name;
+  assert.ok(manufacturerMatchesSearch(strauss, "Strauss"));
+  assert.ok(manufacturerMatchesSearch(strauss, "שטראוס"));
+  assert.ok(manufacturerMatchesSearch(strauss, "شتراوس"));
+  assert.ok(!manufacturerMatchesSearch(strauss, "zzz-nomatch"));
+  assert.ok(!manufacturerMatchesSearch(null, "Strauss"));
+});
+
+test("searchProducts (mock): finds a brand's products by brand name (en/he/ar)", async () => {
+  const straussIds = mockProducts
+    .filter((p) => p.manufacturerId === STRAUSS)
+    .map((p) => p.id);
+  assert.ok(straussIds.length > 0);
+  for (const term of ["Strauss", "שטראוס", "شتراوس"]) {
+    const res = await searchProducts(base({ search: term, pageSize: 100 }));
+    // Expected = full contract (own columns OR brand name) — mock/supabase mirror.
+    assert.equal(res.total, mockProducts.filter((p) => matches(p, term)).length);
+    // ALL of the brand's products are returned (found via the brand name).
+    const got = new Set(res.products.map((p) => p.id));
+    assert.ok(straussIds.every((id) => got.has(id)), `all Strauss products for ${term}`);
+    assert.ok(res.products.every((p) => matches(p, term)));
+  }
+});
+
+test("searchProducts (mock): brand-name search composes with category filter", async () => {
+  const cat = mockProducts.find((p) => p.manufacturerId === STRAUSS)!.categoryId;
+  const res = await searchProducts(base({ search: "Strauss", categoryId: cat, pageSize: 100 }));
+  assert.equal(
+    res.total,
+    mockProducts.filter((p) => p.categoryId === cat && matches(p, "Strauss")).length,
+  );
+  assert.ok(res.products.every((p) => p.categoryId === cat));
+  // A category with no Strauss products + brand search → empty (complete & exact).
+  const drinks = await searchProducts(base({ search: "Strauss", categoryId: DRINKS, pageSize: 100 }));
+  assert.equal(
+    drinks.total,
+    mockProducts.filter((p) => p.categoryId === DRINKS && matches(p, "Strauss")).length,
+  );
+});
+
+// ── 38. Exact sort contract on the tricky SKU fixture + no dup/skip ─────────
+const SORT_FIXTURE: Product[] = [
+  ["i-empty", ""],
+  ["i-ws", "   "],
+  ["i-null", null],
+  ["i-A10", "A-10"],
+  ["i-A2", "A-2"],
+  ["i-lower", "a-5"],
+  ["i-dupB", "DUP"],
+  ["i-dupA", "DUP"],
+].map(([id, sku]) => ({ ...synth({ id: id as string }), sku: sku as unknown as string }));
+
+test("isBlankSku: NULL / empty / whitespace-only are blank; a real SKU is not", () => {
+  assert.ok(isBlankSku(null));
+  assert.ok(isBlankSku(undefined));
+  assert.ok(isBlankSku(""));
+  assert.ok(isBlankSku("   "));
+  assert.ok(!isBlankSku("A-1"));
+});
+
+test("compareProductsForList: exact deterministic order on the SKU fixture", () => {
+  const order = [...SORT_FIXTURE].sort(compareProductsForList).map((p) => p.id);
+  // Non-blank first, code-unit ascending: "A-10" < "A-2" ('1'<'2'); uppercase
+  // "DUP" < lowercase "a-5" ('D'0x44 < 'a'0x61); duplicate "DUP" → id order
+  // (i-dupA < i-dupB). Blank (empty/whitespace/NULL) LAST, id-ordered
+  // (i-empty < i-null < i-ws). No locale collation, no duplicate, no skip.
+  assert.deepEqual(order, [
+    "i-A10",
+    "i-A2",
+    "i-dupA",
+    "i-dupB",
+    "i-lower",
+    "i-empty",
+    "i-null",
+    "i-ws",
+  ]);
+});
+
+test("fixture paging (sort + slice): no duplicate or skipped product across pages", () => {
+  const sorted = [...SORT_FIXTURE].sort(compareProductsForList);
+  const pageSize = 3;
+  const seen: string[] = [];
+  for (let page = 1; (page - 1) * pageSize < sorted.length; page++) {
+    seen.push(
+      ...sorted.slice((page - 1) * pageSize, page * pageSize).map((p) => p.id),
+    );
+  }
+  assert.equal(seen.length, sorted.length); // no skips
+  assert.equal(new Set(seen).size, sorted.length); // no duplicates
+  assert.deepEqual(seen, sorted.map((p) => p.id)); // stable, contiguous
+});
+
+// ── Architectural guards — the admin Products route must never regress to
+// loading the full product/inventory/customer collections (M8F.2 §2). Source-
+// level guards (cheap, deterministic) since payload shape can't be asserted
+// from a unit test.
+const readSrc = (rel: string): string =>
+  readFileSync(join(process.cwd(), "src", rel), "utf8");
+
+test("guard: admin Products page fetches only the current page", () => {
+  const page = readSrc("app/[locale]/admin/products/page.tsx");
+  assert.ok(page.includes("searchProducts"), "must use searchProducts");
+  assert.ok(!/\blistProducts\b/.test(page), "must NOT call listProducts (full catalog)");
+  assert.ok(!/\blistInventory\b/.test(page), "must NOT call listInventory (full stock)");
+});
+
+test("guard: admin layout hydrates only bounded reference data", () => {
+  const layout = readSrc("app/[locale]/admin/layout.tsx");
+  assert.ok(!/\blistProducts\b/.test(layout), "admin layout must NOT load full products");
+  assert.ok(!/\blistCustomers\b/.test(layout), "admin layout must NOT load full customers");
+  assert.ok(!/\blistInventory\b/.test(layout), "admin layout must NOT load inventory");
+  assert.ok(
+    layout.includes("products={[]}") && layout.includes("customers={[]}"),
+    "admin ShopData must be product/customer-empty",
+  );
+});
+
+test("guard: root layout no longer hydrates the full catalog", () => {
+  const root = readSrc("app/[locale]/layout.tsx");
+  assert.ok(!/\blistProducts\b/.test(root), "root layout must NOT load products");
+  assert.ok(!root.includes("ShopDataProvider"), "root layout must NOT provide ShopData");
 });

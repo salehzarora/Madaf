@@ -19,7 +19,7 @@
  *   pageSize     rows per page (bounded).
  */
 import type { Locale } from "@/i18n/config";
-import type { Product } from "@/lib/types";
+import type { LocalizedText, Product } from "@/lib/types";
 
 /** Default rows per page — mirrors the orders/customers/movements convention. */
 export const PRODUCTS_PAGE_SIZE = 50;
@@ -191,22 +191,48 @@ export interface ProductExportRow {
   isLowStock: boolean | null;
 }
 
+const SEARCH_LOCALES: Locale[] = ["ar", "he", "en"];
+
 /**
- * Does a product match a free-text term? Mirrors the supabase `.or()` search
- * EXACTLY: the product's own top-level columns — name (all three locales), SKU,
- * and barcode. Used by the mock data layer and the tests so mock and supabase
- * agree. Category/manufacturer NAME are NOT free-text searched (they are
- * first-class filters instead — see the M8F.2 doc for the rationale).
+ * Does a product match a free-text term? Mirrors the supabase search EXACTLY:
+ * the product's own top-level columns — name (all three locales), SKU, barcode
+ * — OR (when the manufacturer is supplied) the manufacturer/brand NAME in any
+ * locale. The manufacturer-name match preserves the pre-M8F.2 client search
+ * (which matched the manufacturer name) and improves it to all three locales;
+ * supabase resolves it via a complete, tenant-scoped manufacturer pre-query
+ * feeding `manufacturer_id.in.(…)` (see supabase-reads.ts). Used by the mock
+ * data layer and the tests so mock and supabase agree. Category name is NOT
+ * searched (it was not searchable before M8F.2 either).
  */
-export function productMatchesSearch(product: Product, term: string): boolean {
+export function productMatchesSearch(
+  product: Product,
+  term: string,
+  manufacturerName?: LocalizedText | null,
+): boolean {
   const q = term.trim().toLowerCase();
   if (!q) return true;
-  const LOCALES: Locale[] = ["ar", "he", "en"];
-  return [
-    ...LOCALES.map((l) => product.translations[l]?.name ?? ""),
+  const ownMatch = [
+    ...SEARCH_LOCALES.map((l) => product.translations[l]?.name ?? ""),
     product.sku ?? "",
     product.barcode ?? "",
   ]
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+  if (ownMatch) return true;
+  return manufacturerMatchesSearch(manufacturerName, term);
+}
+
+/** Does a manufacturer/brand NAME (any locale) match the term? The mirror of the
+ * supabase manufacturer pre-query. Kept separate so both the combined product
+ * match and the pre-query semantics are unit-tested directly. */
+export function manufacturerMatchesSearch(
+  name: LocalizedText | null | undefined,
+  term: string,
+): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q || !name) return false;
+  return SEARCH_LOCALES.map((l) => name[l] ?? "")
     .join(" ")
     .toLowerCase()
     .includes(q);
@@ -223,17 +249,39 @@ export function productMatchesStatus(
   return true;
 }
 
+/** A SKU is "blank" (sorts last) when it is NULL/absent, empty, or only
+ * whitespace — the mock/supabase-agreed normalization for the no-SKU case. */
+export function isBlankSku(sku: string | null | undefined): boolean {
+  return sku == null || sku.trim() === "";
+}
+
+/** Deterministic, LOCALE-INDEPENDENT string order: compare by UTF-16 code unit
+ * (`<`/`>`), never `localeCompare` (whose result varies by environment locale).
+ * For the ASCII SKUs the app produces this equals the DB's byte ordering. */
+function codeUnitCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
- * Deterministic product sort — SKU ascending (empty/absent SKUs last), tie-
- * broken by id ascending so paging is skip-/dup-free. This is the existing
- * secondary sort key promoted to primary: the old list sorted by category
- * SHELF order then SKU, but shelf order lives on the categories relation and
- * can't be expressed in a single server-side query without a denormalized
- * column (a migration — out of scope for M8F.2). Mirrors the supabase
- * `.order("sku", nullsFirst:false).order("id")`. See the M8F.2 doc.
+ * Deterministic product sort — the ONE contract shared by mock and supabase:
+ *   1. non-blank SKUs sort BEFORE blank ones (NULL/empty/whitespace last);
+ *   2. among non-blank SKUs, ascending by raw SKU, code-unit (not locale-aware);
+ *   3. final unique tie-breaker: id ascending (code-unit).
+ * Paging is therefore skip-/dup-free. This promotes the existing SECONDARY key
+ * (SKU) to primary — the old list sorted by category SHELF order then SKU, but
+ * shelf order lives on the categories relation and can't be expressed in a
+ * single server-side query without a denormalized column (a migration — out of
+ * scope). Supabase mirror: `.order("sku", { ascending, nullsFirst:false })`
+ * (NULL last) `.order("id")`; the write path stores SKUs trimmed-or-NULL and as
+ * ASCII, so the DB ordering matches this. See the M8F.2 doc.
  */
 export function compareProductsForList(a: Product, b: Product): number {
-  const sa = a.sku ? a.sku : "￿";
-  const sb = b.sku ? b.sku : "￿";
-  return sa.localeCompare(sb) || a.id.localeCompare(b.id);
+  const blankA = isBlankSku(a.sku);
+  const blankB = isBlankSku(b.sku);
+  if (blankA !== blankB) return blankA ? 1 : -1;
+  if (!blankA) {
+    const bySku = codeUnitCompare(a.sku as string, b.sku as string);
+    if (bySku !== 0) return bySku;
+  }
+  return codeUnitCompare(a.id, b.id);
 }

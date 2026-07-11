@@ -466,16 +466,60 @@ export async function sbGetProduct(id: string): Promise<Product | undefined> {
 const PRODUCT_LIST_SELECT =
   "*, inventory_items (quantity_available, low_stock_threshold)";
 
+/** Sanitize a free-text term of the PostgREST or-grammar metacharacters
+ * (commas/parens/wildcards/backslash) before interpolation — RLS still bounds
+ * the result to the tenant regardless. Mirrors sbSearchCustomers. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%\\*]/g, " ").trim();
+}
+
+/**
+ * Manufacturer/brand ids (for the current tenant) whose NAME (any locale)
+ * matches the term — the mirror of the mock manufacturer-name match. This is a
+ * COMPLETE (uncapped) query over a BOUNDED per-tenant reference table
+ * (manufacturers — the same set already loaded for the filter dropdown), NOT a
+ * capped pre-scan of a large relation and NOT an unbounded id list: the result
+ * is bounded by the tenant's manufacturer count. Runs under RLS + explicit
+ * tenant filter. Feeds `manufacturer_id.in.(…)` so product-name/SKU/barcode OR
+ * manufacturer-name search is one filtered, count-/pagination-compatible query
+ * with no client post-filtering. Precedent: sbSearchCustomers (hasLink),
+ * sbSearchInventoryMovements (productIds).
+ */
+async function sbManufacturerIdsMatching(
+  client: Db,
+  tenantId: string,
+  term: string,
+): Promise<string[]> {
+  const like = `%${term}%`;
+  const { data, error } = await client
+    .from("manufacturers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .or(
+      [
+        `name_ar.ilike.${like}`,
+        `name_he.ilike.${like}`,
+        `name_en.ilike.${like}`,
+      ].join(","),
+    );
+  if (error) fail("manufacturerIdsMatching", error.message);
+  return (data ?? []).map((r) => r.id);
+}
+
 /** Build the tenant-scoped, filtered products query (no order/range yet).
  * Shared by the count, the paged list, and the export so their filter semantics
  * are identical. A non-UUID category/manufacturer id is handled by the callers
- * (returns empty) BEFORE calling this — those DB columns are uuid. */
+ * (returns empty) BEFORE calling this — those DB columns are uuid.
+ * `manufacturerIds` are the pre-resolved brand-name matches (see
+ * sbManufacturerIdsMatching); the callers resolve them ONCE and pass them to
+ * both the count and the row query so the two stay identical. */
 function buildProductsQuery(
   client: Db,
   tenantId: string,
   query: ProductsQuery,
   select: string,
   selectOptions?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
+  manufacturerIds: string[] = [],
 ) {
   let qb = client
     .from("products")
@@ -488,20 +532,23 @@ function buildProductsQuery(
   if (query.categoryId) qb = qb.eq("category_id", query.categoryId);
   if (query.manufacturerId) qb = qb.eq("manufacturer_id", query.manufacturerId);
 
-  // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
-  // then union the product's own name (all locales) / sku / barcode.
-  const term = query.search.replace(/[,()%\\*]/g, " ").trim();
+  // Free-text: union the product's own name (all locales) / sku / barcode WITH
+  // the products of any brand whose name matched (manufacturer_id in the
+  // pre-resolved set). One `.or()` ⇒ complete, count-/pagination-safe.
+  const term = sanitizeSearchTerm(query.search);
   if (term) {
     const like = `%${term}%`;
-    qb = qb.or(
-      [
-        `name_ar.ilike.${like}`,
-        `name_he.ilike.${like}`,
-        `name_en.ilike.${like}`,
-        `sku.ilike.${like}`,
-        `barcode.ilike.${like}`,
-      ].join(","),
-    );
+    const parts = [
+      `name_ar.ilike.${like}`,
+      `name_he.ilike.${like}`,
+      `name_en.ilike.${like}`,
+      `sku.ilike.${like}`,
+      `barcode.ilike.${like}`,
+    ];
+    if (manufacturerIds.length > 0) {
+      parts.push(`manufacturer_id.in.(${manufacturerIds.join(",")})`);
+    }
+    qb = qb.or(parts.join(","));
   }
   return qb;
 }
@@ -524,6 +571,13 @@ export async function sbSearchProducts(
   if (query.categoryId && !isUuid(query.categoryId)) return empty;
   if (query.manufacturerId && !isUuid(query.manufacturerId)) return empty;
 
+  // Resolve brand-name matches ONCE (a complete, tenant-scoped, bounded
+  // reference query) and feed the SAME set to the count and the row query.
+  const term = sanitizeSearchTerm(query.search);
+  const manufacturerIds = term
+    ? await sbManufacturerIdsMatching(client, tenantId, term)
+    : [];
+
   // COUNT FIRST (head, no rows) → derive totalPages → CLAMP the page, so a
   // stale/shared/hand-edited ?page normalizes to the last page instead of a
   // PostgREST 416 (a ranged fetch past the row count errors).
@@ -533,6 +587,7 @@ export async function sbSearchProducts(
     query,
     "id",
     { count: "exact", head: true },
+    manufacturerIds,
   );
   if (countError) fail("searchProducts", countError.message);
   const total = count ?? 0;
@@ -546,6 +601,8 @@ export async function sbSearchProducts(
     tenantId,
     query,
     PRODUCT_LIST_SELECT,
+    undefined,
+    manufacturerIds,
   )
     .order("sku", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true })
@@ -568,12 +625,18 @@ export async function sbListProductsForExport(
   if (isTenantless(tenantId)) return [];
   if (query.categoryId && !isUuid(query.categoryId)) return [];
   if (query.manufacturerId && !isUuid(query.manufacturerId)) return [];
+  const term = sanitizeSearchTerm(query.search);
+  const manufacturerIds = term
+    ? await sbManufacturerIdsMatching(client, tenantId, term)
+    : [];
   const limit = Math.max(1, cap);
   const { data, error } = await buildProductsQuery(
     client,
     tenantId,
     query,
     PRODUCT_LIST_SELECT,
+    undefined,
+    manufacturerIds,
   )
     .order("sku", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true })

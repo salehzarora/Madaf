@@ -4,7 +4,13 @@ import { AdminShell, type AdminSession } from "@/components/admin-shell";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, getSupplier } from "@/lib/data";
+import {
+  getDataMode,
+  getSupplier,
+  listCategories,
+  listManufacturers,
+} from "@/lib/data";
+import { ShopDataProvider } from "@/lib/shop-data-context";
 
 /**
  * Admin chrome — sidebar dashboard layout for all /admin pages.
@@ -52,9 +58,27 @@ export default async function AdminLayout({
     };
   }
 
+  // M8F.2 — admin routes hydrate ONLY the bounded category/manufacturer
+  // reference lists (needed by the product filters + forms), NEVER the full
+  // product/customer/inventory collections. The paginated Products list fetches
+  // just its current page; the few admin pages that genuinely need the full
+  // catalog (e.g. the single-document preview) provide it locally on their own
+  // route. Category/manufacturer reads are complete + tenant-scoped (RLS).
+  const [categories, manufacturers] = await Promise.all([
+    listCategories(),
+    listManufacturers(),
+  ]);
+
   return (
-    <AdminShell locale={locale} dict={dict} session={session}>
-      {children}
-    </AdminShell>
+    <ShopDataProvider
+      products={[]}
+      categories={categories}
+      manufacturers={manufacturers}
+      customers={[]}
+    >
+      <AdminShell locale={locale} dict={dict} session={session}>
+        {children}
+      </AdminShell>
+    </ShopDataProvider>
   );
 }
