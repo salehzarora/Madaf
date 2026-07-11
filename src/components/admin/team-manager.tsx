@@ -30,6 +30,7 @@ import {
 } from "@/lib/actions/team";
 import type { InviteStatus, TenantInvite, TenantMember } from "@/lib/data/team";
 import { formatDate } from "@/lib/format";
+import { absolutePublicUrl } from "@/lib/public-url";
 import { cn } from "@/lib/utils";
 
 const INVITE_ROLES = ["admin", "sales_rep"] as const;
@@ -80,9 +81,14 @@ export function TeamManager({
         locale,
       });
       if (result.ok && result.url) {
-        const origin =
-          typeof window !== "undefined" ? window.location.origin : "";
-        setCreatedUrl(`${origin}${result.url}`);
+        // Build the shareable link from the CANONICAL app origin, never the
+        // current (possibly preview) browser origin (M8E.2).
+        const publicUrl = absolutePublicUrl(result.url);
+        if (!publicUrl) {
+          setError(dict.common.linkUrlError);
+          return;
+        }
+        setCreatedUrl(publicUrl);
         setEmail("");
         router.refresh();
       } else {

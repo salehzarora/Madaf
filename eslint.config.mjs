@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node built-in test runner files (run standalone via `node --test`,
+    // outside the app build/lint — M8E.2).
+    "**/*.test.ts",
   ]),
 ]);
 

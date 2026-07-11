@@ -281,3 +281,62 @@ legal invoice. `legal_effective` stays false; drafts keep the DRAFT watermark +
 service_role in client, product-images bucket stays private, own-tenant-only
 logo signing (cross-tenant paths never signed — enforced on read in both
 `sbGetSupplier` and `signTenantBrandingLogo`).
+
+---
+
+## M8E.2 — Canonical public token links hotfix
+
+**Confirmed bug.** A generated showcase/shop/join/invite link sometimes used a
+per-deploy **Vercel preview** hostname (e.g.
+`madaf-…-<team>.vercel.app/ar/showcase/<token>`). Such preview hosts are gated
+by **Vercel Deployment Protection**, so the link worked for the owner (logged
+into Vercel) but **bounced an incognito recipient to the Vercel login**.
+Replacing only the hostname with `https://madaf-drab.vercel.app` — same locale,
+route, token — made it work in incognito.
+
+**Root cause.** The four admin link-manager components built the absolute URL by
+prepending **`window.location.origin`** to the server action's relative path
+(`/[locale]/{shop|showcase|join|invite}/<token>`). So the copied link inherited
+whatever host the admin happened to be on — including a preview deploy.
+
+**Fix (no migration).** A shared client helper `src/lib/public-url.ts`:
+- `canonicalOrigin()` resolves ONE canonical origin from **`NEXT_PUBLIC_APP_URL`**
+  (falling back to `NEXT_PUBLIC_SITE_URL`), normalized (http(s) only, path/query/
+  hash and trailing slash stripped to origin-only).
+- It falls back to the request origin **only** for a localhost origin (local dev
+  / mock). On a hosted (non-local) origin with **no** configured URL it returns
+  null — the caller shows a clear error (`common.linkUrlError`) instead of
+  emitting a preview-host link. It never silently leaks a preview host.
+- `absolutePublicUrl(relativePath)` prepends the canonical origin, preserving the
+  locale + route + token **exactly**; `buildPublicTokenUrl({locale, routeType,
+  token})` builds from parts (validated).
+
+All four managers (shop — create + regenerate; showcase; join/signup; invite/team)
+now use `absolutePublicUrl(result.url)`. Token hashing, one-time raw-token
+display, and **regenerate-revokes-the-previous-link** behavior are unchanged.
+The Supabase password-reset `redirectTo` (`reset-password-form.tsx`) still uses
+the request origin — it is the admin's own auth flow, gated by Supabase's
+redirect-URL allowlist, and out of scope for public customer links.
+
+**Affected public link types:** `/[locale]/shop/<token>`,
+`/[locale]/showcase/<token>`, `/[locale]/join/<token>`, `/[locale]/invite/<token>`.
+
+**Required hosted env var.** `NEXT_PUBLIC_APP_URL` must be set — on **both**
+Production and Preview environments — to the canonical public URL. Staging value:
+`https://madaf-drab.vercel.app` (client-visible, non-secret). If it is unset on a
+hosted deploy, link generation now fails clearly rather than producing a broken
+link. **A redeploy (cache off) is required** for the new value to inline.
+
+**No migration, no RLS/storage/legal/payment change.**
+
+**Tests** (`src/lib/public-url.test.ts`, Node built-in runner —
+`node --experimental-strip-types --test src/lib/public-url.test.ts`, excluded
+from the app build/lint): a preview origin never leaks; shop/showcase/join/invite
+use the canonical origin; ar/he/en preserved; token preserved; trailing slash
+normalized; path/malformed origins rejected/normalized; local fallback works;
+hosted-without-config refuses; relative navigation unaffected; no raw token logged.
+
+**Manual incognito verification.** Generate each link type in the admin,
+open in a private window (not logged into Vercel), confirm it loads the
+storefront/accept page (not the Vercel login) on all three locales; confirm a
+regenerated link's previous URL is revoked. Do not paste real tokens into docs.

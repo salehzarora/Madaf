@@ -25,6 +25,7 @@ import type {
   SignupRequestStatus,
 } from "@/lib/data/customer-signup";
 import { formatDate } from "@/lib/format";
+import { absolutePublicUrl } from "@/lib/public-url";
 
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
 
@@ -65,9 +66,14 @@ export function SignupManager({
         locale,
       });
       if (result.ok && result.url) {
-        const origin =
-          typeof window !== "undefined" ? window.location.origin : "";
-        setCreatedUrl(`${origin}${result.url}`);
+        // Build the shareable link from the CANONICAL app origin, never the
+        // current (possibly preview) browser origin (M8E.2).
+        const publicUrl = absolutePublicUrl(result.url);
+        if (!publicUrl) {
+          setError(dict.common.linkUrlError);
+          return;
+        }
+        setCreatedUrl(publicUrl);
         setLabel("");
         setExpiryDays(0);
         router.refresh();

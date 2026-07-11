@@ -24,6 +24,8 @@ export interface Dictionary {
     uploadInvalid: string;
     /** M8E.1 — reassurance shown on any upload failure: the current image stayed. */
     uploadKeepCurrent: string;
+    /** M8E.2 — a tokenized public link could not be built (app URL unconfigured). */
+    linkUrlError: string;
     /** M8D — shown where a role-gated action is hidden for a sales_rep. */
     noPermission: string;
     search: string;

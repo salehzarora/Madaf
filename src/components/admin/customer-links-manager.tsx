@@ -14,6 +14,7 @@ import {
   regenerateCustomerLinkAction,
   revokeCustomerLinkAction,
 } from "@/lib/actions/customer-links";
+import { absolutePublicUrl } from "@/lib/public-url";
 import type { CustomerLink, LinkStatus } from "@/lib/data/customer-links";
 import { formatDate } from "@/lib/format";
 
@@ -61,9 +62,14 @@ export function CustomerLinksManager({
         locale,
       });
       if (result.ok && result.url) {
-        const origin =
-          typeof window !== "undefined" ? window.location.origin : "";
-        setCreatedUrl(`${origin}${result.url}`);
+        // Build the shareable link from the CANONICAL app origin, never the
+        // current (possibly preview) browser origin (M8E.2).
+        const publicUrl = absolutePublicUrl(result.url);
+        if (!publicUrl) {
+          setError(dict.common.linkUrlError);
+          return;
+        }
+        setCreatedUrl(publicUrl);
         setLabel("");
         setExpiryDays(0);
         router.refresh();
@@ -126,9 +132,12 @@ export function CustomerLinksManager({
         locale,
       });
       if (result.ok && result.url) {
-        const origin =
-          typeof window !== "undefined" ? window.location.origin : "";
-        setCreatedUrl(`${origin}${result.url}`);
+        const publicUrl = absolutePublicUrl(result.url);
+        if (!publicUrl) {
+          setError(dict.common.linkUrlError);
+          return;
+        }
+        setCreatedUrl(publicUrl);
         router.refresh();
       } else {
         setError(result.reason === "inactive" ? t.inactiveError : t.error);

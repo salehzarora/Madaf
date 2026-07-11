@@ -15,6 +15,7 @@ const en: Dictionary = {
     exportCapped: "Exported the first {count} results. Narrow the filters to export fewer.",
     uploadInvalid: "The image is invalid or corrupted.",
     uploadKeepCurrent: "The current image was not changed.",
+    linkUrlError: "Couldn't generate a public link — the public app URL is not configured. Contact the administrator.",
     noPermission: "You don't have permission for this action",
     search: "Search",
     all: "All",
