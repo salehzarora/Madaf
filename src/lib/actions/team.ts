@@ -10,8 +10,6 @@
  * The raw invite token is generated HERE (32 secure random bytes,
  * base64url), returned once, and only its SHA-256 hash is stored.
  */
-import { randomBytes } from "node:crypto";
-
 import { revalidatePath } from "next/cache";
 
 import {
@@ -24,6 +22,8 @@ import {
   updateMemberRole,
 } from "@/lib/data/team";
 import { hashToken } from "@/lib/data/token";
+import { createCanonicalLink } from "@/lib/public-link";
+import { resolveServerCanonicalOrigin } from "@/lib/public-url-server";
 
 const MAX_EXPIRY_DAYS = 90;
 type InviteRole = "admin" | "sales_rep";
@@ -58,6 +58,8 @@ export interface CreateInviteResult {
   ok: boolean;
   /** The full invite URL — shown/copied once, never retrievable again. */
   url?: string;
+  /** M8E.2 — canonical public app URL missing/invalid; no link created. */
+  reason?: "config";
 }
 
 export async function createInviteAction(input: {
@@ -68,12 +70,13 @@ export async function createInviteAction(input: {
 }): Promise<CreateInviteResult> {
   try {
     const locale = safeLocale(input.locale);
-    if (!isEmail(input.email) || !isInviteRole(input.role)) {
+    const email = input.email;
+    const role = input.role;
+    // Narrow with type guards on `const`s so the values stay narrowed inside
+    // the persist closure below.
+    if (!isEmail(email) || !isInviteRole(role)) {
       return { ok: false };
     }
-    const rawToken = randomBytes(32).toString("base64url");
-    const tokenHash = hashToken(rawToken);
-    const tokenPreview = rawToken.slice(-6);
 
     let expiresAt: string | undefined;
     const days = input.expiresInDays;
@@ -81,16 +84,27 @@ export async function createInviteAction(input: {
       expiresAt = new Date(Date.now() + days * 86400_000).toISOString();
     }
 
-    await insertTenantInvite({
-      email: input.email.trim().toLowerCase(),
-      role: input.role,
-      tokenHash,
-      tokenPreview,
-      expiresAt,
+    // M8E.2: generate + validate the ABSOLUTE canonical link, then (only on
+    // success) persist the token hash — nothing is stored if the canonical URL
+    // can't be produced.
+    const created = await createCanonicalLink({
+      locale,
+      routeType: "invite",
+      resolveOrigin: resolveServerCanonicalOrigin,
+      persist: async ({ rawToken }) => {
+        await insertTenantInvite({
+          email: email.trim().toLowerCase(),
+          role,
+          tokenHash: hashToken(rawToken),
+          tokenPreview: rawToken.slice(-6),
+          expiresAt,
+        });
+      },
     });
+    if (!created.ok) return { ok: false, reason: "config" };
 
     revalidatePath(`/${locale}/admin/team`);
-    return { ok: true, url: `/${locale}/invite/${rawToken}` };
+    return { ok: true, url: created.url };
   } catch (error) {
     console.error("[madaf/actions] createInviteAction failed:", error);
     return { ok: false };

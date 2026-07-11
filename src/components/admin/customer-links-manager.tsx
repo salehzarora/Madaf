@@ -14,7 +14,7 @@ import {
   regenerateCustomerLinkAction,
   revokeCustomerLinkAction,
 } from "@/lib/actions/customer-links";
-import { absolutePublicUrl } from "@/lib/public-url";
+import { isDisplayablePublicUrl } from "@/lib/public-url";
 import type { CustomerLink, LinkStatus } from "@/lib/data/customer-links";
 import { formatDate } from "@/lib/format";
 
@@ -51,8 +51,9 @@ export function CustomerLinksManager({
   const [error, setError] = useState<string | null>(null);
 
   function onGenerate() {
+    // Do NOT clear the currently-displayed link up front — keep it if the
+    // request fails (M8E.2), since a failed request revokes/creates nothing.
     setError(null);
-    setCreatedUrl(null);
     setCopied(false);
     startTransition(async () => {
       const result = await createCustomerLinkAction({
@@ -61,20 +62,22 @@ export function CustomerLinksManager({
         expiresInDays: expiryDays > 0 ? expiryDays : undefined,
         locale,
       });
-      if (result.ok && result.url) {
-        // Build the shareable link from the CANONICAL app origin, never the
-        // current (possibly preview) browser origin (M8E.2).
-        const publicUrl = absolutePublicUrl(result.url);
-        if (!publicUrl) {
-          setError(dict.common.linkUrlError);
-          return;
-        }
-        setCreatedUrl(publicUrl);
+      // The action returns the ABSOLUTE canonical URL, built + validated
+      // server-side before any mutation (M8E.2). Display only a valid absolute
+      // public link; on failure keep the previously displayed one.
+      if (result.ok && isDisplayablePublicUrl(result.url)) {
+        setCreatedUrl(result.url);
         setLabel("");
         setExpiryDays(0);
         router.refresh();
       } else {
-        setError(result.reason === "inactive" ? t.inactiveError : t.error);
+        setError(
+          result.reason === "config"
+            ? dict.common.linkUrlError
+            : result.reason === "inactive"
+              ? t.inactiveError
+              : t.error,
+        );
       }
     });
   }
@@ -105,8 +108,9 @@ export function CustomerLinksManager({
   // Regenerate = revoke the old link + issue a fresh one; the new URL lands
   // in the same copy-once banner (shown only here, only once).
   function onRegenerate(link: CustomerLink) {
+    // Keep the current copy-once URL displayed until a replacement succeeds —
+    // regeneration only revokes the old link on success (M8E.2).
     setError(null);
-    setCreatedUrl(null);
     setCopied(false);
     startTransition(async () => {
       // Carry the ORIGINAL expiry forward (M8A): regenerating an expiring
@@ -131,16 +135,17 @@ export function CustomerLinksManager({
         expiresInDays,
         locale,
       });
-      if (result.ok && result.url) {
-        const publicUrl = absolutePublicUrl(result.url);
-        if (!publicUrl) {
-          setError(dict.common.linkUrlError);
-          return;
-        }
-        setCreatedUrl(publicUrl);
+      if (result.ok && isDisplayablePublicUrl(result.url)) {
+        setCreatedUrl(result.url);
         router.refresh();
       } else {
-        setError(result.reason === "inactive" ? t.inactiveError : t.error);
+        setError(
+          result.reason === "config"
+            ? dict.common.linkUrlError
+            : result.reason === "inactive"
+              ? t.inactiveError
+              : t.error,
+        );
       }
     });
   }

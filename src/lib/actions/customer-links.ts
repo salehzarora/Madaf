@@ -7,8 +7,6 @@
  * returned to the admin exactly once; only its SHA-256 hash is stored (via
  * the insert RPC). The shop URL is `/[locale]/shop/<rawToken>`.
  */
-import { randomBytes } from "node:crypto";
-
 import { revalidatePath } from "next/cache";
 
 import {
@@ -18,6 +16,8 @@ import {
 } from "@/lib/data/customer-links";
 import { getCustomer } from "@/lib/data";
 import { hashToken } from "@/lib/data/token";
+import { createCanonicalLink } from "@/lib/public-link";
+import { resolveServerCanonicalOrigin } from "@/lib/public-url-server";
 
 const MAX_LABEL = 80;
 const MAX_EXPIRY_DAYS = 365;
@@ -33,10 +33,12 @@ function isPlausibleId(value: unknown): value is string {
 
 export interface CreateLinkResult {
   ok: boolean;
-  /** The full shop URL — shown/copied once, never retrievable again. */
+  /** The full ABSOLUTE canonical shop URL — shown/copied once, never
+   * retrievable again. Built + validated server-side before any mutation. */
   url?: string;
-  /** M8C — the store is deactivated; no new links until reactivation. */
-  reason?: "inactive";
+  /** "inactive" — store deactivated (M8C); "config" — the canonical public app
+   * URL is missing/invalid so NO link was created/revoked (M8E.2). */
+  reason?: "inactive" | "config";
 }
 
 export async function createCustomerLinkAction(input: {
@@ -52,10 +54,6 @@ export async function createCustomerLinkAction(input: {
         ? input.locale
         : "he";
 
-    const rawToken = randomBytes(32).toString("base64url");
-    const tokenHash = hashToken(rawToken);
-    const tokenPreview = rawToken.slice(-6);
-
     const label =
       typeof input.label === "string" && input.label.trim()
         ? input.label.trim().slice(0, MAX_LABEL)
@@ -67,28 +65,36 @@ export async function createCustomerLinkAction(input: {
       expiresAt = new Date(Date.now() + days * 86400_000).toISOString();
     }
 
-    // M8C: refuse BEFORE revoking — the revoke-then-insert sequence would
-    // otherwise strand the store linkless when the insert is rejected for
-    // an inactive customer (the RPC also blocks with MDF33 as the real gate).
+    // M8C: refuse BEFORE any mutation — an inactive store gets no new link
+    // (the RPC also blocks with MDF33 as the real gate). Read only.
     const customer = await getCustomer(input.customerId);
     if (customer && customer.isActive === false) {
       return { ok: false, reason: "inactive" };
     }
 
-    // M7H.1: a store keeps exactly ONE live link. Revoke every currently-active
-    // link for this customer BEFORE issuing the new one, so any previously
-    // copied URL stops working immediately.
-    await revokeCustomerLinksForCustomer(input.customerId);
-    await insertCustomerLink({
-      customerId: input.customerId,
-      tokenHash,
-      tokenPreview,
-      label,
-      expiresAt,
+    // M8E.2: generate + validate the ABSOLUTE canonical link, and ONLY on
+    // success revoke every active link + issue the fresh one (M7H.1 — a store
+    // keeps exactly ONE live link). If the canonical URL can't be produced,
+    // NOTHING is revoked or persisted.
+    const created = await createCanonicalLink({
+      locale,
+      routeType: "shop",
+      resolveOrigin: resolveServerCanonicalOrigin,
+      persist: async ({ rawToken }) => {
+        await revokeCustomerLinksForCustomer(input.customerId);
+        await insertCustomerLink({
+          customerId: input.customerId,
+          tokenHash: hashToken(rawToken),
+          tokenPreview: rawToken.slice(-6),
+          label,
+          expiresAt,
+        });
+      },
     });
+    if (!created.ok) return { ok: false, reason: "config" };
 
     revalidatePath(`/${locale}/admin/customers/${input.customerId}`);
-    return { ok: true, url: `/${locale}/shop/${rawToken}` };
+    return { ok: true, url: created.url };
   } catch (error) {
     if (error instanceof Error && error.message.includes("inactive")) {
       return { ok: false, reason: "inactive" };

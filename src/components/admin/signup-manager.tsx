@@ -25,7 +25,7 @@ import type {
   SignupRequestStatus,
 } from "@/lib/data/customer-signup";
 import { formatDate } from "@/lib/format";
-import { absolutePublicUrl } from "@/lib/public-url";
+import { isDisplayablePublicUrl } from "@/lib/public-url";
 
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
 
@@ -56,8 +56,8 @@ export function SignupManager({
   } | null>(null);
 
   function onGenerate() {
+    // Keep any currently-displayed link until a replacement succeeds (M8E.2).
     setError(null);
-    setCreatedUrl(null);
     setCopied(false);
     startTransition(async () => {
       const result = await createSignupLinkAction({
@@ -65,20 +65,17 @@ export function SignupManager({
         expiresInDays: expiryDays > 0 ? expiryDays : undefined,
         locale,
       });
-      if (result.ok && result.url) {
-        // Build the shareable link from the CANONICAL app origin, never the
-        // current (possibly preview) browser origin (M8E.2).
-        const publicUrl = absolutePublicUrl(result.url);
-        if (!publicUrl) {
-          setError(dict.common.linkUrlError);
-          return;
-        }
-        setCreatedUrl(publicUrl);
+      // The action returns the ABSOLUTE canonical URL, built + validated
+      // server-side before any mutation (M8E.2); on failure keep any prior link.
+      if (result.ok && isDisplayablePublicUrl(result.url)) {
+        setCreatedUrl(result.url);
         setLabel("");
         setExpiryDays(0);
         router.refresh();
       } else {
-        setError(t.error);
+        setError(
+          result.reason === "config" ? dict.common.linkUrlError : t.error,
+        );
       }
     });
   }

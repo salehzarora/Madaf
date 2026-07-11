@@ -164,7 +164,20 @@ build cleared the M7D.1 `generateStaticParams` fix. **Verified independently:**
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` — the staging project URL.
 - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` — the **public** anon key (safe to expose).
 - [ ] `NEXT_PUBLIC_MADAF_DATA_MODE = supabase`.
-- [ ] `NEXT_PUBLIC_APP_URL` (or `NEXT_PUBLIC_SITE_URL`) — the staging URL, if used.
+- [ ] `NEXT_PUBLIC_APP_URL` — the canonical PUBLIC staging origin (e.g.
+      `https://madaf-drab.vercel.app`). **MANDATORY, not optional (M8E.2):** it is
+      the origin used to build every tokenized customer link (shop, showcase,
+      store-signup, team-invite). Set it on **BOTH Production AND Preview** —
+      each recipient opens an absolute link, and a per-deploy Vercel preview host
+      is gated by Deployment Protection and would bounce them to the Vercel login.
+      It must be the **stable public alias**, never the per-deploy
+      `*-<hash>.vercel.app` / branch host. The value is public (no secret).
+      Because `NEXT_PUBLIC_*` is inlined at **build time**, a **redeploy is
+      required** after setting/changing it. `NEXT_PUBLIC_SITE_URL` is accepted as
+      a fallback **only** when `NEXT_PUBLIC_APP_URL` is absent; if both are set
+      they must resolve to the **same** origin (a mismatch is a hard error). The
+      deployment-safety linter (§7) ERRORS if it is missing/invalid/loopback/a
+      per-deploy host on a hosted Supabase deploy.
 
 **Server-only (never `NEXT_PUBLIC`):**
 

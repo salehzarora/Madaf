@@ -299,44 +299,95 @@ prepending **`window.location.origin`** to the server action's relative path
 (`/[locale]/{shop|showcase|join|invite}/<token>`). So the copied link inherited
 whatever host the admin happened to be on — including a preview deploy.
 
-**Fix (no migration).** A shared client helper `src/lib/public-url.ts`:
-- `canonicalOrigin()` resolves ONE canonical origin from **`NEXT_PUBLIC_APP_URL`**
-  (falling back to `NEXT_PUBLIC_SITE_URL`), normalized (http(s) only, path/query/
-  hash and trailing slash stripped to origin-only).
-- It falls back to the request origin **only** for a localhost origin (local dev
-  / mock). On a hosted (non-local) origin with **no** configured URL it returns
-  null — the caller shows a clear error (`common.linkUrlError`) instead of
-  emitting a preview-host link. It never silently leaks a preview host.
-- `absolutePublicUrl(relativePath)` prepends the canonical origin, preserving the
-  locale + route + token **exactly**; `buildPublicTokenUrl({locale, routeType,
-  token})` builds from parts (validated).
+**Fix (no migration).** The absolute URL is now built + validated **entirely
+server-side, BEFORE any token mutation** — `window.location.origin` is gone from
+the link path. Three small modules:
 
-All four managers (shop — create + regenerate; showcase; join/signup; invite/team)
-now use `absolutePublicUrl(result.url)`. Token hashing, one-time raw-token
-display, and **regenerate-revokes-the-previous-link** behavior are unchanged.
-The Supabase password-reset `redirectTo` (`reset-password-form.tsx`) still uses
-the request origin — it is the admin's own auth flow, gated by Supabase's
-redirect-URL allowlist, and out of scope for public customer links.
+- `src/lib/public-url.ts` — a **pure, dependency-light validator** (safe to import
+  from client or Node). `normalizeCanonicalOrigin` enforces a strict origin
+  contract: explicit `http:`/`https:` only, no credentials, no query, no fragment,
+  no path other than empty/`/` (only a trailing root slash is normalized away),
+  no protocol-relative / `javascript:` / `data:` / `file:` / `ftp:`, no control
+  or non-ASCII chars. `resolveConfiguredOrigin(appUrl, siteUrl)` makes
+  **`NEXT_PUBLIC_APP_URL` the primary** and `NEXT_PUBLIC_SITE_URL` a fallback used
+  **only when the primary is absent**; a present-but-invalid primary FAILS (never
+  falls through), and two valid-but-different origins are a hard **conflict**.
+  `buildPublicTokenUrl({origin, locale, routeType, token})` re-validates every
+  part (locale via the repo's `isLocale`, route via `PublicRouteType`, token via a
+  43-char base64url regex derived from the generator) and returns the absolute
+  URL. `isLoopbackOrigin` accepts **only** `localhost`/`127.0.0.1`/`0.0.0.0`/
+  `[::1]` (the old `*.local` allowance is removed). `isDisplayablePublicUrl` is the
+  client copy-control shape guard.
+- `src/lib/public-url-server.ts` (`server-only`) — `resolveServerCanonicalOrigin()`
+  returns the configured origin, or, **only for a loopback request host**, the
+  local origin (keeps zero-config local/mock dev working). A hosted host with no
+  configured URL resolves to `missing`.
+- `src/lib/public-link.ts` — `createCanonicalLink({locale, routeType,
+  resolveOrigin, persist})` generates the raw token, builds + validates the URL,
+  and invokes `persist` (the revoke/insert mutation) **only on success**. If the
+  origin can't be resolved or any part is invalid, `persist` is **never called** —
+  so no token hash is stored and **no existing link is revoked** when a usable
+  public URL is unavailable. `resolveOrigin`/`persist` are injected so the
+  ordering is unit-tested without `next/headers`.
+
+All **five** action paths (shop create + regenerate, showcase, store-signup,
+team-invite) route through `createCanonicalLink` and return an **absolute,
+server-validated** URL (or `{ok:false, reason:"config"}`). The four managers
+display the URL **only** when `result.ok && isDisplayablePublicUrl(result.url)`,
+**never clear a displayed link up front** (a failed request revokes/creates
+nothing, so the previously shown link is kept), and map `reason:"config"` to the
+localized `common.linkUrlError`. Token hashing, hash-only persistence, one-time
+raw-token display, and **regenerate-revokes-the-previous-link-only-on-success**
+are unchanged. The Supabase password-reset `redirectTo` still uses the request
+origin — the admin's own auth flow, gated by Supabase's redirect-URL allowlist,
+out of scope for public customer links.
 
 **Affected public link types:** `/[locale]/shop/<token>`,
 `/[locale]/showcase/<token>`, `/[locale]/join/<token>`, `/[locale]/invite/<token>`.
 
 **Required hosted env var.** `NEXT_PUBLIC_APP_URL` must be set — on **both**
-Production and Preview environments — to the canonical public URL. Staging value:
-`https://madaf-drab.vercel.app` (client-visible, non-secret). If it is unset on a
-hosted deploy, link generation now fails clearly rather than producing a broken
-link. **A redeploy (cache off) is required** for the new value to inline.
+Production and Preview — to the canonical public URL (staging value
+`https://madaf-drab.vercel.app`, client-visible, non-secret). It must be the
+**stable public alias**, never the per-deploy `*.vercel.app` host. If it is
+missing/invalid/loopback/a per-deploy host on a hosted Supabase deploy, both link
+generation and the deployment-safety linter (`assessDeploymentSafety`, §7) now
+**fail/ERROR** rather than producing a broken link. Because `NEXT_PUBLIC_*`
+inlines at **build time**, **a redeploy is required** after setting it.
 
-**No migration, no RLS/storage/legal/payment change.**
+**No migration, no RLS/storage/legal/payment change. No token-hashing, anon-access,
+service-role, or revocation-semantics change.**
 
-**Tests** (`src/lib/public-url.test.ts`, Node built-in runner —
-`node --experimental-strip-types --test src/lib/public-url.test.ts`, excluded
-from the app build/lint): a preview origin never leaks; shop/showcase/join/invite
-use the canonical origin; ar/he/en preserved; token preserved; trailing slash
-normalized; path/malformed origins rejected/normalized; local fallback works;
-hosted-without-config refuses; relative navigation unaffected; no raw token logged.
+**Tests** (`src/lib/public-url.test.ts`, run via `npm run test:public-url` →
+`tsx --conditions=react-server --test`; the runner resolves `@/*` aliases and
+type-checks, so the file is **no longer excluded** from `tsconfig`/eslint and is
+part of `npx tsc --noEmit` + `npm run lint`; also wired into CI). 28 adversarial
+cases cover: the origin contract (credentials/path/query/fragment/protocol-
+relative/dangerous-scheme/control-char rejected, trailing slash normalized);
+precedence + conflict (invalid primary fails without fallthrough, different
+origins conflict, identical succeed); loopback-only (`.local`/LAN/lookalike
+rejected); token format; per-route/per-locale URL building + every rejected part;
+the client display guard; **mutation ordering** (`createCanonicalLink` with an
+injected failing resolver / invalid part proves `persist` is NOT called, and the
+success path persists exactly once with a valid token + absolute canonical URL);
+**no raw token is ever logged**; and deployment-safety canonical enforcement
+(missing/invalid/conflict/loopback/per-deploy-host all ERROR, local/mock stays OK).
 
-**Manual incognito verification.** Generate each link type in the admin,
-open in a private window (not logged into Vercel), confirm it loads the
-storefront/accept page (not the Vercel login) on all three locales; confirm a
-regenerated link's previous URL is revoked. Do not paste real tokens into docs.
+**Manual incognito verification.** Generate each link type in the admin, open in a
+private window (not logged into Vercel), confirm it loads the storefront/accept
+page (not the Vercel login) on all three locales; confirm a regenerated link's
+previous URL is revoked, and that a transient failure keeps the previously shown
+link intact. Do not paste real tokens into docs.
+
+### M8E.2 correction pass (post-review hardening)
+
+Addressed the independent review's blocking findings on the initial hotfix:
+validation + URL construction moved **server-side before any mutation** (the old
+client `window.location.origin` prepend and the `absolutePublicUrl`/`canonicalOrigin`
+helpers are removed); the origin contract, precedence/conflict handling, and
+loopback-only fallback were hardened; typed route/locale/token validation now uses
+the repo's `isLocale` source of truth and the generator-derived token format; the
+deployment-safety linter now **ERRORS** (not warns) for a hosted Supabase deploy
+with a missing/invalid/conflicting/loopback/per-deploy-host canonical URL, plus a
+Vercel preview-host check (`VERCEL_URL`/`VERCEL_BRANCH_URL`); the test file is no
+longer build/lint-excluded and runs on a stable runner (`tsx`, no experimental
+Node type-stripping) wired into CI. No security/product boundary changed.

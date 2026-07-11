@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   verify:
-    name: lint · build · audit
+    name: lint · test · build · audit
     runs-on: ubuntu-latest
     # No `environment:` and no `secrets` — this job must never need credentials.
     env:
@@ -47,6 +47,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Type-check (no emit)
+        run: npx tsc --noEmit
+
+      - name: Test (canonical public-link validator — M8E.2)
+        run: npm run test:public-url
 
       - name: Build (mock mode, zero backend env)
         run: npm run build

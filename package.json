@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build && node scripts/check-dynamic-routes.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --conditions=react-server --test src/lib/public-url.test.ts",
+    "test:public-url": "tsx --conditions=react-server --test src/lib/public-url.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -27,6 +29,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   },
   "overrides": {

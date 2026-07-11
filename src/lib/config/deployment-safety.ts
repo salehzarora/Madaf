@@ -14,6 +14,12 @@ import "server-only";
  * to do with the report (log, fail a health check, etc.).
  */
 
+import {
+  hostnameOf,
+  isLoopbackOrigin,
+  resolveConfiguredOrigin,
+} from "@/lib/public-url";
+
 export interface DeploymentSafetyReport {
   /** True when there are no blocking errors. Warnings do not affect this. */
   ok: boolean;
@@ -165,8 +171,47 @@ export function assessDeploymentSafety(
     }
   }
 
-  // 6. A public app URL is helpful for auth redirects / links.
-  if (isDeploy && !env.NEXT_PUBLIC_APP_URL && !env.NEXT_PUBLIC_SITE_URL) {
+  // 6. Canonical public app URL — MANDATORY for a hosted Supabase deployment
+  //    (M8E.2): it is the origin used to build the tokenized shop / showcase /
+  //    store-signup / team-invite links opened by non-Vercel-authenticated
+  //    recipients. A per-deploy Vercel preview host would bounce them to the
+  //    Vercel login. For local/mock it stays optional (loopback is used).
+  const hostedSupabase = isDeploy && dataMode === "supabase";
+  if (hostedSupabase) {
+    const canonical = resolveConfiguredOrigin(
+      env.NEXT_PUBLIC_APP_URL,
+      env.NEXT_PUBLIC_SITE_URL,
+    );
+    if (!canonical.ok) {
+      errors.push(
+        canonical.reason === "missing"
+          ? "A hosted Supabase deployment requires NEXT_PUBLIC_APP_URL — the canonical PUBLIC app URL used to build shop/showcase/join/invite links. Set it on Production AND Preview."
+          : canonical.reason === "conflict"
+            ? "NEXT_PUBLIC_APP_URL and NEXT_PUBLIC_SITE_URL resolve to DIFFERENT origins — set a single canonical public URL."
+            : "NEXT_PUBLIC_APP_URL/NEXT_PUBLIC_SITE_URL is not a valid absolute http(s) origin (no credentials, path, query, or fragment).",
+      );
+    } else {
+      if (isLoopbackOrigin(canonical.origin)) {
+        errors.push(
+          "The canonical public URL is a localhost/loopback origin — a hosted deployment must use the public app URL, not localhost.",
+        );
+      }
+      // Preview-host guard: the canonical must be the STABLE public alias, never
+      // this deployment's per-deploy / per-branch Vercel hostname (those are
+      // gated by Deployment Protection). VERCEL_PROJECT_PRODUCTION_URL (the
+      // stable production alias) is fine and intentionally NOT flagged.
+      const canonicalHost = hostnameOf(canonical.origin);
+      for (const perDeploy of [env.VERCEL_URL, env.VERCEL_BRANCH_URL]) {
+        const host = hostnameOf(perDeploy);
+        if (canonicalHost && host && canonicalHost === host) {
+          errors.push(
+            "The canonical public URL matches this deployment's per-deploy Vercel hostname — use the stable public alias (a per-deploy/preview host is Deployment-Protection-gated and unreachable to recipients).",
+          );
+          break;
+        }
+      }
+    }
+  } else if (isDeploy && !env.NEXT_PUBLIC_APP_URL && !env.NEXT_PUBLIC_SITE_URL) {
     warnings.push(
       "No NEXT_PUBLIC_APP_URL / NEXT_PUBLIC_SITE_URL set — confirm Supabase Auth site/redirect URLs match the deployed origin.",
     );
