@@ -34,9 +34,17 @@ import type {
   Order,
   OrderCustomerSnapshot,
   OrderDocument,
+  OrderStatus,
   Product,
   Supplier,
 } from "@/lib/types";
+import {
+  ORDERS_MAX_PAGE_SIZE,
+  totalPagesFor,
+  type OrderListRow,
+  type OrdersListResult,
+  type OrdersQuery,
+} from "@/lib/orders-query";
 
 import type { Db } from "./supabase-context";
 import { getDataContext, NO_TENANT } from "@/lib/auth/session";
@@ -708,6 +716,166 @@ export async function sbGetOrder(id: string): Promise<Order | undefined> {
     .maybeSingle();
   if (error) fail("getOrder", error.message);
   return data ? mapOrder(data as OrderRow) : undefined;
+}
+
+// ── Orders server-side search + pagination (M8F.1) ────────────────────────
+// LEAN list select: the live customer name/phone (LEFT embed — keeps guest
+// null-customer orders), the item count (aggregate embed — no items shipped),
+// and the stored ex-VAT subtotal. RLS (can_access_order) scopes the rows:
+// owner/admin see all incl. guest orders; a sales_rep sees only assigned-
+// customer orders and never guest/null-customer orders. Search covers the
+// order's OWN fields (order_number, public_ref) and the buyer name/phone
+// RECORDED ON THE ORDER (customer_snapshot — populated for EVERY order at
+// creation), so the search is complete with no join/pre-scan and no order is
+// missed. tenant_id is derived server-side (never client-trusted) + belt-and-
+// braces alongside RLS.
+const ORDER_LIST_SELECT =
+  "id, order_number, public_ref, status, source, created_at, customer_id, " +
+  "customer_snapshot, subtotal, customers (name, phone), order_items (count)";
+
+type OrderListDbRow = {
+  id: string;
+  order_number: string;
+  public_ref: string | null;
+  status: OrderStatus;
+  source: "sales_visit" | "remote_customer" | "admin";
+  created_at: string;
+  customer_id: string | null;
+  customer_snapshot: unknown;
+  subtotal: number | null;
+  customers: { name: string; phone: string | null } | null;
+  order_items: { count: number }[];
+};
+
+function mapOrderListRow(row: OrderListDbRow): OrderListRow {
+  return {
+    id: row.id,
+    number: row.order_number,
+    publicRef: row.public_ref,
+    status: row.status,
+    source: row.source,
+    createdAt: row.created_at,
+    customerId: row.customer_id ?? "",
+    customerName: row.customers?.name ?? null,
+    customerPhone: row.customers?.phone ?? null,
+    customerSnapshot: mapCustomerSnapshot(row.customer_snapshot),
+    itemCount: row.order_items?.[0]?.count ?? 0,
+    subtotalAmount: row.subtotal ?? 0,
+  };
+}
+
+/** Next calendar day (UTC) for an inclusive YYYY-MM-DD upper date bound. */
+function nextUtcDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Build the tenant-scoped, filtered orders query (no order/range yet). Shared
+ * by the count, the paged list, and the export so their filter semantics are
+ * identical. `select` is caller-chosen ("id" for a head count, ORDER_LIST_SELECT
+ * for rows). A non-UUID customer id is handled by the callers (returns empty)
+ * BEFORE calling this — the DB customer_id column is uuid. */
+function buildOrdersQuery(
+  client: Db,
+  tenantId: string,
+  query: OrdersQuery,
+  select: string,
+  selectOptions?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
+) {
+  let qb = client
+    .from("orders")
+    .select(select, selectOptions)
+    .eq("tenant_id", tenantId);
+
+  if (query.statuses.length === 1) qb = qb.eq("status", query.statuses[0]);
+  else if (query.statuses.length > 1) qb = qb.in("status", query.statuses);
+
+  // Source facet → DB predicates (mirrors orderSourceFacet + the client sourceOf).
+  if (query.source === "guest") {
+    qb = qb.eq("source", "remote_customer").is("customer_id", null);
+  } else if (query.source === "shop_link") {
+    qb = qb.eq("source", "remote_customer").not("customer_id", "is", null);
+  } else if (query.source === "sales_visit") {
+    qb = qb.neq("source", "remote_customer");
+  }
+
+  if (query.customerId) qb = qb.eq("customer_id", query.customerId);
+
+  if (query.dateFrom) qb = qb.gte("created_at", `${query.dateFrom}T00:00:00Z`);
+  if (query.dateTo) qb = qb.lt("created_at", `${nextUtcDay(query.dateTo)}T00:00:00Z`);
+
+  // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
+  // then union order_number / public_ref / recorded buyer name+phone.
+  const term = query.search.replace(/[,()%\\*]/g, " ").trim();
+  if (term) {
+    const like = `%${term}%`;
+    qb = qb.or(
+      [
+        `order_number.ilike.${like}`,
+        `public_ref.ilike.${like}`,
+        `customer_snapshot->>name.ilike.${like}`,
+        `customer_snapshot->>phone.ilike.${like}`,
+      ].join(","),
+    );
+  }
+  return qb;
+}
+
+export async function sbSearchOrders(query: OrdersQuery): Promise<OrdersListResult> {
+  const { client, tenantId } = await getReadContext();
+  const pageSize = Math.min(Math.max(1, query.pageSize), ORDERS_MAX_PAGE_SIZE);
+  const empty: OrdersListResult = { rows: [], total: 0, page: 1, pageSize, totalPages: 1 };
+  if (isTenantless(tenantId)) return empty;
+  // A present-but-non-UUID customer id can match no order (customer_id is uuid);
+  // return zero rows rather than let the DB raise a uuid-cast error.
+  if (query.customerId && !isUuid(query.customerId)) return empty;
+
+  // COUNT FIRST (head, no rows) → derive totalPages → CLAMP the page. This makes
+  // an out-of-range ?page (stale/shared/hand-edited link) normalize to the last
+  // page instead of a PostgREST 416 (a ranged fetch past the row count errors).
+  const { count, error: countError } = await buildOrdersQuery(
+    client,
+    tenantId,
+    query,
+    "id",
+    { count: "exact", head: true },
+  );
+  if (countError) fail("searchOrders", countError.message);
+  const total = count ?? 0;
+  const totalPages = totalPagesFor(total, pageSize);
+  if (total === 0) return { rows: [], total: 0, page: 1, pageSize, totalPages };
+
+  const page = Math.min(Math.max(1, query.page), totalPages);
+  const offset = (page - 1) * pageSize; // < total ⇒ always a satisfiable range
+  const { data, error } = await buildOrdersQuery(client, tenantId, query, ORDER_LIST_SELECT)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  if (error) fail("searchOrders", error.message);
+  return {
+    rows: (data as unknown as OrderListDbRow[]).map(mapOrderListRow),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+export async function sbListOrdersForExport(
+  query: OrdersQuery,
+  cap: number,
+): Promise<OrderListRow[]> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
+  if (query.customerId && !isUuid(query.customerId)) return [];
+  const limit = Math.max(1, cap);
+  const { data, error } = await buildOrdersQuery(client, tenantId, query, ORDER_LIST_SELECT)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(0, limit - 1);
+  if (error) fail("listOrdersForExport", error.message);
+  return (data as unknown as OrderListDbRow[]).map(mapOrderListRow);
 }
 
 export async function sbListDocuments(): Promise<OrderDocument[]> {

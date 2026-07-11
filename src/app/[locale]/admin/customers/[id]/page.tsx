@@ -198,7 +198,7 @@ export default async function AdminCustomerDetailPage({
                 ))}
               </ul>
               <Link
-                href={`/${locale}/admin/orders`}
+                href={`/${locale}/admin/orders?customer=${id}`}
                 className="mt-3 inline-block text-sm font-medium text-brand-700 underline"
               >
                 {dict.admin.customers.viewAllOrders}

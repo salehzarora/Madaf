@@ -4,50 +4,38 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listOrders } from "@/lib/data";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
+import { getDataMode, searchOrders } from "@/lib/data";
+import { parseOrdersQuery } from "@/lib/orders-query";
 
-type SourceFilter = "all" | "sales_visit" | "shop_link" | "guest";
-const SOURCE_FILTERS: readonly SourceFilter[] = [
-  "all",
-  "sales_visit",
-  "shop_link",
-  "guest",
-];
-
+/**
+ * Admin orders list (M8F.1). The URL is the single source of truth for search /
+ * filters / page — parsed once here and used to fetch ONLY the current page of
+ * rows (server-side, under RLS) plus the exact filtered total. Dashboard/deep
+ * links (?status=, ?source=, ?guest=, ?customer=, ?from=, ?to=) are honoured by
+ * the shared parser. The client table navigates (URL changes) on every
+ * filter/page change, so back/forward and shareable links Just Work.
+ */
 export default async function AdminOrdersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ status?: string; source?: string; guest?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.orders;
-  const orders = await listOrders();
 
-  // CSV export is owner/admin (mock demo stays open); a sales_rep still sees
-  // only assigned-customer orders via RLS either way (M8C).
+  const query = parseOrdersQuery(await searchParams);
+  const result = await searchOrders(query);
+
+  // CSV export is owner/admin (mock demo stays open); a sales_rep sees only
+  // assigned-customer orders via RLS either way (M8C), and the export action is
+  // role-gated too (M8F.1).
   const isSupabase = getDataMode() === "supabase";
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
   const canExport = !isSupabase || role === "owner" || role === "admin";
-
-  // Dashboard cards deep-link with query params (M8D). Comma-separated status
-  // supports a status GROUP (e.g. confirmed,preparing). ?guest=true is an
-  // alias for the guest source facet.
-  const sp = await searchParams;
-  const initialStatuses = (sp.status ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s): s is OrderStatus => ORDER_STATUSES.includes(s as OrderStatus));
-  const initialSource: SourceFilter =
-    sp.guest === "true"
-      ? "guest"
-      : SOURCE_FILTERS.includes(sp.source as SourceFilter)
-        ? (sp.source as SourceFilter)
-        : "all";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -62,12 +50,11 @@ export default async function AdminOrdersPage({
         <ShelfRule className="mt-4" />
       </div>
       <OrdersTable
-        orders={orders}
+        result={result}
+        query={query}
         locale={locale}
         dict={dict}
         canExport={canExport}
-        initialStatuses={initialStatuses}
-        initialSource={initialSource}
       />
     </div>
   );

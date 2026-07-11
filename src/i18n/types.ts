@@ -390,6 +390,18 @@ export interface Dictionary {
       searchPlaceholder: string;
       /** M8D — clear all active filters. */
       clearFilters: string;
+      /** M8F.1 — server-side pagination: "{count} orders" filtered-total label. */
+      resultsCount: string;
+      /** M8F.1 — "Page {page} of {pages}". */
+      pageLabel: string;
+      /** M8F.1 — previous-page control label. */
+      prevPage: string;
+      /** M8F.1 — next-page control label. */
+      nextPage: string;
+      /** M8F.1 — empty filtered result (no orders match). */
+      noResults: string;
+      /** M8F.1 — hint under the empty state. */
+      noResultsHint: string;
       /** M8D — localized CSV headers for the orders export. */
       csv: {
         orderNumber: string;

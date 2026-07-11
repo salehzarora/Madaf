@@ -18,11 +18,14 @@
  */
 import { revalidatePath } from "next/cache";
 
+import { getSessionContext } from "@/lib/auth/session";
 import {
   createCustomerFromOrder,
   createOrderRequest,
+  getDataMode,
   getOrder,
   linkOrderToCustomer,
+  listOrdersForExport,
   updateOrderItems,
   updateOrderStatus,
 } from "@/lib/data";
@@ -30,6 +33,11 @@ import {
   findCustomerDuplicates,
   type CustomerDuplicate,
 } from "@/lib/data/customers";
+import {
+  ORDERS_EXPORT_CAP,
+  parseOrdersQuery,
+  type OrderListRow,
+} from "@/lib/orders-query";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
 /** Maps the DB insufficient-stock error (MDF30) to a UI reason. */
@@ -242,6 +250,61 @@ export async function createCustomerFromOrderAction(input: {
     return { ok: true, customerId: result.customerId };
   } catch (error) {
     console.error("[madaf/actions] createCustomerFromOrderAction failed:", error);
+    return { ok: false };
+  }
+}
+
+export interface ExportOrdersResult {
+  ok: boolean;
+  /** The filtered rows (up to the cap) for the CSV, in list order. */
+  rows?: OrderListRow[];
+  /** True when the filtered set exceeded the cap and was truncated. */
+  capped?: boolean;
+}
+
+/**
+ * M8F.1 — owner/admin CSV export of ALL rows matching the current filters (NOT
+ * just the visible page), up to ORDERS_EXPORT_CAP. Filters are re-parsed here
+ * with the SAME shared parser as the list (never trusting client state); the
+ * `page`/`pageSize` are intentionally ignored so pagination never restricts the
+ * export. RLS already scopes rows to the caller, and this also gates the action
+ * to owner/admin so a sales_rep never gains the export surface. The client
+ * builds the localized, formula-injection-safe CSV from the returned rows.
+ */
+export async function exportOrdersAction(input: {
+  q?: string;
+  status?: string;
+  source?: string;
+  guest?: string;
+  customer?: string;
+  from?: string;
+  to?: string;
+}): Promise<ExportOrdersResult> {
+  try {
+    if (getDataMode() === "supabase") {
+      const role = (await getSessionContext()).membership?.role;
+      if (role !== "owner" && role !== "admin") return { ok: false };
+    }
+    const query = parseOrdersQuery({
+      q: input.q,
+      status: input.status,
+      source: input.source,
+      guest: input.guest,
+      customer: input.customer,
+      from: input.from,
+      to: input.to,
+    });
+    // Fetch cap+1 to DETECT truncation, then trim to the cap (matches the
+    // existing "export the first CAP rows and warn" behavior).
+    const rows = await listOrdersForExport(query, ORDERS_EXPORT_CAP + 1);
+    const capped = rows.length > ORDERS_EXPORT_CAP;
+    return {
+      ok: true,
+      rows: capped ? rows.slice(0, ORDERS_EXPORT_CAP) : rows,
+      capped,
+    };
+  } catch (error) {
+    console.error("[madaf/actions] exportOrdersAction failed:", error);
     return { ok: false };
   }
 }

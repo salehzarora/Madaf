@@ -13,7 +13,22 @@
  * invoices (docs/DOCUMENTS_AND_INVOICES_GUIDE.md). No documents are
  * created by these writes — document generation is M5.
  */
-import { documentById, documents, orderById, orders } from "@/lib/mock";
+import {
+  customers as mockCustomers,
+  documentById,
+  documents,
+  orderById,
+  orders,
+} from "@/lib/mock";
+import { orderSubtotal } from "@/lib/catalog-helpers";
+import {
+  ORDERS_EXPORT_CAP,
+  orderSourceFacet,
+  totalPagesFor,
+  type OrderListRow,
+  type OrdersListResult,
+  type OrdersQuery,
+} from "@/lib/orders-query";
 import {
   ORDER_STATUS_TRANSITIONS,
   type Order,
@@ -53,6 +68,112 @@ export async function getOrder(id: string): Promise<Order | undefined> {
     return (await import("./supabase-reads")).sbGetOrder(id);
   }
   return orderById.get(id);
+}
+
+// ── Orders server-side search + pagination (M8F.1) ────────────────────────
+
+/** Paginated, filtered Orders list. Supabase runs it server-side under RLS;
+ * mock reproduces the same filter/sort/paginate contract over the demo array. */
+export async function searchOrders(query: OrdersQuery): Promise<OrdersListResult> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbSearchOrders(query);
+  }
+  return mockSearchOrders(query);
+}
+
+/** ALL rows matching the SAME filters, up to `cap` (pagination ignored) — for
+ * the CSV export, so it never exports only the current page. */
+export async function listOrdersForExport(
+  query: OrdersQuery,
+  cap: number = ORDERS_EXPORT_CAP,
+): Promise<OrderListRow[]> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListOrdersForExport(query, cap);
+  }
+  return filterMockOrders(query).slice(0, Math.max(0, cap));
+}
+
+const mockCustomerById = new Map(mockCustomers.map((c) => [c.id, c]));
+
+function toMockListRow(order: Order): OrderListRow {
+  const c = order.customerId ? mockCustomerById.get(order.customerId) : undefined;
+  return {
+    id: order.id,
+    number: order.number,
+    publicRef: order.publicRef ?? null,
+    status: order.status,
+    source: order.source,
+    createdAt: order.createdAt,
+    customerId: order.customerId,
+    customerName: c?.name ?? null,
+    customerPhone: c?.phone ?? null,
+    customerSnapshot: order.customerSnapshot,
+    itemCount: order.items.length,
+    subtotalAmount: orderSubtotal(order),
+  };
+}
+
+/** ALL matching mock rows, filtered + deterministically sorted (created_at
+ * DESC, then id DESC) — mirrors the supabase filters/sort/search semantics. */
+function filterMockOrders(query: OrdersQuery): OrderListRow[] {
+  const term = query.search.trim().toLowerCase();
+  const statusSet = new Set(query.statuses);
+  // UTC calendar-date bounds, consistent with the supabase gte/lt filter.
+  const fromMs = query.dateFrom
+    ? Date.parse(`${query.dateFrom}T00:00:00Z`)
+    : undefined;
+  const toMs = query.dateTo
+    ? Date.parse(`${query.dateTo}T00:00:00Z`) + 86_400_000
+    : undefined;
+
+  return orders
+    .map(toMockListRow)
+    .filter((r) => statusSet.size === 0 || statusSet.has(r.status))
+    .filter((r) => query.source === "all" || orderSourceFacet(r) === query.source)
+    .filter((r) => !query.customerId || r.customerId === query.customerId)
+    .filter((r) => {
+      if (fromMs === undefined && toMs === undefined) return true;
+      const t = Date.parse(r.createdAt);
+      if (Number.isNaN(t)) return false;
+      if (fromMs !== undefined && t < fromMs) return false;
+      if (toMs !== undefined && t >= toMs) return false;
+      return true;
+    })
+    .filter((r) => {
+      if (!term) return true;
+      return [
+        r.number,
+        r.publicRef ?? "",
+        r.customerName ?? "",
+        r.customerPhone ?? "",
+        r.customerSnapshot?.name ?? "",
+        r.customerSnapshot?.phone ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    })
+    .sort(
+      (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
+    );
+}
+
+function mockSearchOrders(query: OrdersQuery): OrdersListResult {
+  const all = filterMockOrders(query);
+  const total = all.length;
+  const pageSize = query.pageSize;
+  const totalPages = totalPagesFor(total, pageSize);
+  // Normalize an out-of-range page to the last page (no redirect, no loop).
+  const page = Math.min(Math.max(1, query.page), totalPages);
+  const offset = (page - 1) * pageSize;
+  return {
+    rows: all.slice(offset, offset + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
 }
 
 export async function listDocuments(): Promise<OrderDocument[]> {

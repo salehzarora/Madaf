@@ -8,8 +8,9 @@
     "build": "npm run check:deploy-safety && next build && node scripts/check-dynamic-routes.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --conditions=react-server --test src/lib/public-url.test.ts",
-    "test:public-url": "tsx --conditions=react-server --test src/lib/public-url.test.ts"
+    "test": "tsx --conditions=react-server --test src/lib/public-url.test.ts src/lib/orders-query.test.ts",
+    "test:public-url": "tsx --conditions=react-server --test src/lib/public-url.test.ts",
+    "test:orders-search": "tsx --conditions=react-server --test src/lib/orders-query.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

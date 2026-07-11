@@ -392,6 +392,12 @@ const ar: Dictionary = {
       colRef: "المرجع",
       searchPlaceholder: "ابحث بالرقم أو المرجع أو المحل أو الهاتف…",
       clearFilters: "مسح الفلاتر",
+      resultsCount: "{count} طلب",
+      pageLabel: "صفحة {page} من {pages}",
+      prevPage: "السابق",
+      nextPage: "التالي",
+      noResults: "لا توجد طلبات",
+      noResultsHint: "جرّب مسح البحث أو الفلاتر.",
       csv: {
         orderNumber: "رقم الطلب الداخلي",
         publicRef: "رقم الزبون",

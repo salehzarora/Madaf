@@ -392,6 +392,12 @@ const en: Dictionary = {
       colRef: "Reference",
       searchPlaceholder: "Search by number, reference, shop or phone…",
       clearFilters: "Clear filters",
+      resultsCount: "{count} orders",
+      pageLabel: "Page {page} of {pages}",
+      prevPage: "Previous",
+      nextPage: "Next",
+      noResults: "No orders found",
+      noResultsHint: "Try clearing the search or filters.",
       csv: {
         orderNumber: "Internal order number",
         publicRef: "Customer reference",

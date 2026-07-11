@@ -51,8 +51,8 @@ jobs:
       - name: Type-check (no emit)
         run: npx tsc --noEmit
 
-      - name: Test (canonical public-link validator — M8E.2)
-        run: npm run test:public-url
+      - name: Test (public-link validator [M8E.2] + orders search/pagination [M8F.1])
+        run: npm test
 
       # M8E.2 — exercise the deployment-safety build GATE against a representative
       # SYNTHETIC config matrix (no secrets/values, only shapes). Proves the

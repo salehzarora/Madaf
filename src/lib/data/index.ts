@@ -51,6 +51,8 @@ export {
   listDocuments,
   listDocumentsForOrder,
   listOrders,
+  listOrdersForExport,
+  searchOrders,
   updateOrderItems,
   updateOrderStatus,
   type CreateOrderInput,

@@ -392,6 +392,12 @@ const he: Dictionary = {
       colRef: "אסמכתה",
       searchPlaceholder: "חיפוש לפי מספר, אסמכתה, חנות או טלפון…",
       clearFilters: "ניקוי הפילטרים",
+      resultsCount: "{count} הזמנות",
+      pageLabel: "עמוד {page} מתוך {pages}",
+      prevPage: "הקודם",
+      nextPage: "הבא",
+      noResults: "לא נמצאו הזמנות",
+      noResultsHint: "נסו לנקות את החיפוש או הפילטרים.",
       csv: {
         orderNumber: "מספר הזמנה פנימי",
         publicRef: "אסמכתה ללקוח",
