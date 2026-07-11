@@ -22,6 +22,8 @@ import { revalidatePath } from "next/cache";
 import {
   createManufacturer,
   createProduct,
+  getDataMode,
+  listProductsForExport,
   setProductActive,
   updateManufacturer,
   updateProduct,
@@ -33,6 +35,12 @@ import {
   type ManufacturerWriteInput,
   type ProductWriteInput,
 } from "@/lib/data";
+import { getSessionContext } from "@/lib/auth/session";
+import {
+  parseProductsQuery,
+  PRODUCTS_EXPORT_CAP,
+  type ProductExportRow,
+} from "@/lib/products-query";
 import { BASE_UNITS, PACKAGE_UNITS } from "@/lib/types";
 
 const MAX_TEXT = 200;
@@ -226,6 +234,52 @@ export async function setProductActiveAction(input: {
     return { ok: true, productId: result.productId };
   } catch (error) {
     console.error("[madaf/actions] setProductActiveAction failed:", error);
+    return { ok: false };
+  }
+}
+
+export interface ExportProductsResult {
+  ok: boolean;
+  rows?: ProductExportRow[];
+  /** True when the filtered set exceeded the cap (first CAP rows returned). */
+  capped?: boolean;
+}
+
+/**
+ * M8F.2 — owner/admin CSV export of the FILTERED products (ALL rows up to the
+ * cap, not just the visible page). Re-parses the same filters as the list
+ * (page/pageSize are ignored); the DB read is RLS/tenant-scoped and signs NO
+ * images (the CSV carries no image data or storage path). A sales_rep is
+ * refused in supabase mode; mock stays open (demo, no auth).
+ */
+export async function exportProductsAction(input: {
+  q?: string;
+  category?: string;
+  manufacturer?: string;
+  status?: string;
+}): Promise<ExportProductsResult> {
+  try {
+    if (getDataMode() === "supabase") {
+      const role = (await getSessionContext()).membership?.role;
+      if (role !== "owner" && role !== "admin") return { ok: false };
+    }
+    const query = parseProductsQuery({
+      q: input.q,
+      category: input.category,
+      manufacturer: input.manufacturer,
+      status: input.status,
+    });
+    // Fetch cap+1 to DETECT truncation, then trim to the cap (matches the
+    // existing "export the first CAP rows and warn" behavior).
+    const rows = await listProductsForExport(query, PRODUCTS_EXPORT_CAP + 1);
+    const capped = rows.length > PRODUCTS_EXPORT_CAP;
+    return {
+      ok: true,
+      rows: capped ? rows.slice(0, PRODUCTS_EXPORT_CAP) : rows,
+      capped,
+    };
+  } catch (error) {
+    console.error("[madaf/actions] exportProductsAction failed:", error);
     return { ok: false };
   }
 }

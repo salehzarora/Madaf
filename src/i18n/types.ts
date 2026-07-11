@@ -281,6 +281,14 @@ export interface Dictionary {
       inactiveBadge: string;
       filterStatus: string;
       statusActive: string;
+      /** M8F.2 — server-side pagination: "Page {page} of {pages}". */
+      pageLabel: string;
+      /** M8F.2 — previous-page control label. */
+      prevPage: string;
+      /** M8F.2 — next-page control label. */
+      nextPage: string;
+      /** M8F.2 — clear all active product filters. */
+      clearFilters: string;
       /** M8D — localized CSV headers for the products export. */
       csv: {
         name: string;

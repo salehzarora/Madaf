@@ -12,11 +12,22 @@
 import {
   categories,
   categoryById,
+  inventoryByProductId,
   manufacturerById,
   manufacturers,
   productById,
   products,
 } from "@/lib/mock";
+import { isLowStock } from "@/lib/catalog-helpers";
+import {
+  compareProductsForList,
+  productMatchesSearch,
+  productMatchesStatus,
+  totalProductPagesFor,
+  type ProductExportRow,
+  type ProductsListResult,
+  type ProductsQuery,
+} from "@/lib/products-query";
 import type {
   BaseUnit,
   Category,
@@ -98,6 +109,77 @@ export async function getProduct(id: string): Promise<Product | undefined> {
     return (await import("./supabase-reads")).sbGetProduct(id);
   }
   return productById.get(id);
+}
+
+// ── Server-side products search + pagination (M8F.2) ──────────────────────
+// The admin Products list fetches ONLY the current page + the exact filtered
+// total (no full-catalog client load). Search covers the product's own columns
+// (name ar/he/en, sku, barcode); category / manufacturer / status are filters.
+// Supabase runs everything in the tenant-scoped RLS query and signs only the
+// current page's images; mock mirrors the same filters/sort/pagination.
+
+/** Filter, sort and paginate the mock catalog exactly like the supabase query
+ * (shared, PURE helpers keep them in lock-step). Admin always includes inactive
+ * rows — mock products carry no is_active, so they are all implicitly active. */
+function filterMockProducts(query: ProductsQuery): Product[] {
+  return products
+    .filter((p) => {
+      if (query.categoryId && p.categoryId !== query.categoryId) return false;
+      if (query.manufacturerId && p.manufacturerId !== query.manufacturerId) {
+        return false;
+      }
+      if (!productMatchesStatus(p, query.status)) return false;
+      return productMatchesSearch(p, query.search);
+    })
+    .sort(compareProductsForList);
+}
+
+export async function searchProducts(
+  query: ProductsQuery,
+): Promise<ProductsListResult> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbSearchProducts(query);
+  }
+  const pageSize = Math.max(1, query.pageSize);
+  const all = filterMockProducts(query);
+  const total = all.length;
+  const totalPages = totalProductPagesFor(total, pageSize);
+  // Clamp an out-of-range page to the last page (mirrors the supabase count-
+  // first clamp) so a stale/shared ?page never yields an empty page or error.
+  const page = Math.min(Math.max(1, query.page), totalPages);
+  const offset = (page - 1) * pageSize;
+  return {
+    products: all.slice(offset, offset + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+/** All filtered products (up to `cap`) for the CSV export — the FULL filtered
+ * set, not the current page. Pagination is ignored; filters are preserved. */
+export async function listProductsForExport(
+  query: ProductsQuery,
+  cap: number,
+): Promise<ProductExportRow[]> {
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListProductsForExport(
+      query,
+      cap,
+    );
+  }
+  const limit = Math.max(1, cap);
+  return filterMockProducts(query)
+    .slice(0, limit)
+    .map((product) => {
+      const inv = inventoryByProductId.get(product.id);
+      return {
+        product,
+        stockPackages: inv ? inv.stockPackages : null,
+        isLowStock: inv ? isLowStock(inv) : null,
+      };
+    });
 }
 
 export async function listCategories(): Promise<Category[]> {

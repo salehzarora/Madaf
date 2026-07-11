@@ -47,6 +47,13 @@ import {
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
+import {
+  PRODUCTS_MAX_PAGE_SIZE,
+  totalProductPagesFor,
+  type ProductExportRow,
+  type ProductsListResult,
+  type ProductsQuery,
+} from "@/lib/products-query";
 
 import type { Db } from "./supabase-context";
 import { getDataContext, NO_TENANT } from "@/lib/auth/session";
@@ -445,6 +452,144 @@ export async function sbGetProduct(id: string): Promise<Product | undefined> {
     mapProduct(data as ProductRow),
   ]);
   return signed;
+}
+
+// ── Products server-side search + pagination (M8F.2) ──────────────────────
+// The admin list fetches ONLY the current page + the exact filtered total,
+// signing only the current page's images. Search covers the product's OWN
+// columns (name ar/he/en, sku, barcode); category / manufacturer / status are
+// filters. RLS scopes rows to the tenant (admin sees inactive too under the
+// products SELECT policy); the explicit tenant_id filter is belt-and-braces.
+// LIST select embeds inventory_items so availability is derived per row without
+// a second query (no N+1) — categories(sort_order) is NOT needed (the sort is
+// sku-based, expressible in the DB) so the leaner select is used.
+const PRODUCT_LIST_SELECT =
+  "*, inventory_items (quantity_available, low_stock_threshold)";
+
+/** Build the tenant-scoped, filtered products query (no order/range yet).
+ * Shared by the count, the paged list, and the export so their filter semantics
+ * are identical. A non-UUID category/manufacturer id is handled by the callers
+ * (returns empty) BEFORE calling this — those DB columns are uuid. */
+function buildProductsQuery(
+  client: Db,
+  tenantId: string,
+  query: ProductsQuery,
+  select: string,
+  selectOptions?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
+) {
+  let qb = client
+    .from("products")
+    .select(select, selectOptions)
+    .eq("tenant_id", tenantId);
+
+  if (query.status === "active") qb = qb.eq("is_active", true);
+  else if (query.status === "inactive") qb = qb.eq("is_active", false);
+
+  if (query.categoryId) qb = qb.eq("category_id", query.categoryId);
+  if (query.manufacturerId) qb = qb.eq("manufacturer_id", query.manufacturerId);
+
+  // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
+  // then union the product's own name (all locales) / sku / barcode.
+  const term = query.search.replace(/[,()%\\*]/g, " ").trim();
+  if (term) {
+    const like = `%${term}%`;
+    qb = qb.or(
+      [
+        `name_ar.ilike.${like}`,
+        `name_he.ilike.${like}`,
+        `name_en.ilike.${like}`,
+        `sku.ilike.${like}`,
+        `barcode.ilike.${like}`,
+      ].join(","),
+    );
+  }
+  return qb;
+}
+
+export async function sbSearchProducts(
+  query: ProductsQuery,
+): Promise<ProductsListResult> {
+  const { client, tenantId } = await getReadContext();
+  const pageSize = Math.min(Math.max(1, query.pageSize), PRODUCTS_MAX_PAGE_SIZE);
+  const empty: ProductsListResult = {
+    products: [],
+    total: 0,
+    page: 1,
+    pageSize,
+    totalPages: 1,
+  };
+  if (isTenantless(tenantId)) return empty;
+  // A present-but-non-UUID category/manufacturer id can match no product
+  // (those columns are uuid); return zero rows rather than a DB cast error.
+  if (query.categoryId && !isUuid(query.categoryId)) return empty;
+  if (query.manufacturerId && !isUuid(query.manufacturerId)) return empty;
+
+  // COUNT FIRST (head, no rows) → derive totalPages → CLAMP the page, so a
+  // stale/shared/hand-edited ?page normalizes to the last page instead of a
+  // PostgREST 416 (a ranged fetch past the row count errors).
+  const { count, error: countError } = await buildProductsQuery(
+    client,
+    tenantId,
+    query,
+    "id",
+    { count: "exact", head: true },
+  );
+  if (countError) fail("searchProducts", countError.message);
+  const total = count ?? 0;
+  const totalPages = totalProductPagesFor(total, pageSize);
+  if (total === 0) return { products: [], total: 0, page: 1, pageSize, totalPages };
+
+  const page = Math.min(Math.max(1, query.page), totalPages);
+  const offset = (page - 1) * pageSize; // < total ⇒ always a satisfiable range
+  const { data, error } = await buildProductsQuery(
+    client,
+    tenantId,
+    query,
+    PRODUCT_LIST_SELECT,
+  )
+    .order("sku", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true })
+    .range(offset, offset + pageSize - 1);
+  if (error) fail("searchProducts", error.message);
+  // Sign ONLY the current page's images (per-request signed URLs).
+  const signed = await signProductImages(
+    client,
+    tenantId,
+    (data as unknown as ProductRow[]).map(mapProduct),
+  );
+  return { products: signed, total, page, pageSize, totalPages };
+}
+
+export async function sbListProductsForExport(
+  query: ProductsQuery,
+  cap: number,
+): Promise<ProductExportRow[]> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return [];
+  if (query.categoryId && !isUuid(query.categoryId)) return [];
+  if (query.manufacturerId && !isUuid(query.manufacturerId)) return [];
+  const limit = Math.max(1, cap);
+  const { data, error } = await buildProductsQuery(
+    client,
+    tenantId,
+    query,
+    PRODUCT_LIST_SELECT,
+  )
+    .order("sku", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true })
+    .range(0, limit - 1);
+  if (error) fail("listProductsForExport", error.message);
+  // The CSV never includes images — strip the raw storage path so it never
+  // reaches the client, and sign NO images for the (potentially large) export.
+  return (data as unknown as ProductRow[]).map((row) => {
+    const product = { ...mapProduct(row), imageUrl: undefined, imageStoragePath: undefined };
+    const inv = row.inventory_items;
+    return {
+      product,
+      stockPackages: inv ? inv.quantity_available : null,
+      isLowStock: inv ? inv.quantity_available < inv.low_stock_threshold : null,
+    };
+  });
 }
 
 export async function sbListCategories(): Promise<Category[]> {

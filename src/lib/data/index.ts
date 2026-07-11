@@ -17,6 +17,8 @@ export {
   listCategories,
   listManufacturers,
   listProducts,
+  listProductsForExport,
+  searchProducts,
   setProductActive,
   updateManufacturer,
   updateProduct,

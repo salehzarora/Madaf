@@ -6,22 +6,25 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listInventory, listProducts } from "@/lib/data";
+import { getDataMode, searchProducts } from "@/lib/data";
+import { parseProductsQuery } from "@/lib/products-query";
 
 export default async function AdminProductsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.products;
-  // Admin sees inactive products too (supabase mode); mock lists all.
-  const [products, inventory] = await Promise.all([
-    listProducts({ includeInactive: true }),
-    listInventory(),
-  ]);
+  // M8F.2 — the URL is the source of truth; the server fetches ONLY the current
+  // page + the exact filtered total (admin includes inactive under RLS; mock
+  // lists all). No full-catalog client load.
+  const query = parseProductsQuery(await searchParams);
+  const result = await searchProducts(query);
   // CSV export is owner/admin (mock demo stays open) — M8C.
   const isSupabase = getDataMode() === "supabase";
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
@@ -55,8 +58,8 @@ export default async function AdminProductsPage({
         <ShelfRule className="mt-4" />
       </div>
       <ProductsTable
-        products={products}
-        inventory={inventory}
+        result={result}
+        query={query}
         canExport={canManage}
         canManage={canManage}
         locale={locale}
