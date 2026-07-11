@@ -82,9 +82,12 @@ export function SignupManager({
           setError(linkErrorMessage(dict.common, result.reason));
         }
       } catch {
-        // Transport/network/action rejection — keep any displayed link and show
-        // a generic operation error (never a config-URL error).
+        // Transport/network rejection: outcome unknown. A signup link is an
+        // INDEPENDENT insert (it revokes nothing), so any previously-shown link
+        // stays valid and is kept. Show a generic error and reconcile the list;
+        // if the insert did commit, the new one-time URL was lost — regenerate.
         setError(dict.common.actionError);
+        router.refresh();
       }
     });
   }
@@ -102,9 +105,14 @@ export function SignupManager({
   function onRevoke(linkId: string) {
     setError(null);
     startTransition(async () => {
-      const result = await revokeSignupLinkAction({ linkId, locale });
-      if (!result.ok) setError(t.error);
-      router.refresh();
+      try {
+        const result = await revokeSignupLinkAction({ linkId, locale });
+        if (!result.ok) setError(t.error);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -112,32 +120,42 @@ export function SignupManager({
     setError(null);
     setDupWarning(null);
     startTransition(async () => {
-      const result = await approveSignupRequestAction({
-        requestId,
-        locale,
-        confirmDuplicate,
-      });
-      if (result.ok) {
+      try {
+        const result = await approveSignupRequestAction({
+          requestId,
+          locale,
+          confirmDuplicate,
+        });
+        if (result.ok) {
+          router.refresh();
+          return;
+        }
+        // M8B.3 duplicate guard — an existing store shares this request's
+        // phone/name; approval needs an explicit confirmation.
+        if (result.duplicates && result.duplicates.length > 0) {
+          setDupWarning({ requestId, duplicates: result.duplicates });
+          return;
+        }
+        setError(t.error);
         router.refresh();
-        return;
+      } catch {
+        setError(dict.common.actionError);
+        router.refresh();
       }
-      // M8B.3 duplicate guard — an existing store shares this request's
-      // phone/name; approval needs an explicit confirmation.
-      if (result.duplicates && result.duplicates.length > 0) {
-        setDupWarning({ requestId, duplicates: result.duplicates });
-        return;
-      }
-      setError(t.error);
-      router.refresh();
     });
   }
 
   function onReject(requestId: string) {
     setError(null);
     startTransition(async () => {
-      const result = await rejectSignupRequestAction({ requestId, locale });
-      if (!result.ok) setError(t.error);
-      router.refresh();
+      try {
+        const result = await rejectSignupRequestAction({ requestId, locale });
+        if (!result.ok) setError(t.error);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 

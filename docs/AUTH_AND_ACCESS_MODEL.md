@@ -324,7 +324,7 @@ p_tenant_id := public.authorize_tenant(p_tenant_id, array['owner','admin']::publ
 The **client-submitted `tenant_id` is never trusted** — it is accepted
 ONLY when it matches one of the caller's own memberships (with an allowed
 role). The tenant-scoped team/link RPCs (`create_tenant_invite`,
-`list_tenant_members`, `insert_customer_access_link`, …) take an explicit
+`list_tenant_members`, `replace_customer_access_link`, …) take an explicit
 `p_tenant_id` (the app's verified selected tenant) and pass it straight in;
 the catalog/order RPCs already did. This one checkpoint makes cross-tenant
 writes impossible for a user who belongs to several tenants, regardless of
@@ -470,8 +470,8 @@ Flow:
 
 | Step | RPC | Grants | Notes |
 |---|---|---|---|
-| Create link | `insert_customer_access_link` | authenticated (owner/admin) | stores hash + preview |
-| Revoke link | `revoke_customer_access_link` | authenticated (owner/admin) | sets `revoked_at` |
+| Create/replace link | `replace_customer_access_link` | authenticated (owner/admin) | M8E.2: ATOMIC — locks the customer row `FOR UPDATE`, re-checks active state (MDF33), revokes ALL active links + inserts the new hash-only link in ONE transaction. Stores hash + preview. A partial unique index (`one unrevoked link per (tenant_id, customer_id)`) is the DB-level backstop. The obsolete `insert_customer_access_link` / `revoke_customer_access_links_for_customer` have EXECUTE revoked from every role. |
+| Revoke link | `revoke_customer_access_link` | authenticated (owner/admin) | sets `revoked_at` (single link) |
 | Open shop | `get_token_catalog(raw token)` | anon | hashes + validates the token, touches `last_used_at`, returns the tenant-scoped catalog as jsonb |
 | Place order | `create_order_request_from_token(raw token, items, notes)` | anon | derives tenant+customer from the token, prices everything server-side, `source='remote_customer'` |
 

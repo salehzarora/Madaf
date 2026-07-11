@@ -54,29 +54,30 @@ jobs:
       - name: Test (canonical public-link validator — M8E.2)
         run: npm run test:public-url
 
-      # M8E.2 — exercise the deployment-safety build GATE against representative
-      # SYNTHETIC hosted configs (no secrets/values, only shapes). A hosted
-      # Supabase deploy with a missing / preview-host / conflicting canonical URL
-      # must make the gate exit nonzero; a valid one must pass. This proves the
-      # errors are consumed by a real command, not just an unused report.
-      - name: Deployment-safety gate — synthetic hosted configs
+      # M8E.2 — exercise the deployment-safety build GATE against a representative
+      # SYNTHETIC config matrix (no secrets/values, only shapes). Proves the
+      # errors are consumed by a REAL command (nonzero exit), not an unused
+      # report. `env -u` truly UNSETS a var (the job default is mock), so the
+      # "missing mode" case is genuinely missing. Each expect_* verifies the
+      # actual exit code and cannot accept an expected failure as success.
+      - name: Deployment-safety gate — synthetic config matrix
         run: |
           set -u
-          HOSTED="VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x"
+          SB="NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x"
           expect_pass() { if eval "$1 npm run check:deploy-safety" >/dev/null 2>&1; then echo "PASS(ok): $2"; else echo "FAIL(expected ok): $2"; exit 1; fi; }
           expect_fail() { if eval "$1 npm run check:deploy-safety" >/dev/null 2>&1; then echo "FAIL(expected error): $2"; exit 1; else echo "PASS(errored): $2"; fi; }
-          # Local/mock build stays green even in a deploy context.
-          expect_pass "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=mock" "local/mock deploy"
-          # Valid hosted: production-alias canonical, distinct per-deploy host.
-          expect_pass "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app VERCEL_URL=madaf-abc123.vercel.app" "valid hosted (production alias)"
-          # Valid hosted: custom domain.
-          expect_pass "$HOSTED NEXT_PUBLIC_APP_URL=https://shop.madaf.example" "valid hosted (custom domain)"
-          # Missing canonical → fail.
-          expect_fail "$HOSTED" "missing canonical URL"
-          # Canonical == this deploy's per-deploy Vercel host → fail.
-          expect_fail "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_URL=madaf-drab.vercel.app" "preview/per-deploy host"
-          # Conflicting APP/SITE origins → fail.
-          expect_fail "$HOSTED NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app NEXT_PUBLIC_SITE_URL=https://other.example VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app" "conflicting APP/SITE"
+          # ── must PASS ──
+          expect_pass "env -u VERCEL -u VERCEL_ENV NEXT_PUBLIC_MADAF_DATA_MODE=mock" "local zero-config mock (no Vercel)"
+          expect_pass "env -u VERCEL -u VERCEL_ENV NEXT_PUBLIC_MADAF_DATA_MODE=supabase NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:55321 NEXT_PUBLIC_SUPABASE_ANON_KEY=x" "local Supabase dev (no Vercel, local url)"
+          expect_pass "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase $SB NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app VERCEL_URL=madaf-abc123.vercel.app" "Vercel hosted supabase (production alias)"
+          expect_pass "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase $SB NEXT_PUBLIC_APP_URL=https://shop.madaf.example" "Vercel hosted supabase (custom domain)"
+          # ── must FAIL ──
+          expect_fail "VERCEL=1 env -u NEXT_PUBLIC_MADAF_DATA_MODE" "Vercel + missing data mode"
+          expect_fail "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=mock" "Vercel + mock data mode"
+          expect_fail "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=demo" "Vercel + invalid data mode"
+          expect_fail "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase $SB" "Vercel + missing canonical URL"
+          expect_fail "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase $SB NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app VERCEL_URL=madaf-drab.vercel.app" "Vercel + preview/per-deploy host"
+          expect_fail "VERCEL=1 NEXT_PUBLIC_MADAF_DATA_MODE=supabase $SB NEXT_PUBLIC_APP_URL=https://madaf-drab.vercel.app NEXT_PUBLIC_SITE_URL=https://other.example VERCEL_PROJECT_PRODUCTION_URL=madaf-drab.vercel.app" "conflicting APP/SITE"
 
       - name: Build (mock mode, zero backend env)
         run: npm run build

@@ -441,3 +441,73 @@ stable runner (`tsx`).
 No token generation/hashing, hash-only persistence, one-time-URL, tenant
 authorization, RLS, anon-access, storage, service-role, legal, payment, SMS, or
 Vercel-Deployment-Protection boundary changed.
+
+**Pass 4** (this pass) closed the second review's six remaining invariant gaps:
+
+1. **Legacy RPC bypass CLOSED + durable DB invariant.** The obsolete two-step
+   functions `insert_customer_access_link` and
+   `revoke_customer_access_links_for_customer` were still executable by
+   `authenticated` — calling the legacy insert twice could create two active
+   links. No production TypeScript uses either (the data layer + shop action
+   route only through the atomic `replace_customer_access_link`). New additive
+   migration `20260727100000_lock_legacy_link_rpcs_and_invariant.sql` **REVOKES
+   EXECUTE from every role** (public/anon/authenticated/service_role — the
+   functions are kept for migration-history integrity but can no longer run),
+   and adds a **partial unique index**
+   `customer_access_links_one_active_per_customer` — `UNIQUE (tenant_id,
+   customer_id) WHERE revoked_at IS NULL`. `customer_id` is NOT NULL and this
+   table holds only customer shop links (no link-type dimension), so the index
+   is exact; even a direct/legacy insert can no longer create a second active
+   link. The migration first collapses any pre-existing duplicate active links
+   (keep the newest, REVOKE the rest — never delete) so it is safe on hosted
+   rows. This is a SECOND, structural line of defense on top of the atomic RPC's
+   per-customer `FOR UPDATE` lock.
+2. **Vercel deploy mode is mandatory.** `assessDeploymentSafety` now detects a
+   real Vercel deploy (`VERCEL=1` or `VERCEL_ENV`) and ERRORS unless
+   `NEXT_PUBLIC_MADAF_DATA_MODE` is EXACTLY `supabase` — missing, `mock`, or any
+   unknown value fails the real build gate, so a hosted mock/no-auth app can
+   never build or deploy. Local development (not a Vercel context) is
+   unaffected: zero-config mock and local Supabase both stay green. The CI
+   matrix asserts Vercel+missing / Vercel+mock / Vercel+invalid all FAIL and
+   local mock / local supabase / valid Vercel supabase all PASS (via real exit
+   codes).
+3. **Client fallback fails closed.** `isDisplayablePublicUrl` applies the
+   loopback (local-dev) fallback ONLY when the canonical config is genuinely
+   ABSENT (`reason === "missing"`). An invalid `NEXT_PUBLIC_APP_URL`, an invalid
+   selected `NEXT_PUBLIC_SITE_URL`, an APP/SITE conflict, or any other
+   configured-value failure rejects EVERY URL (exhaustive handling → future
+   reasons fail closed). It never falls back to `window.location.origin`.
+4. **Every awaited Server Action is caught.** All handlers in the four managers
+   (create/regenerate + revoke, showcase revoke, signup revoke/approve/reject,
+   team revoke/role-change/remove/promote/demote) run their action inside
+   `try/catch` in the transition: a transport/action rejection is caught, the
+   loading state settles, a safe generic `common.actionError` is shown (never a
+   raw token/URL/metadata/DB detail, never mislabeled as a config failure), and
+   the list is reconciled (`router.refresh()`).
+5. **Transport uncertainty is honest.** Comments claiming a transport rejection
+   proves a DB rollback were removed — a lost HTTP response does NOT prove the
+   transaction rolled back. For the shop create/regenerate (which REVOKE priors)
+   a transport rejection now clears the copy-once banner and reconciles the list
+   (the shown URL may have been revoked); for the independent inserts (showcase/
+   signup/invite) the previously-shown link stays valid and is kept, with a
+   reconcile. **Residual limitation (documented honestly):** if the DB commits
+   but the one-time raw-token response is lost, that URL is unrecoverable — the
+   operator checks the refreshed list and regenerates. No raw token is persisted
+   to work around this.
+6. **Reproducible DB + concurrency tests.** `supabase/tests/…test.sql` grew to
+   **27 pgTAP assertions**: privilege checks (legacy RPCs executable by NO role;
+   atomic RPC only by authenticated/service_role), behavioural bypass (as
+   `authenticated`, the legacy RPCs raise `42501`), the duplicate-active
+   invariant (a second active insert raises `23505`), one-active-after-repeated-
+   replace, rollback-on-failure (inactive → MDF33, prior link survives), a REAL
+   second-tenant fixture (cross-tenant rejected, tenant B untouched), and
+   hash-only persistence. The `pg_get_functiondef` structural test was removed
+   (it is not behavioural concurrency proof); concurrency is proven by
+   `scripts/concurrency-replace-link.sh` — a documented, local-only,
+   secret-free, repeatable two-session harness (expected: exactly one active
+   link, exit 0).
+
+**M8E.2 migrations (this feature, in order): `20260726100000_atomic_replace_
+customer_link.sql` (atomic replace RPC) + `20260727100000_lock_legacy_link_rpcs_
+and_invariant.sql` (revoke legacy grants + one-active invariant). TWO migrations
+total; NEITHER has been applied to hosted Supabase.**

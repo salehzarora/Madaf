@@ -83,9 +83,17 @@ export function CustomerLinksManager({
           );
         }
       } catch {
-        // Transport/network/action rejection — the atomic replace rolled back,
-        // so the previous link survives. Show a generic operation error.
+        // Transport/network rejection: the OUTCOME IS UNKNOWN. The atomic
+        // replace may have committed (and revoked the previously-shown link)
+        // even though the HTTP response was lost — a lost response does NOT
+        // prove a rollback. So do NOT keep presenting the old URL as valid:
+        // clear the copy-once banner, show a generic error, and reconcile the
+        // list from the server. If the DB did commit, the one-time URL is gone
+        // and the admin regenerates after checking the refreshed list.
+        setCreatedUrl(null);
+        setCopied(false);
         setError(dict.common.actionError);
+        router.refresh();
       }
     });
   }
@@ -103,13 +111,21 @@ export function CustomerLinksManager({
   function onRevoke(linkId: string) {
     setError(null);
     startTransition(async () => {
-      const result = await revokeCustomerLinkAction({
-        linkId,
-        customerId,
-        locale,
-      });
-      if (!result.ok) setError(t.revokeError);
-      router.refresh();
+      try {
+        const result = await revokeCustomerLinkAction({
+          linkId,
+          customerId,
+          locale,
+        });
+        if (!result.ok) setError(t.revokeError);
+      } catch {
+        // Transport rejection on a revoke — show a generic error and reconcile
+        // the list. The create banner (a different link's copy-once URL) is left
+        // untouched.
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -158,9 +174,14 @@ export function CustomerLinksManager({
           );
         }
       } catch {
-        // Transport/network/action rejection — the atomic replace rolled back,
-        // so the previously displayed link survives. Show a generic op error.
+        // Transport/network rejection: outcome UNKNOWN (a lost response does
+        // not prove a rollback — the replace may have committed and revoked the
+        // shown link). Clear the possibly-stale copy-once banner, show a generic
+        // error, and reconcile the list; regenerate after checking it if needed.
+        setCreatedUrl(null);
+        setCopied(false);
         setError(dict.common.actionError);
+        router.refresh();
       }
     });
   }

@@ -96,9 +96,13 @@ export function TeamManager({
           setError(linkErrorMessage(dict.common, result.reason));
         }
       } catch {
-        // Transport/network/action rejection — keep any displayed link and show
-        // a generic operation error (never a config-URL error).
+        // Transport/network rejection: outcome unknown. An invite is an
+        // INDEPENDENT insert (it revokes nothing), so any previously-shown invite
+        // link stays valid and is kept. Show a generic error and reconcile the
+        // list; if the insert did commit, the new one-time URL was lost — issue
+        // a fresh invite.
         setError(dict.common.actionError);
+        router.refresh();
       }
     });
   }
@@ -116,9 +120,14 @@ export function TeamManager({
   function onRevoke(inviteId: string) {
     setError(null);
     startTransition(async () => {
-      const result = await revokeInviteAction({ inviteId, locale });
-      if (!result.ok) setError(t.revokeError);
-      router.refresh();
+      try {
+        const result = await revokeInviteAction({ inviteId, locale });
+        if (!result.ok) setError(t.revokeError);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -126,9 +135,14 @@ export function TeamManager({
     if (newRole !== "admin" && newRole !== "sales_rep") return;
     setError(null);
     startTransition(async () => {
-      const result = await updateMemberRoleAction({ userId, role: newRole, locale });
-      if (!result.ok) setError(t.roleError);
-      router.refresh();
+      try {
+        const result = await updateMemberRoleAction({ userId, role: newRole, locale });
+        if (!result.ok) setError(t.roleError);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -136,9 +150,14 @@ export function TeamManager({
     if (!window.confirm(t.confirmRemove)) return;
     setError(null);
     startTransition(async () => {
-      const result = await removeMemberAction({ userId, locale });
-      if (!result.ok) setError(t.removeError);
-      router.refresh();
+      try {
+        const result = await removeMemberAction({ userId, locale });
+        if (!result.ok) setError(t.removeError);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -146,9 +165,14 @@ export function TeamManager({
     if (!window.confirm(t.confirmPromote)) return;
     setError(null);
     startTransition(async () => {
-      const result = await promoteOwnerAction({ userId, locale });
-      if (!result.ok) setError(t.ownerError);
-      router.refresh();
+      try {
+        const result = await promoteOwnerAction({ userId, locale });
+        if (!result.ok) setError(t.ownerError);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 
@@ -156,9 +180,14 @@ export function TeamManager({
     if (!window.confirm(t.confirmDemote)) return;
     setError(null);
     startTransition(async () => {
-      const result = await demoteOwnerAction({ userId, role: "admin", locale });
-      if (!result.ok) setError(t.ownerError);
-      router.refresh();
+      try {
+        const result = await demoteOwnerAction({ userId, role: "admin", locale });
+        if (!result.ok) setError(t.ownerError);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 

@@ -283,15 +283,18 @@ export function buildPublicTokenUrl(input: {
 /**
  * EXACT client-side display guard: a URL is safe to show/copy only if it is the
  * exact canonical token link the caller expects. The manager supplies its OWN
- * `locale` and `routeType`, and the expected origin is the configured canonical
- * (or, when unconfigured — local dev — a loopback origin only). The check is an
- * EXACT string match against `${origin}/<locale>/<routeType>/<token>`, so a
- * doubled slash, trailing slash, extra segment, query, fragment, credentials,
- * backslash, wrong locale, wrong route type, or a preview/unrelated authority
- * are ALL rejected — a shop manager can never display a showcase/invite/join
- * URL, and the client never accepts a preview host merely because the path
- * looks token-shaped. The server already builds + validates the link; this is
- * defense in depth so a copy control can NEVER expose anything else.
+ * `locale` and `routeType`. The expected origin is the configured canonical
+ * origin; the loopback fallback (local dev) applies ONLY when the canonical
+ * config is genuinely ABSENT (`reason === "missing"`). A configured-but-broken
+ * value — invalid APP, invalid selected SITE, an APP/SITE conflict, or any other
+ * non-"missing" failure — FAILS CLOSED: every URL is rejected (never silently
+ * treated as local dev). The check is an EXACT string match against
+ * `${origin}/<locale>/<routeType>/<token>`, so a doubled slash, trailing slash,
+ * extra segment, query, fragment, credentials, backslash, wrong locale, wrong
+ * route type, or a preview/unrelated authority are ALL rejected — a shop manager
+ * can never display a showcase/invite/join URL, and the client never accepts a
+ * preview host merely because the path looks token-shaped. Defense in depth on
+ * top of the server, which already builds + validates the link.
  */
 export function isDisplayablePublicUrl(
   value: unknown,
@@ -300,13 +303,14 @@ export function isDisplayablePublicUrl(
   if (typeof value !== "string" || value === "") return false;
   if (value.includes("\\")) return false;
   if (!isPrintableAscii(value)) return false; // no whitespace/control/non-ASCII
-  // Determine the expected authority: the configured canonical origin, or (only
-  // when nothing is configured, i.e. local dev) a loopback origin.
+  // Determine the expected authority. Fail CLOSED on any configured-value error
+  // (invalid / conflict / preview-host / …): only a genuinely ABSENT config
+  // ("missing") permits the loopback (local-dev) fallback.
   let expectedOrigin: string;
   const configured = clientCanonicalOrigin();
   if (configured.ok) {
     expectedOrigin = configured.origin;
-  } else {
+  } else if (configured.reason === "missing") {
     let parsed: URL;
     try {
       parsed = new URL(value);
@@ -315,6 +319,9 @@ export function isDisplayablePublicUrl(
     }
     if (!isLoopbackOrigin(parsed.origin)) return false;
     expectedOrigin = parsed.origin;
+  } else {
+    // Configured but broken (invalid / conflict) → reject every URL.
+    return false;
   }
   // Exact-match the whole value: prefix is the canonical origin + locale +
   // route; the remainder must be a single valid token (no further `/`, query,

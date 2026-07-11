@@ -92,6 +92,13 @@ export function assessDeploymentSafety(
   const errors: string[] = [];
   const warnings: string[] = [];
   const isDeploy = treatAsDeploy || env.NODE_ENV === "production";
+  // A REAL Vercel deployment context, detected from Vercel-provided metadata.
+  // `VERCEL=1` is set for every Vercel build; `VERCEL_ENV`
+  // (production|preview|development) is a second reliable signal. Omitting one
+  // optional variable can NEVER disguise a Vercel deploy as local dev.
+  const isVercelDeploy =
+    env.VERCEL === "1" ||
+    (typeof env.VERCEL_ENV === "string" && env.VERCEL_ENV !== "");
 
   // 1. Keep the NEXT_PUBLIC surface tight. A secret-shaped name is an ERROR
   //    (it would ship a secret to the browser); any other unknown NEXT_PUBLIC
@@ -135,8 +142,20 @@ export function assessDeploymentSafety(
     );
   }
 
-  // 4. Supabase config sanity when running the real (supabase) data mode.
   const dataMode = env.NEXT_PUBLIC_MADAF_DATA_MODE;
+
+  // 4a. A real VERCEL deployment MUST run the real backend — the data mode must
+  //     be EXACTLY "supabase". Missing, "mock", or any unknown value is an
+  //     ERROR, so a hosted mock / no-auth application can never build or deploy.
+  //     (Local dev is NOT a Vercel context, so zero-config mock and local
+  //     supabase development are unaffected — see 4b.)
+  if (isVercelDeploy && dataMode !== "supabase") {
+    errors.push(
+      'A Vercel deployment requires NEXT_PUBLIC_MADAF_DATA_MODE=supabase — missing, "mock", or any other value is refused (a hosted mock/no-auth app must never be deployed).',
+    );
+  }
+
+  // 4b. Supabase config sanity when running the real (supabase) data mode.
   if (dataMode === "supabase") {
     if (!env.NEXT_PUBLIC_SUPABASE_URL) {
       errors.push("NEXT_PUBLIC_MADAF_DATA_MODE=supabase but NEXT_PUBLIC_SUPABASE_URL is missing.");
@@ -154,7 +173,9 @@ export function assessDeploymentSafety(
         "SUPABASE_SERVICE_ROLE_KEY is not set — stored document PDFs will fall back to streaming (see storage docs).",
       );
     }
-  } else if (isDeploy) {
+  } else if (isDeploy && !isVercelDeploy) {
+    // A NON-Vercel deploy (e.g. self-host) in mock mode is a warning; a Vercel
+    // deploy in mock mode is the hard error in 4a above.
     warnings.push(
       "NEXT_PUBLIC_MADAF_DATA_MODE is not \"supabase\" in a deployment — the app will run in MOCK/demo mode (no backend, no auth).",
     );

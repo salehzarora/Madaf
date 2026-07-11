@@ -70,9 +70,12 @@ export function ShowcaseLinkManager({
           setError(linkErrorMessage(dict.common, result.reason));
         }
       } catch {
-        // Transport/network/action rejection — keep any displayed link and show
-        // a generic operation error (never a config-URL error).
+        // Transport/network rejection: outcome unknown. A showcase link is an
+        // INDEPENDENT insert (it revokes nothing), so any previously-shown link
+        // stays valid and is kept. Show a generic error and reconcile the list;
+        // if the insert did commit, the new one-time URL was lost — regenerate.
         setError(dict.common.actionError);
+        router.refresh();
       }
     });
   }
@@ -90,9 +93,14 @@ export function ShowcaseLinkManager({
   function onRevoke(linkId: string) {
     setError(null);
     startTransition(async () => {
-      const result = await revokeShowcaseLinkAction({ linkId, locale });
-      if (!result.ok) setError(t.error);
-      router.refresh();
+      try {
+        const result = await revokeShowcaseLinkAction({ linkId, locale });
+        if (!result.ok) setError(t.error);
+      } catch {
+        setError(dict.common.actionError);
+      } finally {
+        router.refresh();
+      }
     });
   }
 

@@ -404,3 +404,55 @@ test("local/mock needs no canonical URL", () => {
   assert.equal(assessDeploymentSafety({}, {}).ok, true);
   assert.equal(assessDeploymentSafety({ NEXT_PUBLIC_MADAF_DATA_MODE: "mock" }, {}).ok, true);
 });
+
+// ── 12. Vercel deploy REQUIRES data mode === supabase (pass-4) ─────────────
+const SB: Record<string, string> = {
+  NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-placeholder",
+};
+const VALID_CANON: Record<string, string> = {
+  NEXT_PUBLIC_APP_URL: CANON,
+  VERCEL_PROJECT_PRODUCTION_URL: "madaf-drab.vercel.app",
+  VERCEL_URL: "madaf-abc123.vercel.app",
+};
+
+test("a Vercel deploy WITHOUT data mode === supabase is an ERROR (missing/mock/invalid)", () => {
+  assert.equal(assessDeploymentSafety({ VERCEL: "1", ...SB, ...VALID_CANON }, { treatAsDeploy: true }).ok, false); // missing
+  assert.equal(assessDeploymentSafety({ VERCEL: "1", NEXT_PUBLIC_MADAF_DATA_MODE: "mock", ...SB, ...VALID_CANON }, { treatAsDeploy: true }).ok, false);
+  assert.equal(assessDeploymentSafety({ VERCEL: "1", NEXT_PUBLIC_MADAF_DATA_MODE: "demo", ...SB, ...VALID_CANON }, { treatAsDeploy: true }).ok, false);
+  // Detected via VERCEL_ENV too — omitting VERCEL cannot disguise the deploy.
+  assert.equal(assessDeploymentSafety({ VERCEL_ENV: "preview", NEXT_PUBLIC_MADAF_DATA_MODE: "mock", ...SB, ...VALID_CANON }, { treatAsDeploy: true }).ok, false);
+});
+
+test("Vercel hosted supabase (valid) is OK; local mock + local supabase stay OK", () => {
+  assert.equal(assessDeploymentSafety({ VERCEL: "1", NEXT_PUBLIC_MADAF_DATA_MODE: "supabase", ...SB, ...VALID_CANON }, { treatAsDeploy: true }).ok, true);
+  assert.equal(assessDeploymentSafety({ NEXT_PUBLIC_MADAF_DATA_MODE: "mock" }, {}).ok, true); // local zero-config
+  assert.equal(
+    assessDeploymentSafety({ NEXT_PUBLIC_MADAF_DATA_MODE: "supabase", NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:55321", NEXT_PUBLIC_SUPABASE_ANON_KEY: "x" }, {}).ok,
+    true,
+  ); // local supabase dev
+});
+
+// ── 13. Display-guard fallback semantics — loopback ONLY on "missing" (pass-4) ─
+test("display guard: loopback fallback applies ONLY when canonical config is missing", () => {
+  const loopback = `http://localhost:3000/he/shop/${TOKEN}`;
+  const exact = `${CANON}/he/shop/${TOKEN}`;
+  // genuinely MISSING config + valid localhost → allowed (local dev)
+  withPublicEnv({ app: undefined, site: undefined }, () =>
+    assert.equal(isDisplayablePublicUrl(loopback, { locale: "he", routeType: "shop" }), true));
+  // INVALID app + localhost → fail closed (not treated as local dev)
+  withPublicEnv({ app: "https://bad url/x" }, () =>
+    assert.equal(isDisplayablePublicUrl(loopback, { locale: "he", routeType: "shop" }), false));
+  // CONFLICTING app/site + localhost → fail closed
+  withPublicEnv({ app: CANON, site: "https://other.example" }, () =>
+    assert.equal(isDisplayablePublicUrl(loopback, { locale: "he", routeType: "shop" }), false));
+  // INVALID selected site (app absent) + localhost → fail closed
+  withPublicEnv({ app: undefined, site: "javascript:alert(1)" }, () =>
+    assert.equal(isDisplayablePublicUrl(loopback, { locale: "he", routeType: "shop" }), false));
+  // valid canonical + exact canonical URL → pass
+  withPublicEnv({ app: CANON }, () =>
+    assert.equal(isDisplayablePublicUrl(exact, { locale: "he", routeType: "shop" }), true));
+  // valid canonical + loopback URL → fail (loopback is not the configured origin)
+  withPublicEnv({ app: CANON }, () =>
+    assert.equal(isDisplayablePublicUrl(loopback, { locale: "he", routeType: "shop" }), false));
+});
