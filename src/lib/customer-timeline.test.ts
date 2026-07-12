@@ -23,6 +23,7 @@ import {
   clientSafeMetadata,
   compareTimelineDesc,
   decodeTimelineCursor,
+  distinctActorIds,
   encodeTimelineCursor,
   resolveTimelineActor,
   timelineRowBeforeCursor,
@@ -30,7 +31,10 @@ import {
   TIMELINE_PAGE_SIZE_MAX,
   type TimelineActor,
 } from "./customer-timeline";
-import { getCustomerTimelinePage } from "./data/customer-timeline";
+import {
+  getCustomerTimelinePage,
+  getTimelineActorLabelsForIds,
+} from "./data/customer-timeline";
 import { auditActors, auditEvents } from "./mock";
 import { getDictionary } from "../i18n/dictionaries";
 
@@ -512,12 +516,22 @@ test("guard: server read is BOUNDED (limit pageSize+1) + ordered DESC,DESC", () 
   assert.ok(/\.order\("created_at", \{ ascending: false \}\)/.test(block), "created_at DESC");
   assert.ok(/\.order\("id", \{ ascending: false \}\)/.test(block), "id DESC tie-break");
 });
-test("guard: server read resolves actors in ONE roster lookup (no N+1)", () => {
+test("guard: server read resolves actors via ONE bounded, projected lookup (no N+1)", () => {
   const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
-  const calls = (block.match(/listTenantMembers\(\)/g) ?? []).length;
-  assert.equal(calls, 1, "exactly one roster lookup per page");
-  // And only for owner/admin (guards the existing roster-visibility boundary).
-  assert.ok(/isAdmin && page\.some/.test(block), "roster only when owner/admin + has actors");
+  // The page read resolves ONLY the page's distinct actor ids (bounded), never
+  // a per-row lookup and never the whole roster held in the page function.
+  assert.ok(
+    /sbGetTimelineActorLabels\(\s*distinctActorIds\(page\.map/.test(block),
+    "page read resolves only this page's distinct actor ids",
+  );
+  // The label lookup performs AT MOST ONE roster call, projected to the ids.
+  const rosterCalls = (block.match(/listTenantMembers\(\)/g) ?? []).length;
+  assert.equal(rosterCalls, 1, "exactly one roster lookup, inside the projection");
+  assert.ok(/want\.has\(m\.userId\)/.test(block), "roster projected to ONLY the requested ids");
+  assert.ok(!/\.map\([^)]*listTenantMembers/.test(block), "no per-row (N+1) roster lookup");
+  // sales_rep / non-member → empty labels with NO query; empty ids → NO query.
+  assert.ok(/role !== "owner" && role !== "admin"/.test(block), "sales_rep → no identity, no query");
+  assert.ok(/if \(actorIds\.length === 0\) return out/.test(block), "empty page → no roster query");
 });
 test("guard: server read uses the row-value keyset predicate (not id-only)", () => {
   const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
@@ -573,7 +587,96 @@ test("guard: no GLOBAL activity-log route was added (per-customer timeline only)
   }
 });
 
-// ── 71. Guard: the index migration is additive-only (no policy/grant change) ─
+// ── 72–86. Bounded actor lookup (M8G.3 correction) ─────────────────────────
+// The actor resolver must resolve ONLY the distinct actors on the current page
+// (≤50), never fan out to the whole tenant roster, and never leak identity to a
+// sales_rep or raw roster/auth rows to the client.
+test("distinctActorIds: dedupes, drops null/empty/undefined, preserves order", () => {
+  assert.deepEqual(
+    distinctActorIds(["a", "b", "a", null, undefined, "", "c", "b"]),
+    ["a", "b", "c"],
+  );
+});
+test("distinctActorIds: empty / all-null input → []", () => {
+  assert.deepEqual(distinctActorIds([]), []);
+  assert.deepEqual(distinctActorIds([null, undefined, ""]), []);
+});
+test("distinctActorIds: oversized input is hard-capped at the page maximum", () => {
+  const many = Array.from({ length: 200 }, (_, i) => `u-${i}`);
+  const bounded = distinctActorIds(many);
+  assert.equal(bounded.length, TIMELINE_PAGE_SIZE_MAX);
+  assert.deepEqual(bounded, many.slice(0, TIMELINE_PAGE_SIZE_MAX));
+});
+test("distinctActorIds: a duplicate-heavy oversized page collapses to the distinct set", () => {
+  const ids = Array.from({ length: 500 }, () => "u-same");
+  assert.deepEqual(distinctActorIds(ids), ["u-same"]);
+});
+test("actor labels: empty / all-null input performs no lookup → empty map", async () => {
+  assert.equal((await getTimelineActorLabelsForIds([])).size, 0);
+  assert.equal((await getTimelineActorLabelsForIds([null, undefined, ""])).size, 0);
+});
+test("actor labels: returns ONLY the requested ids' labels (never the full roster)", async () => {
+  const labels = await getTimelineActorLabelsForIds(["u-owner"]);
+  assert.deepEqual([...labels.entries()], [["u-owner", "owner@madaf.local"]]);
+  assert.equal(labels.size, 1);
+});
+test("actor labels: an unknown / off-roster id resolves to no label", async () => {
+  const labels = await getTimelineActorLabelsForIds(["u-admin", "u-ghost"]);
+  assert.equal(labels.size, 0);
+});
+test("actor labels: duplicate ids are deduped (one entry)", async () => {
+  const labels = await getTimelineActorLabelsForIds(["u-owner", "u-owner", "u-owner"]);
+  assert.equal(labels.size, 1);
+});
+test("actor labels: the map never exceeds the requested distinct ids", async () => {
+  const req = ["u-owner", "u-admin"];
+  const labels = await getTimelineActorLabelsForIds(req);
+  assert.ok(labels.size <= req.length);
+  for (const k of labels.keys()) assert.ok(req.includes(k));
+});
+test("page: every actor is one of the four kinds; the demo store has a named actor", async () => {
+  const page = await getCustomerTimelinePage({ customerId: MOCK_CUSTOMER, pageSize: 50 });
+  for (const e of page.events) {
+    assert.ok(["named", "member", "former", "unknown"].includes(e.actor.kind), e.actor.kind);
+  }
+  assert.ok(page.events.some((e) => e.actor.kind === "named"), "u-owner resolves to named");
+  assert.ok(page.events.some((e) => e.actor.kind === "former"), "u-admin (off-roster) → former");
+  assert.ok(page.events.some((e) => e.actor.kind === "unknown"), "null actor → unknown");
+});
+test("client payload: an event's actor carries only {kind,label} (no raw roster/auth rows)", async () => {
+  const page = await getCustomerTimelinePage({ customerId: MOCK_CUSTOMER, pageSize: 50 });
+  for (const e of page.events) {
+    const keys = Object.keys(e.actor).sort();
+    assert.ok(
+      keys.every((k) => k === "kind" || k === "label"),
+      `actor leaks fields: ${keys.join(",")}`,
+    );
+    // The only string ever exposed for a named actor is the email label itself.
+    if (e.actor.kind === "named") assert.equal(typeof e.actor.label, "string");
+  }
+});
+test("switching customers does not reuse actor data (independent per call)", async () => {
+  const a = await getCustomerTimelinePage({ customerId: MOCK_CUSTOMER, pageSize: 50 });
+  const b = await getCustomerTimelinePage({ customerId: "c99-none", pageSize: 50 });
+  assert.ok(a.events.length > 0);
+  assert.equal(b.events.length, 0); // a customer with no events → no actors at all
+});
+test("guard: the mock label source projects the demo roster to requested ids only", () => {
+  const src = readSrc("lib/data/customer-timeline.ts");
+  assert.ok(/getTimelineActorLabelsForIds/.test(src), "exposes the bounded contract");
+  assert.ok(/distinctActorIds/.test(src), "bounds + dedupes page actor ids");
+  assert.ok(/auditActors\.get\(id\)/.test(src), "mock reads ONLY requested ids from the roster");
+  assert.ok(!/for \(const \w+ of auditActors/.test(src), "mock never iterates the full roster");
+});
+test("guard: the supabase label lookup is bounded, projected, no service_role", () => {
+  const fn = READS.slice(READS.indexOf("sbGetTimelineActorLabels"), READS.indexOf("sbListCustomers"));
+  assert.ok(!/service_role/i.test(stripComments(fn)), "no service_role in code");
+  assert.ok(/want\.has\(m\.userId\)/.test(fn), "projects the roster to ONLY the requested ids");
+  assert.ok(/Promise<Map<string, string>>/.test(fn), "returns id→label map, not member rows");
+  assert.ok(/role !== "owner" && role !== "admin"/.test(fn), "sales_rep → empty, no query");
+});
+
+// ── 87. Guard: the index migration is additive-only (no policy/grant change) ─
 test("guard: the M8G.3 migration is an additive index only (no policy/grant/data)", () => {
   const mig = readRepo("supabase/migrations/20260801100000_m8g3_customer_timeline_index.sql");
   assert.ok(/create index/i.test(mig), "creates an index");

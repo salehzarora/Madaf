@@ -77,4 +77,8 @@ export {
   uploadTenantLogo,
   type TenantProfileInput,
 } from "./supplier";
-export { getCustomerTimelinePage, type TimelineQuery } from "./customer-timeline";
+export {
+  getCustomerTimelinePage,
+  getTimelineActorLabelsForIds,
+  type TimelineQuery,
+} from "./customer-timeline";

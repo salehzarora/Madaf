@@ -161,6 +161,28 @@ export function resolveTimelineActor(
   return email ? { kind: "named", label: email } : { kind: "former" };
 }
 
+/**
+ * The DISTINCT, non-null actor ids present on ONE bounded Timeline page — the
+ * exact (and only) set the actor-label lookup resolves. Deduped and hard-capped
+ * at the page maximum, so the resolver never fans out to the whole tenant roster
+ * and oversized/duplicated input is safely bounded. Order-preserving.
+ */
+export function distinctActorIds(
+  ids: ReadonlyArray<string | null | undefined>,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    if (typeof id !== "string" || id.length === 0 || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    // A page is already ≤ TIMELINE_PAGE_SIZE_MAX rows; cap defensively so a
+    // malformed/oversized caller can never widen the actor lookup.
+    if (out.length >= TIMELINE_PAGE_SIZE_MAX) break;
+  }
+  return out;
+}
+
 /** Build one client-safe TimelineEvent from a resolved actor + raw row fields. */
 export function buildTimelineEvent(input: {
   id: string;

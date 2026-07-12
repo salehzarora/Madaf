@@ -63,22 +63,42 @@ can_access_customer(tenant_id, entity_id))`. So:
 
 No RLS was loosened; no new policy, grant, or table write was added.
 
-## Actor resolution (viewer-aware, no N+1, no identity leak)
+## Actor resolution (bounded to the page, no N+1, no identity leak)
 
 `auth.users` is the only identity (email only — there is no profile/display-name
-table). Actors for a whole page are resolved in **one** roster lookup, never
-per-row:
+table). Labels are resolved through one bounded data-layer contract,
+`getTimelineActorLabelsForIds(actorIds)` (Supabase `sbGetTimelineActorLabels` /
+mock `mockActorLabels`):
 
-- **owner/admin viewer** → `list_tenant_members()` (the existing owner/admin-gated
-  roster RPC) resolves each `actor_user_id` to an email label (`named`); an
-  `actor_user_id` no longer in the roster → `former team member`;
-- **sales_rep viewer** → no roster access, so every attributed actor shows the
-  neutral `A team member` label — **the identity is deliberately not shown.**
-  `resolveTimelineActor` guards on `isAdmin` *before* the roster lookup, so a
-  sales_rep can never receive an email even if a roster map were passed in
-  (defense-in-depth; the data layer also only populates the map for owner/admin);
+- **input is bounded** — `distinctActorIds` collects the **distinct, non-null**
+  `actor_user_id`s on the current page only, deduped and hard-capped at 50 (the
+  page maximum). The resolver only ever sees this page's actors, never a per-row
+  lookup and never the whole roster fanned out;
+- **empty input performs no lookup** — a page with no attributed actors issues
+  zero queries;
+- **owner/admin viewer** → the authorized, tenant-scoped, owner/admin-gated roster
+  is fetched **at most once** and **projected** (via a `Set` membership test) to
+  only the requested page ids, so the returned map is `{ actorId → email }` for
+  this page's actors — the full roster is never returned to the caller or the
+  client. A resolved id → `named` (email); an id no longer a member →
+  `former team member`;
+- **sales_rep viewer** → the label lookup short-circuits with an empty map and
+  **no query**, so every attributed actor shows the neutral `A team member` label
+  — **the identity is deliberately not shown.** `resolveTimelineActor`
+  additionally guards on `isAdmin` *before* consulting the map, so a sales_rep can
+  never receive an email even if a map leaked in (defense-in-depth);
 - **`actor_user_id IS NULL`** (the acting user was deleted —
   `ON DELETE SET NULL`) → `Unknown user`.
+
+**Why the roster RPC (and not an id-filtered query).** Member emails are readable
+only through the SECURITY DEFINER `list_tenant_members(p_tenant_id)` RPC —
+`auth.users` is not client-readable, and no id-parameterized email RPC exists. An
+id-filtered variant would require a new migration, which is intentionally out of
+scope for this actor-resolution correction. The contract therefore calls the
+existing authorized RPC at most once and **projects** its result to the page's
+distinct actors; the bounding, dedup, empty/sales_rep short-circuits, and the
+projection all live in the data layer, and only final display labels cross to the
+client. (A future migration could push the id filter into the DB.)
 
 This reuses the existing team-roster visibility boundary exactly; it needs **no**
 new RPC and never exposes another tenant's users.
@@ -128,10 +148,11 @@ is not part of the type surface) so it is not re-committed.
 **New**
 - `src/lib/customer-timeline.ts` — pure, isomorphic contract: page-size clamp,
   opaque keyset cursor (encode/decode/validate), DESC comparator + keyset
-  predicate, viewer-aware `resolveTimelineActor`, `buildTimelineEvent`,
-  `clientSafeMetadata`.
-- `src/lib/data/customer-timeline.ts` — `getCustomerTimelinePage` dispatcher
-  (mock default; supabase server-only via dynamic import).
+  predicate, viewer-aware `resolveTimelineActor`, `distinctActorIds` (bounded
+  page-actor set), `buildTimelineEvent`, `clientSafeMetadata`.
+- `src/lib/data/customer-timeline.ts` — `getCustomerTimelinePage` dispatcher +
+  the bounded `getTimelineActorLabelsForIds` actor-label contract (mock default;
+  supabase server-only via dynamic import).
 - `src/lib/mock/audit-events.ts` — demo rows for store `c01` (all 8 event types;
   one null-actor row; an off-roster actor) so the Timeline renders zero-config.
 - `src/lib/actions/customer-timeline.ts` — `loadCustomerTimelineAction`, the
@@ -143,7 +164,8 @@ is not part of the type surface) so it is not re-committed.
 
 **Modified**
 - `src/lib/data/supabase-reads.ts` — `sbGetCustomerTimelinePage` (the bounded,
-  RLS-scoped, no-N+1 read).
+  RLS-scoped read) + `sbGetTimelineActorLabels` (the page-bounded, projected,
+  owner/admin-gated actor-label lookup).
 - `src/lib/audit-events.ts` — `renderCustomerAuditDetails` param loosened to the
   structural `{ eventType, metadata }` shape (a full `AuditEvent` still satisfies it).
 - `src/app/[locale]/admin/customers/[id]/page.tsx` — the Activity `<Card>`.

@@ -60,6 +60,7 @@ import { getDataContext, getSessionContext, NO_TENANT } from "@/lib/auth/session
 import {
   buildTimelineEvent,
   decodeTimelineCursor,
+  distinctActorIds,
   encodeTimelineCursor,
   resolveTimelineActor,
   type TimelinePage,
@@ -759,16 +760,15 @@ export async function sbGetCustomerTimelinePage(input: {
   const hasMore = rows.length > input.pageSize;
   const page = rows.slice(0, input.pageSize);
 
-  // Resolve the page's DISTINCT actors in ONE bounded roster lookup. Only
-  // owner/admin get named (email) labels — list_tenant_members is owner/admin
-  // gated, matching the existing team-roster visibility; a sales_rep sees a
-  // neutral "team member" label (never another user's identity).
+  // Resolve labels for ONLY this page's DISTINCT actor ids (bounded ≤ pageSize,
+  // deduped) — never a per-row lookup and never the whole roster held here.
+  // owner/admin fall back to named/former; a sales_rep sees the neutral "team
+  // member" label (sbGetTimelineActorLabels returns no identity for them).
   const role = (await getSessionContext()).membership?.role ?? null;
   const isAdmin = role === "owner" || role === "admin";
-  const emails = new Map<string, string>();
-  if (isAdmin && page.some((r) => r.actor_user_id)) {
-    for (const m of await listTenantMembers()) emails.set(m.userId, m.email);
-  }
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
 
   const events = page.map((r) =>
     buildTimelineEvent({
@@ -786,6 +786,35 @@ export async function sbGetCustomerTimelinePage(input: {
       ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
       : null;
   return { events, nextCursor, hasMore };
+}
+
+/**
+ * Display labels for ONLY the given DISTINCT page actor ids (bounded ≤ 50 by
+ * {@link distinctActorIds}; empty input → NO lookup). Named labels are
+ * owner/admin-only, matching the existing team-roster visibility: a sales_rep /
+ * non-member gets an empty map with no query, so no actor identity is exposed.
+ *
+ * The only authorized email source is the tenant-scoped, owner/admin-gated
+ * roster RPC (`auth.users` is not client-readable, and an id-parameterized RPC
+ * would require a migration — out of scope for this correction). We therefore
+ * call it AT MOST ONCE and PROJECT it to just the requested ids via a Set
+ * membership test, so the full roster is never returned to the caller and never
+ * reaches the client; only `{ actorId → email }` for this page's actors crosses
+ * the boundary. Runs as the caller under RLS (never an elevated credential); the
+ * tenant is server-derived and no client-supplied tenant is trusted.
+ */
+export async function sbGetTimelineActorLabels(
+  actorIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (actorIds.length === 0) return out;
+  const role = (await getSessionContext()).membership?.role ?? null;
+  if (role !== "owner" && role !== "admin") return out; // sales_rep → no identity
+  const want = new Set(actorIds);
+  for (const m of await listTenantMembers()) {
+    if (want.has(m.userId)) out.set(m.userId, m.email);
+  }
+  return out;
 }
 
 export async function sbListCustomers(): Promise<Customer[]> {

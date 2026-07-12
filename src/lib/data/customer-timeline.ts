@@ -10,6 +10,7 @@ import {
   clampTimelinePageSize,
   compareTimelineDesc,
   decodeTimelineCursor,
+  distinctActorIds,
   encodeTimelineCursor,
   resolveTimelineActor,
   timelineRowBeforeCursor,
@@ -23,6 +24,37 @@ export interface TimelineQuery {
   /** Opaque cursor from a previous page; malformed → first page. */
   cursor?: string | null;
   pageSize?: number;
+}
+
+/**
+ * Resolve display labels for ONLY the distinct actors on the CURRENT Timeline
+ * page — never the whole tenant roster. The input is deduped + hard-capped at
+ * the page maximum ({@link distinctActorIds}); an empty page performs NO lookup.
+ * Owner/admin get email labels through the authorized, tenant-scoped roster;
+ * every other viewer (a sales_rep) gets an empty map — no identity is exposed.
+ * Returns only `{ actorId → email }` for the requested ids; raw member/auth
+ * rows never reach the caller or the client.
+ */
+export async function getTimelineActorLabelsForIds(
+  actorIds: ReadonlyArray<string | null | undefined>,
+): Promise<Map<string, string>> {
+  const ids = distinctActorIds(actorIds);
+  if (ids.length === 0) return new Map();
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbGetTimelineActorLabels(ids);
+  }
+  return mockActorLabels(ids);
+}
+
+/** Mock label source (the open demo → an owner/admin viewer): projects the demo
+ * roster to ONLY the requested ids — one bounded lookup, never the full roster. */
+function mockActorLabels(ids: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of ids) {
+    const email = auditActors.get(id);
+    if (email) out.set(id, email);
+  }
+  return out;
 }
 
 /**
@@ -47,12 +79,13 @@ export async function getCustomerTimelinePage(
 
 /** Mock model of the exact Supabase contract (bounded, deterministic order,
  * keyset cursor, page-scoped actor resolution). Mock is the open demo → treated
- * as an owner/admin viewer (named actors resolved from the demo roster). */
-function mockTimelinePage(
+ * as an owner/admin viewer; actor labels are resolved for ONLY this page's
+ * distinct actors via the bounded contract (never the full demo roster). */
+async function mockTimelinePage(
   customerId: string,
   cursor: string | null,
   pageSize: number,
-): TimelinePage {
+): Promise<TimelinePage> {
   const decoded = decodeTimelineCursor(cursor);
   const ordered = auditEvents
     .filter((e) => e.customerId === customerId)
@@ -65,15 +98,16 @@ function mockTimelinePage(
   const hasMore = slice.length > pageSize;
   const page = slice.slice(0, pageSize);
 
+  // Resolve labels for ONLY the distinct actors on THIS page (bounded, no N+1).
+  const emails = await getTimelineActorLabelsForIds(
+    page.map((e) => e.actorUserId),
+  );
   const events = page.map((e) =>
     buildTimelineEvent({
       id: e.id,
       eventType: e.eventType,
       createdAt: e.createdAt,
-      actor: resolveTimelineActor(e.actorUserId, {
-        isAdmin: true,
-        emails: auditActors,
-      }),
+      actor: resolveTimelineActor(e.actorUserId, { isAdmin: true, emails }),
       metadata: e.metadata,
     }),
   );
