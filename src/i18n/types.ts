@@ -1141,4 +1141,42 @@ export interface Dictionary {
       errorGeneric: string;
     };
   };
+  /** M8G.2 — customer lifecycle audit events (labels + safe details). The
+   * future Customer Timeline (M8G.3) consumes these. */
+  audit: {
+    /** Customer audit category label. */
+    category: string;
+    sensitivity: { low: string; medium: string; high: string };
+    /** Explicit label for an unrecognized event type (never "Other"). */
+    unknownEvent: string;
+    /** Closed event-type → label map (mirrors the DB allowlist). */
+    events: {
+      "customer.created": string;
+      "customer.updated": string;
+      "customer.activated": string;
+      "customer.deactivated": string;
+      "customer.access_link.created": string;
+      "customer.access_link.rotated": string;
+      "customer.access_link.revoked": string;
+      "customer.order_linked": string;
+    };
+    /** Changed-field labels for customer.updated details. */
+    fields: {
+      name: string;
+      contact_name: string;
+      phone: string;
+      city: string;
+      address: string;
+      customer_type: string;
+      notes: string;
+    };
+    /** Safe detail templates (interpolated; never expose PII/tokens). */
+    details: {
+      origin: string;
+      changed: string;
+      typeChange: string;
+      linkExpires: string;
+      orderLinked: string;
+    };
+  };
 }

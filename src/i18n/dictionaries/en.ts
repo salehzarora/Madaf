@@ -1103,6 +1103,37 @@ const en: Dictionary = {
       errorGeneric: "Could not accept the invitation — please try again.",
     },
   },
+  audit: {
+    category: "Customer management",
+    sensitivity: { low: "Low", medium: "Medium", high: "High" },
+    unknownEvent: "Unrecognized event",
+    events: {
+      "customer.created": "Customer created",
+      "customer.updated": "Customer updated",
+      "customer.activated": "Customer reactivated",
+      "customer.deactivated": "Customer deactivated",
+      "customer.access_link.created": "Access link created",
+      "customer.access_link.rotated": "Access link regenerated",
+      "customer.access_link.revoked": "Access link revoked",
+      "customer.order_linked": "Order linked to customer",
+    },
+    fields: {
+      name: "Name",
+      contact_name: "Contact",
+      phone: "Phone",
+      city: "City",
+      address: "Address",
+      customer_type: "Store type",
+      notes: "Notes",
+    },
+    details: {
+      origin: "Origin: {value}",
+      changed: "Changed: {fields}",
+      typeChange: "Store type: {from} → {to}",
+      linkExpires: "Expires {date}",
+      orderLinked: "An order was linked",
+    },
+  },
 };
 
 export default en;

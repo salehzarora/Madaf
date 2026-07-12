@@ -1095,6 +1095,37 @@ const he: Dictionary = {
       errorGeneric: "קבלת ההזמנה נכשלה — נסו שוב.",
     },
   },
+  audit: {
+    category: "ניהול לקוחות",
+    sensitivity: { low: "נמוכה", medium: "בינונית", high: "גבוהה" },
+    unknownEvent: "אירוע לא מזוהה",
+    events: {
+      "customer.created": "לקוח נוצר",
+      "customer.updated": "לקוח עודכן",
+      "customer.activated": "לקוח הופעל מחדש",
+      "customer.deactivated": "לקוח הושבת",
+      "customer.access_link.created": "קישור גישה נוצר",
+      "customer.access_link.rotated": "קישור גישה חודש",
+      "customer.access_link.revoked": "קישור גישה בוטל",
+      "customer.order_linked": "הזמנה שויכה ללקוח",
+    },
+    fields: {
+      name: "שם",
+      contact_name: "איש קשר",
+      phone: "טלפון",
+      city: "עיר",
+      address: "כתובת",
+      customer_type: "סוג חנות",
+      notes: "הערות",
+    },
+    details: {
+      origin: "מקור: {value}",
+      changed: "שונו: {fields}",
+      typeChange: "סוג חנות: {from} ← {to}",
+      linkExpires: "בתוקף עד {date}",
+      orderLinked: "הזמנה שויכה",
+    },
+  },
 };
 
 export default he;

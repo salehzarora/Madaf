@@ -1728,6 +1728,15 @@ export type Database = {
     Functions: {
       _gen_order_public_ref: { Args: never; Returns: string }
       _legal_numbering_enabled: { Args: never; Returns: boolean }
+      _log_customer_audit_event: {
+        Args: {
+          p_entity_id: string
+          p_event_type: string
+          p_metadata?: Json
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       _order_create_core: {
         Args: {
           p_customer_id: string

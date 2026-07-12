@@ -1094,6 +1094,37 @@ const ar: Dictionary = {
       errorGeneric: "تعذّر قبول الدعوة — حاول مرة أخرى.",
     },
   },
+  audit: {
+    category: "إدارة الزبائن",
+    sensitivity: { low: "منخفضة", medium: "متوسطة", high: "عالية" },
+    unknownEvent: "حدث غير معروف",
+    events: {
+      "customer.created": "تم إنشاء زبون",
+      "customer.updated": "تم تحديث زبون",
+      "customer.activated": "تمت إعادة تفعيل الزبون",
+      "customer.deactivated": "تم تعطيل الزبون",
+      "customer.access_link.created": "تم إنشاء رابط وصول",
+      "customer.access_link.rotated": "تم تجديد رابط الوصول",
+      "customer.access_link.revoked": "تم إلغاء رابط الوصول",
+      "customer.order_linked": "تم ربط طلب بالزبون",
+    },
+    fields: {
+      name: "الاسم",
+      contact_name: "جهة الاتصال",
+      phone: "الهاتف",
+      city: "المدينة",
+      address: "العنوان",
+      customer_type: "نوع المحل",
+      notes: "ملاحظات",
+    },
+    details: {
+      origin: "المصدر: {value}",
+      changed: "تغيّر: {fields}",
+      typeChange: "نوع المحل: {from} ← {to}",
+      linkExpires: "ينتهي في {date}",
+      orderLinked: "تم ربط طلب",
+    },
+  },
 };
 
 export default ar;
