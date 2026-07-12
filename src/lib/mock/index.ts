@@ -13,3 +13,4 @@ export { customers, customerById } from "./customers";
 export { orders, orderById } from "./orders";
 export { inventory, inventoryByProductId } from "./inventory";
 export { documents, documentById } from "./documents";
+export { auditEvents, auditActors, type MockAuditEvent } from "./audit-events";

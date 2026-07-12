@@ -1125,6 +1125,19 @@ const he: Dictionary = {
       linkExpires: "בתוקף עד {date}",
       orderLinked: "הזמנה שויכה",
     },
+    timeline: {
+      heading: "פעילות",
+      empty: "אין עדיין פעילות מתועדת.",
+      emptyHint: "שינויים מכאן והלאה מתועדים ויופיעו בציר הזמן הזה.",
+      loading: "טוען…",
+      loadMore: "טען עוד",
+      loadError: "טעינת פעילות נוספת נכשלה.",
+      retry: "נסה שוב",
+      actorMember: "חבר צוות",
+      actorFormer: "חבר צוות לשעבר",
+      actorUnknown: "משתמש לא ידוע",
+      by: "על ידי {actor}",
+    },
   },
 };
 

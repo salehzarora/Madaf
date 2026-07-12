@@ -7,10 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerLifecycleToggle } from "@/components/admin/customer-lifecycle-toggle";
 import { CustomerLinksManager } from "@/components/admin/customer-links-manager";
 import { CustomerOriginBadge } from "@/components/admin/customer-origin-badge";
+import { CustomerTimeline } from "@/components/admin/customer-timeline";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getCustomer, getDataMode, searchOrders } from "@/lib/data";
+import {
+  getCustomer,
+  getCustomerTimelinePage,
+  getDataMode,
+  searchOrders,
+} from "@/lib/data";
 import { listCustomerLinks } from "@/lib/data/customer-links";
 import { formatDate } from "@/lib/format";
 import { parseOrdersQuery } from "@/lib/orders-query";
@@ -47,6 +53,11 @@ export default async function AdminCustomerDetailPage({
   const recentOrders = (
     await searchOrders(parseOrdersQuery({ customer: id, pageSize: "5" }))
   ).rows;
+
+  // Activity timeline (M8G.3) — the FIRST bounded page of this store's real
+  // audit_events (M8G.2). RLS scopes it to accessible customers; a sales_rep
+  // only reaches an assigned store here (getCustomer already gated access).
+  const timelinePage = await getCustomerTimelinePage({ customerId: id });
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -213,6 +224,22 @@ export default async function AdminCustomerDetailPage({
               </Link>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Activity timeline (M8G.3) — read-only audit events for this store.
+          Visible to anyone who can view the store (RLS-scoped); no controls. */}
+      <Card>
+        <CardHeader variant="strip">
+          <CardTitle>{dict.audit.timeline.heading}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CustomerTimeline
+            customerId={id}
+            locale={locale}
+            dict={dict}
+            initialPage={timelinePage}
+          />
         </CardContent>
       </Card>
     </div>

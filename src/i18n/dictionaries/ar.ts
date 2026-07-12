@@ -1124,6 +1124,19 @@ const ar: Dictionary = {
       linkExpires: "ينتهي في {date}",
       orderLinked: "تم ربط طلب",
     },
+    timeline: {
+      heading: "النشاط",
+      empty: "لا يوجد نشاط مُسجّل بعد.",
+      emptyHint: "التغييرات من الآن فصاعدًا تُسجَّل وستظهر في هذا الجدول الزمني.",
+      loading: "جارٍ التحميل…",
+      loadMore: "تحميل المزيد",
+      loadError: "تعذّر تحميل المزيد من النشاط.",
+      retry: "إعادة المحاولة",
+      actorMember: "أحد أعضاء الفريق",
+      actorFormer: "عضو فريق سابق",
+      actorUnknown: "مستخدم غير معروف",
+      by: "بواسطة {actor}",
+    },
   },
 };
 

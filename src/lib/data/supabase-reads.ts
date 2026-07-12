@@ -56,7 +56,15 @@ import {
 
 import type { Db } from "./supabase-context";
 import type { CustomerRowStat } from "./customers";
-import { getDataContext, NO_TENANT } from "@/lib/auth/session";
+import { getDataContext, getSessionContext, NO_TENANT } from "@/lib/auth/session";
+import {
+  buildTimelineEvent,
+  decodeTimelineCursor,
+  encodeTimelineCursor,
+  resolveTimelineActor,
+  type TimelinePage,
+} from "@/lib/customer-timeline";
+import { listTenantMembers } from "./team";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -695,6 +703,89 @@ export async function sbGetCustomerStatsForIds(
     };
   }
   return out;
+}
+
+// ── Customer Timeline (M8G.3) ─────────────────────────────────────────────
+// A bounded, cursor-paginated read of the M8G.2 audit_events for ONE customer.
+// RLS is the authorization boundary: the M8G.2 policy scopes customer rows by
+// can_access_customer, so a sales_rep sees ONLY assigned customers' events and
+// an inaccessible/foreign customer yields zero rows. Tenant is server-derived;
+// entity_type is fixed. Actors are resolved in ONE roster lookup (no N+1) and
+// only to owner/admin (a sales_rep sees a neutral "team member" label). Never
+// selects or returns tokens/hashes/URLs/PII — metadata is client-safe-projected.
+type AuditEventRow = {
+  id: number;
+  event_type: string;
+  actor_user_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export async function sbGetCustomerTimelinePage(input: {
+  customerId: string;
+  cursor: string | null;
+  pageSize: number;
+}): Promise<TimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId) || !isUuid(input.customerId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "customer")
+    .eq("entity_id", input.customerId);
+
+  // Keyset predicate: rows strictly OLDER than the cursor in (created_at DESC,
+  // id DESC) order — the row-value comparison (created_at, id) < (c_ts, c_id),
+  // expanded for PostgREST. Row-value (not id-only) so it is correct even if id
+  // and created_at ever diverge (backfill / clock skew).
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getCustomerTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // Resolve the page's DISTINCT actors in ONE bounded roster lookup. Only
+  // owner/admin get named (email) labels — list_tenant_members is owner/admin
+  // gated, matching the existing team-roster visibility; a sales_rep sees a
+  // neutral "team member" label (never another user's identity).
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = new Map<string, string>();
+  if (isAdmin && page.some((r) => r.actor_user_id)) {
+    for (const m of await listTenantMembers()) emails.set(m.userId, m.email);
+  }
+
+  const events = page.map((r) =>
+    buildTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
 }
 
 export async function sbListCustomers(): Promise<Customer[]> {

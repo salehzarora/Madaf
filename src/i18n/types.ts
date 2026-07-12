@@ -1178,5 +1178,22 @@ export interface Dictionary {
       linkExpires: string;
       orderLinked: string;
     };
+    /** M8G.3 — the read-only Customer Timeline card. */
+    timeline: {
+      heading: string;
+      /** Legacy-honest empty state (no fabricated history). */
+      empty: string;
+      emptyHint: string;
+      loading: string;
+      loadMore: string;
+      loadError: string;
+      retry: string;
+      /** Actor fallbacks (no display name → email is unavailable/withheld). */
+      actorMember: string;
+      actorFormer: string;
+      actorUnknown: string;
+      /** "by {actor}" attribution. */
+      by: string;
+    };
   };
 }

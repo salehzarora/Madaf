@@ -139,7 +139,7 @@ function str(v: unknown): string | undefined {
  * token, hash, or URL is ever surfaced (they are never stored to begin with).
  */
 export function renderCustomerAuditDetails(
-  event: AuditEvent,
+  event: { eventType: string; metadata: Record<string, unknown> },
   dict: Dictionary,
 ): string[] {
   const key = resolveCustomerEventKey(event.eventType);

@@ -342,18 +342,18 @@ test("guard: customer search/read actions never call the audit helper", () => {
   assert.ok(!/audit|_log_customer/i.test(action));
 });
 
-// ── 41–42. No Customer Timeline UI / Activity tab was added ────────────────
-test("guard: no Customer Timeline UI / Activity-Log screen was added", () => {
+// ── 41–42. No GLOBAL Activity-Log route was added ──────────────────────────
+// M8G.2 built the audit FOUNDATION only. The per-customer Timeline is M8G.3
+// (components/admin/customer-timeline.tsx + a section on the detail page); a
+// tenant-wide Activity-Log route/screen remains explicitly out of scope.
+test("guard: no global Activity-Log route/screen was added", () => {
   for (const p of [
     "app/[locale]/admin/activity",
     "app/[locale]/admin/audit",
-    "components/admin/customer-timeline.tsx",
     "components/admin/activity-log.tsx",
   ]) {
     assert.ok(!existsSync(join(process.cwd(), "src", p)), `${p} must not exist`);
   }
-  const detail = readSrc("app/[locale]/admin/customers/[id]/page.tsx");
-  assert.ok(!/timeline|activity.?tab|audit/i.test(detail), "no Activity tab on detail");
 });
 
 // ── 43. The private helper is never CALLED from app (TS) code — DB-only ────

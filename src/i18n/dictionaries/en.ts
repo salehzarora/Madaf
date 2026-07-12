@@ -1133,6 +1133,20 @@ const en: Dictionary = {
       linkExpires: "Expires {date}",
       orderLinked: "An order was linked",
     },
+    timeline: {
+      heading: "Activity",
+      empty: "No recorded activity yet.",
+      emptyHint:
+        "Changes made from here on are recorded and will appear in this timeline.",
+      loading: "Loading…",
+      loadMore: "Load more",
+      loadError: "Couldn't load more activity.",
+      retry: "Retry",
+      actorMember: "A team member",
+      actorFormer: "Former team member",
+      actorUnknown: "Unknown user",
+      by: "by {actor}",
+    },
   },
 };
 
