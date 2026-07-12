@@ -605,6 +605,29 @@ export interface Dictionary {
         has: string;
         none: string;
       };
+      /** M8G.1 — immutable acquisition origin (how the store first joined). */
+      origin: {
+        /** Row/column + filter label. */
+        label: string;
+        /** "all origins" filter option. */
+        all: string;
+        /** Short badge labels per origin value. */
+        values: {
+          manual: string;
+          signup: string;
+          guest_conversion: string;
+          legacy_unknown: string;
+        };
+        /** One-line definitions (badge tooltip + detail metadata). */
+        descriptions: {
+          manual: string;
+          signup: string;
+          guest_conversion: string;
+          legacy_unknown: string;
+        };
+        /** Heading on the customer detail card. */
+        detailLabel: string;
+      };
       /** M8C — store active/inactive lifecycle. */
       lifecycle: {
         activeBadge: string;

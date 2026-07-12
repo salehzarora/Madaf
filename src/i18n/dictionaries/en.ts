@@ -580,6 +580,23 @@ const en: Dictionary = {
         has: "Has private link",
         none: "No private link",
       },
+      origin: {
+        label: "Origin",
+        all: "All origins",
+        values: {
+          manual: "Added manually",
+          signup: "Self signup",
+          guest_conversion: "From guest order",
+          legacy_unknown: "Unknown",
+        },
+        descriptions: {
+          manual: "Added directly by the team.",
+          signup: "Registered through a self-signup link and approved.",
+          guest_conversion: "Created from a guest showcase order.",
+          legacy_unknown: "Origin not recorded — added before origin tracking.",
+        },
+        detailLabel: "How this store joined",
+      },
       lifecycle: {
         activeBadge: "Active",
         inactiveBadge: "Inactive",

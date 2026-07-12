@@ -579,6 +579,23 @@ const ar: Dictionary = {
         has: "يملك رابط خاص",
         none: "لا يملك رابط خاص",
       },
+      origin: {
+        label: "المصدر",
+        all: "كل المصادر",
+        values: {
+          manual: "أُضيف يدويًا",
+          signup: "تسجيل ذاتي",
+          guest_conversion: "من طلب زائر",
+          legacy_unknown: "غير معروف",
+        },
+        descriptions: {
+          manual: "أُضيف مباشرةً من قِبل الفريق.",
+          signup: "سُجّل عبر رابط تسجيل ذاتي وتمت الموافقة عليه.",
+          guest_conversion: "أُنشئ من طلب زائر في كتالوج العرض.",
+          legacy_unknown: "المصدر غير مُسجّل — أُضيف قبل تتبّع المصدر.",
+        },
+        detailLabel: "كيف انضمّ هذا المحل",
+      },
       lifecycle: {
         activeBadge: "مفعّل",
         inactiveBadge: "غير مفعّل",

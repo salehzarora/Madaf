@@ -106,6 +106,11 @@ export async function searchCustomers(
   const matched = customers.filter((c) => {
     if (query.status === "active" && c.isActive === false) return false;
     if (query.status === "inactive" && c.isActive !== false) return false;
+    // M8G.1 origin facet — a mock row without an explicit origin is treated as
+    // legacy_unknown (mirrors the DB NOT NULL default).
+    if (query.origin && (c.origin ?? "legacy_unknown") !== query.origin) {
+      return false;
+    }
     if (!term) return true;
     return [
       c.name,

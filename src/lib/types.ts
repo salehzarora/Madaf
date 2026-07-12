@@ -120,6 +120,31 @@ export interface Product {
 
 export type CustomerType = "grocery" | "kiosk" | "supermarket" | "minimarket";
 
+/**
+ * M8G.1 — immutable acquisition origin: HOW a customer first entered Madaf.
+ * Closed vocabulary, one precise definition each, set once by the DB create
+ * path and never rewritten by edits/lifecycle/orders. NOT the recent order
+ * source, a preferred channel, the last editor, or a marketing label.
+ *   manual           — owner/admin created it directly (create_customer)
+ *   signup           — a self-signup / "join" request was approved
+ *   guest_conversion — a guest showcase order was promoted to a customer
+ *   legacy_unknown   — origin not reliably determinable (historical/seed rows)
+ */
+export const CUSTOMER_ORIGINS = [
+  "manual",
+  "signup",
+  "guest_conversion",
+  "legacy_unknown",
+] as const;
+export type CustomerOrigin = (typeof CUSTOMER_ORIGINS)[number];
+
+export function isCustomerOrigin(value: unknown): value is CustomerOrigin {
+  return (
+    typeof value === "string" &&
+    (CUSTOMER_ORIGINS as readonly string[]).includes(value)
+  );
+}
+
 /** A shop the supplier sells to. */
 export interface Customer {
   id: string;
@@ -136,6 +161,10 @@ export interface Customer {
   /** M8C lifecycle — false blocks the store's private links + new links.
    * Optional: mock rows omit it (implicitly active). */
   isActive?: boolean;
+  /** M8G.1 immutable acquisition origin. DB-backed (NOT NULL); mock rows set it
+   * explicitly. Absent only on legacy in-memory rows → treated as
+   * legacy_unknown by the UI. */
+  origin?: CustomerOrigin;
 }
 
 export interface InventoryItem {
@@ -198,6 +227,8 @@ export interface CustomerQuery {
   /** true = only stores with a live private link; false = only stores without
    * one; omitted = no link filter. (Supabase only — mock has no link data.) */
   hasLink?: boolean;
+  /** M8G.1 acquisition-origin facet; omitted = all origins. */
+  origin?: CustomerOrigin;
 }
 
 /** One append-only stock-movement ledger row (M8B admin history view). */

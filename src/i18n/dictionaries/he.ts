@@ -579,6 +579,23 @@ const he: Dictionary = {
         has: "יש קישור פרטי",
         none: "אין קישור פרטי",
       },
+      origin: {
+        label: "מקור",
+        all: "כל המקורות",
+        values: {
+          manual: "נוספה ידנית",
+          signup: "הרשמה עצמית",
+          guest_conversion: "מהזמנת אורח",
+          legacy_unknown: "לא ידוע",
+        },
+        descriptions: {
+          manual: "נוספה ישירות על ידי הצוות.",
+          signup: "נרשמה דרך קישור הרשמה ואושרה.",
+          guest_conversion: "נוצרה מהזמנת אורח בקטלוג התצוגה.",
+          legacy_unknown: "המקור לא תועד — נוספה לפני מעקב המקור.",
+        },
+        detailLabel: "איך החנות הצטרפה",
+      },
       lifecycle: {
         activeBadge: "פעילה",
         inactiveBadge: "לא פעילה",

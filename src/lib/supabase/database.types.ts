@@ -421,6 +421,7 @@ export type Database = {
           is_active: boolean
           name: string
           notes: string | null
+          origin: Database["public"]["Enums"]["customer_origin"]
           phone: string | null
           tenant_id: string
           updated_at: string
@@ -437,6 +438,7 @@ export type Database = {
           is_active?: boolean
           name: string
           notes?: string | null
+          origin?: Database["public"]["Enums"]["customer_origin"]
           phone?: string | null
           tenant_id: string
           updated_at?: string
@@ -453,6 +455,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           notes?: string | null
+          origin?: Database["public"]["Enums"]["customer_origin"]
           phone?: string | null
           tenant_id?: string
           updated_at?: string
@@ -2392,6 +2395,11 @@ export type Database = {
         | "bars"
         | "rolls"
         | "tubs"
+      customer_origin:
+        | "manual"
+        | "signup"
+        | "guest_conversion"
+        | "legacy_unknown"
       customer_type: "grocery" | "kiosk" | "supermarket" | "minimarket"
       document_status: "draft" | "generated" | "voided"
       document_type: "order_request" | "delivery_note" | "invoice_draft"
@@ -2558,6 +2566,12 @@ export const Constants = {
         "bars",
         "rolls",
         "tubs",
+      ],
+      customer_origin: [
+        "manual",
+        "signup",
+        "guest_conversion",
+        "legacy_unknown",
       ],
       customer_type: ["grocery", "kiosk", "supermarket", "minimarket"],
       document_status: ["draft", "generated", "voided"],

@@ -9,6 +9,7 @@ export const customers: Customer[] = [
     city: { he: "נצרת", ar: "الناصرة", en: "Nazareth" },
     phone: "04-555-0101",
     contactName: "יוסף חורי",
+    origin: "manual",
   },
   {
     id: "c02",
@@ -17,6 +18,7 @@ export const customers: Customer[] = [
     city: { he: "אום אל-פחם", ar: "أم الفحم", en: "Umm al-Fahm" },
     phone: "04-555-0102",
     contactName: "محمد اغبارية",
+    origin: "signup",
   },
   {
     id: "c03",
@@ -25,6 +27,7 @@ export const customers: Customer[] = [
     city: { he: "חיפה", ar: "حيفا", en: "Haifa" },
     phone: "04-555-0103",
     contactName: "רוני לוי",
+    origin: "guest_conversion",
   },
   {
     id: "c04",
@@ -33,6 +36,7 @@ export const customers: Customer[] = [
     city: { he: "כפר קרע", ar: "كفر قرع", en: "Kafr Qara" },
     phone: "04-555-0104",
     contactName: "أحمد مصاروة",
+    origin: "legacy_unknown",
   },
   {
     id: "c05",
@@ -41,6 +45,7 @@ export const customers: Customer[] = [
     city: { he: "עפולה", ar: "العفولة", en: "Afula" },
     phone: "04-555-0105",
     contactName: "גלית כהן",
+    origin: "manual",
   },
   {
     id: "c06",
@@ -49,6 +54,7 @@ export const customers: Customer[] = [
     city: { he: "באקה אל-גרביה", ar: "باقة الغربية", en: "Baqa al-Gharbiyye" },
     phone: "04-555-0106",
     contactName: "سامر بيادسة",
+    origin: "signup",
   },
   {
     id: "c07",
@@ -57,6 +63,7 @@ export const customers: Customer[] = [
     city: { he: "חיפה", ar: "حيفا", en: "Haifa" },
     phone: "04-555-0107",
     contactName: "אבי מזרחי",
+    origin: "legacy_unknown",
   },
   {
     id: "c08",
@@ -65,6 +72,7 @@ export const customers: Customer[] = [
     city: { he: "חדרה", ar: "الخضيرة", en: "Hadera" },
     phone: "04-555-0108",
     contactName: "משה פרץ",
+    origin: "guest_conversion",
   },
 ];
 

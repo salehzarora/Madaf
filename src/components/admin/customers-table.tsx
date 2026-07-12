@@ -2,7 +2,16 @@
 
 import { Link2, Search, ShoppingBag, Store } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
+import { CustomerOriginBadge } from "@/components/admin/customer-origin-badge";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,118 +20,133 @@ import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { searchCustomersAction } from "@/lib/actions/customers";
+import {
+  customersQueryToParams,
+  withFilterChange,
+  type CustomersQuery,
+} from "@/lib/customers-query";
 import type { CustomerRowStat } from "@/lib/data/customers";
 import { formatDate, formatNumber } from "@/lib/format";
-import type { Customer } from "@/lib/types";
+import { CUSTOMER_ORIGINS, type Customer } from "@/lib/types";
 
 export type { CustomerRowStat };
 
 /** Server page size — mirrors CUSTOMERS_PAGE in the action. */
 const PAGE_SIZE = 50;
 
-type Lifecycle = "all" | "active" | "inactive";
-type LinkFilter = "all" | "has" | "none";
-
 /**
- * Admin stores list (M8B.5 → M8E.2 server-side). Search (name / contact /
- * phone / city / address), the active/inactive facet and the private-link
- * facet now run in the DB query via searchCustomersAction — the client never
- * loads every store. The initial page is SSR'd; the client re-queries page 0
- * on any filter change (search debounced) and appends pages on "load more".
- * Per-store order stats come from the server page (keyed by id).
+ * Admin stores list (M8B.5 → M8E.2 → M8G.1). Search (name / contact / phone /
+ * city / address), the active/inactive facet, the private-link facet and the
+ * acquisition-origin facet run server-side. FILTER state lives in the URL (the
+ * single source of truth): every facet change navigates, so the list is
+ * shareable and back/forward restores it, and a filter change re-renders from
+ * the first page (load state resets). Within a filter set, "load more" appends
+ * the next page via the server action. Per-store order stats (M8F.3) come from
+ * the server page, keyed by id.
  */
 export function CustomersTable({
-  customers: initialCustomers,
+  customers,
   stats: initialStats,
   locale,
   dict,
-  initialQuery = "",
-  initialStatus = "all",
-  initialLink = "all",
+  query,
 }: {
   customers: Customer[];
   stats: Record<string, CustomerRowStat>;
   locale: Locale;
   dict: Dictionary;
-  initialQuery?: string;
-  initialStatus?: Lifecycle;
-  initialLink?: LinkFilter;
+  query: CustomersQuery;
 }) {
   const t = dict.admin.customers;
-  const [query, setQuery] = useState(initialQuery);
-  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
-  const [lifecycle, setLifecycle] = useState<Lifecycle>(initialStatus);
-  const [linkFilter, setLinkFilter] = useState<LinkFilter>(initialLink);
+  const router = useRouter();
 
-  const [rows, setRows] = useState<Customer[]>(initialCustomers);
-  // Per-store stats accumulate across pages: seeded from the SSR page, then
-  // MERGED with each server page's stats (searchCustomersAction returns stats
-  // for only that page's ids). On a filter change page 0 REPLACES the map.
-  const [stats, setStats] = useState<Record<string, CustomerRowStat>>(initialStats);
-  const [hasMore, setHasMore] = useState(initialCustomers.length >= PAGE_SIZE);
-  const [loading, startLoading] = useTransition();
-  const firstRun = useRef(true);
-  // Monotonic filter generation: bumped on every filter change so an in-flight
-  // "load more" (or a superseded page-0 query) is discarded instead of merging
-  // rows across different filters.
-  const loadGen = useRef(0);
+  // Optimistic filter state: reflects the LATEST intended query while a
+  // navigation is pending, so quick successive changes compose against it (not
+  // the stale server `query` prop). Resets to the server query on settle and on
+  // back/forward — the URL stays the single source of truth.
+  const [optimisticQuery, setOptimisticQuery] = useOptimistic(
+    query,
+    (_current, next: CustomersQuery) => next,
+  );
+  const [, startNav] = useTransition();
 
-  // Debounce the text search (one server round-trip per applied term).
+  // "Load more" appends pages WITHIN the current filter set. rows/stats reset to
+  // the server page whenever a navigation delivers a new first page.
+  const [rows, setRows] = useState<Customer[]>(customers);
+  const [stats, setStats] = useState(initialStats);
+  const [hasMore, setHasMore] = useState(customers.length >= PAGE_SIZE);
+  const [seenPage, setSeenPage] = useState(customers);
+  const [loadingMore, startLoadMore] = useTransition();
+  // Monotonic id for the current server page; bumped (ref-only, in an effect)
+  // whenever a navigation delivers a new page, so a superseded "load more"
+  // result is discarded instead of merged into a different filter set.
+  const pageGen = useRef(0);
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(id);
-  }, [query]);
+    pageGen.current += 1;
+  }, [customers]);
 
-  const isDefault =
-    debouncedQuery.trim() === "" && lifecycle === "all" && linkFilter === "all";
-
-  /** Serialize the current filters for the server action. */
-  function currentQuery(offset: number) {
-    return {
-      q: debouncedQuery.trim() || undefined,
-      status: lifecycle === "all" ? undefined : lifecycle,
-      hasLink:
-        linkFilter === "all" ? undefined : linkFilter === "has" ? true : false,
-      offset,
-    };
+  // A navigation delivered a new server page (new `customers`/`stats` refs,
+  // which change ONLY on navigation — not on local load-more re-renders): reset
+  // the appended rows/stats. React "adjust state during render" pattern
+  // (https://react.dev/reference/react/useState) — not an effect, so it settles
+  // before paint with no cascading render.
+  if (customers !== seenPage) {
+    setSeenPage(customers);
+    setRows(customers);
+    setStats(initialStats);
+    setHasMore(customers.length >= PAGE_SIZE);
   }
 
-  // Re-query page 0 whenever a filter changes. Skip the first run when filters
-  // are still default — the SSR'd initial page already covers it.
-  useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      if (isDefault) return;
-    }
-    loadGen.current += 1;
-    const myGen = loadGen.current;
-    startLoading(async () => {
-      const result = await searchCustomersAction(currentQuery(0));
-      if (loadGen.current !== myGen) return; // superseded by a newer filter
-      if (result.ok) {
-        setRows(result.customers ?? []);
-        setStats(result.stats ?? {}); // fresh page 0 → replace the stats map
-        setHasMore(!!result.hasMore);
-      }
+  function navigate(next: CustomersQuery) {
+    const qs = customersQueryToParams(next).toString();
+    startNav(() => {
+      setOptimisticQuery(next);
+      router.push(`/${locale}/admin/customers${qs ? `?${qs}` : ""}`, {
+        scroll: false,
+      });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, lifecycle, linkFilter]);
+  }
+  const applyFilter = (patch: Partial<CustomersQuery>) =>
+    navigate(withFilterChange(optimisticQuery, patch));
+
+  // Search is submit-on-Enter (mirrors the Orders list): the uncontrolled input
+  // is `key`-re-seeded from the URL on navigation, and submitting composes
+  // against the LIVE optimistic query — so a facet chosen just before submit is
+  // preserved, and typing during a nav round-trip is never clobbered.
+  function onSearchSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const term = String(new FormData(e.currentTarget).get("q") ?? "").trim();
+    applyFilter({ search: term });
+  }
 
   function onLoadMore() {
-    const myGen = loadGen.current;
-    startLoading(async () => {
-      const result = await searchCustomersAction(currentQuery(rows.length));
-      // A filter changed mid-flight → drop this page (it belongs to the old
-      // filter set) instead of merging it into the new rows.
-      if (loadGen.current !== myGen) return;
+    const myGen = pageGen.current;
+    startLoadMore(async () => {
+      const result = await searchCustomersAction({
+        q: optimisticQuery.search || undefined,
+        status:
+          optimisticQuery.status === "all" ? undefined : optimisticQuery.status,
+        hasLink:
+          optimisticQuery.link === "all"
+            ? undefined
+            : optimisticQuery.link === "has",
+        origin:
+          optimisticQuery.origin === "all" ? undefined : optimisticQuery.origin,
+        offset: rows.length,
+      });
+      // A newer server page arrived mid-flight → drop this (it belongs to the
+      // old filter set) instead of merging it.
+      if (pageGen.current !== myGen) return;
       if (!result.ok) return; // transient — keep the button to retry
       const page = result.customers ?? [];
       if (page.length > 0) {
         const seen = new Set(rows.map((c) => c.id));
         setRows((prev) => [...prev, ...page.filter((c) => !seen.has(c.id))]);
+        if (result.stats) {
+          const merged = result.stats;
+          setStats((prev) => ({ ...prev, ...merged }));
+        }
       }
-      // Merge this page's stats (keyed by id) into the accumulated map.
-      if (result.stats) setStats((prev) => ({ ...prev, ...result.stats }));
       setHasMore(!!result.hasMore && page.length > 0);
     });
   }
@@ -130,51 +154,74 @@ export function CustomersTable({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative sm:max-w-sm sm:flex-1">
+        <form onSubmit={onSearchSubmit} className="relative sm:max-w-sm sm:flex-1">
+          {/* Uncontrolled: `key` re-seeds from the URL on navigation; submitting
+              (Enter) navigates with the new term (the URL is the truth). */}
           <Search
             className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-ink-muted"
             aria-hidden
           />
           <Input
+            key={optimisticQuery.search}
             type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            name="q"
+            defaultValue={optimisticQuery.search}
             placeholder={t.searchPlaceholder}
             aria-label={t.searchPlaceholder}
             className="ps-9"
           />
-        </div>
+        </form>
         <Select
-          value={lifecycle}
-          onChange={(e) => setLifecycle(e.target.value as Lifecycle)}
+          value={optimisticQuery.status}
+          onChange={(e) =>
+            applyFilter({ status: e.target.value as CustomersQuery["status"] })
+          }
           aria-label={t.lifecycle.filterLabel}
-          className="sm:w-44"
+          className="sm:w-40"
         >
           <option value="all">{dict.common.all}</option>
           <option value="active">{t.lifecycle.activeBadge}</option>
           <option value="inactive">{t.lifecycle.inactiveBadge}</option>
         </Select>
         <Select
-          value={linkFilter}
-          onChange={(e) => setLinkFilter(e.target.value as LinkFilter)}
+          value={optimisticQuery.link}
+          onChange={(e) =>
+            applyFilter({ link: e.target.value as CustomersQuery["link"] })
+          }
           aria-label={t.linkFilter.label}
-          className="sm:w-44"
+          className="sm:w-40"
         >
           <option value="all">{t.linkFilter.all}</option>
           <option value="has">{t.linkFilter.has}</option>
           <option value="none">{t.linkFilter.none}</option>
+        </Select>
+        <Select
+          value={optimisticQuery.origin}
+          onChange={(e) =>
+            applyFilter({ origin: e.target.value as CustomersQuery["origin"] })
+          }
+          aria-label={t.origin.label}
+          className="sm:w-40"
+        >
+          <option value="all">{t.origin.all}</option>
+          {CUSTOMER_ORIGINS.map((o) => (
+            <option key={o} value={o}>
+              {t.origin.values[o]}
+            </option>
+          ))}
         </Select>
       </div>
 
       {rows.length === 0 ? (
         <EmptyState icon={<Store />} title={t.noMatches} />
       ) : (
-        <Card className={"overflow-x-auto" + (loading ? " opacity-70" : "")}>
-          <table className="w-full min-w-[720px] text-sm">
+        <Card className="overflow-x-auto">
+          <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-line bg-surface-warm text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
                 <th className="px-4 py-3 text-start">{t.colShop}</th>
                 <th className="px-4 py-3 text-start">{t.colType}</th>
+                <th className="px-4 py-3 text-start">{t.origin.label}</th>
                 <th className="px-4 py-3 text-start">{t.colCity}</th>
                 <th className="px-4 py-3 text-start">{t.colPhone}</th>
                 <th className="px-4 py-3 text-end">{t.colOrders}</th>
@@ -214,6 +261,12 @@ export function CustomersTable({
                       <Badge tone="neutral" dot>
                         {t.types[customer.type]}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <CustomerOriginBadge
+                        origin={customer.origin}
+                        originDict={t.origin}
+                      />
                     </td>
                     <td className="px-4 py-3.5 text-ink-soft">
                       <p>{customer.city[locale]}</p>
@@ -267,10 +320,10 @@ export function CustomersTable({
           variant="ghost"
           size="sm"
           onClick={onLoadMore}
-          disabled={loading}
+          disabled={loadingMore}
           className="self-center"
         >
-          {loading ? t.loadingMore : t.loadMore}
+          {loadingMore ? t.loadingMore : t.loadMore}
         </Button>
       ) : null}
     </div>

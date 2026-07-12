@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerLifecycleToggle } from "@/components/admin/customer-lifecycle-toggle";
 import { CustomerLinksManager } from "@/components/admin/customer-links-manager";
+import { CustomerOriginBadge } from "@/components/admin/customer-origin-badge";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
@@ -78,6 +79,11 @@ export default async function AdminCustomerDetailPage({
                   {dict.admin.customers.lifecycle.inactiveBadge}
                 </Badge>
               ) : null}
+              {/* M8G.1 — read-only acquisition origin (immutable metadata). */}
+              <CustomerOriginBadge
+                origin={customer.origin}
+                originDict={dict.admin.customers.origin}
+              />
             </div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft">
               {customer.contactName ? (

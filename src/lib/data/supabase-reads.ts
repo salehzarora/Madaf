@@ -295,6 +295,7 @@ function mapCustomer(row: Row<"customers">): Customer {
     address: row.address ?? undefined,
     notes: row.notes ?? undefined,
     isActive: row.is_active,
+    origin: row.origin,
   };
 }
 
@@ -765,6 +766,10 @@ export async function sbSearchCustomers(
 
   if (q.status === "active") query = query.eq("is_active", true);
   else if (q.status === "inactive") query = query.eq("is_active", false);
+
+  // M8G.1 — acquisition-origin facet, applied in the DB BEFORE the range/order
+  // (so pagination + any count reflect it). RLS still bounds rows to the tenant.
+  if (q.origin) query = query.eq("origin", q.origin);
 
   if (q.hasLink !== undefined) {
     const linkIds = await sbActiveLinkCustomerIds(client, tenantId);

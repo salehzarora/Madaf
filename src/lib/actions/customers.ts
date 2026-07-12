@@ -25,7 +25,12 @@ import {
   findCustomerDuplicates,
   type CustomerDuplicate,
 } from "@/lib/data/customers";
-import type { Customer, CustomerQuery, CustomerType } from "@/lib/types";
+import {
+  isCustomerOrigin,
+  type Customer,
+  type CustomerQuery,
+  type CustomerType,
+} from "@/lib/types";
 
 const MAX_NAME = 200;
 const MAX_PHONE = 40;
@@ -108,6 +113,8 @@ export async function searchCustomersAction(input: {
   q?: string;
   status?: string;
   hasLink?: boolean;
+  /** M8G.1 acquisition-origin facet; unknown values are ignored (no filter). */
+  origin?: string;
   offset?: number;
 }): Promise<CustomerSearchResult> {
   try {
@@ -122,6 +129,8 @@ export async function searchCustomersAction(input: {
       query.status = input.status;
     }
     if (typeof input.hasLink === "boolean") query.hasLink = input.hasLink;
+    // Server-side re-validation of the origin facet — never trust a raw string.
+    if (isCustomerOrigin(input.origin)) query.origin = input.origin;
 
     const customers = await searchCustomers(query, offset, CUSTOMERS_PAGE);
     // Bounded stats for just this page's ids (≤ CUSTOMERS_PAGE) — no full-orders

@@ -7,9 +7,13 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
+import {
+  hasActiveFilters,
+  parseCustomersQuery,
+  toCustomerQuery,
+} from "@/lib/customers-query";
 import { getCustomerStatsForIds, getDataMode, searchCustomers } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
-import type { CustomerQuery } from "@/lib/types";
 
 /** First-page size — mirrors CUSTOMERS_PAGE in the customers action. */
 const PAGE_SIZE = 50;
@@ -21,24 +25,23 @@ export default async function AdminCustomersPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ q?: string; status?: string; link?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    link?: string;
+    origin?: string;
+  }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.admin.customers;
 
-  // Inbound deep-link filters: ?q=…&status=active|inactive&link=has|none.
-  const sp = await searchParams;
-  const initialQuery = typeof sp.q === "string" ? sp.q.slice(0, 120) : "";
-  const initialStatus =
-    sp.status === "active" || sp.status === "inactive" ? sp.status : "all";
-  const initialLink = sp.link === "has" || sp.link === "none" ? sp.link : "all";
-
-  const query: CustomerQuery = {};
-  if (initialQuery.trim()) query.q = initialQuery.trim();
-  if (initialStatus !== "all") query.status = initialStatus;
-  if (initialLink !== "all") query.hasLink = initialLink === "has";
+  // The URL is the single source of truth for search + facets
+  // (?q, ?status, ?link, ?origin — M8G.1). Parsed/normalized once here and
+  // handed to the table as the seed query.
+  const customersQuery = parseCustomersQuery(await searchParams);
+  const query = toCustomerQuery(customersQuery);
 
   const firstPage = await searchCustomers(query, 0, PAGE_SIZE);
 
@@ -59,10 +62,9 @@ export default async function AdminCustomersPage({
   // (M8F.3). "Load more" pages fetch their own stats via searchCustomersAction.
   const stats = await getCustomerStatsForIds(firstPage.map((c) => c.id));
 
-  const hasFilters =
-    initialQuery.trim() !== "" || initialStatus !== "all" || initialLink !== "all";
   // No stores at all (and no filter narrowing them) → the add-first-store CTA.
-  const noStoresYet = firstPage.length === 0 && !hasFilters;
+  const noStoresYet =
+    firstPage.length === 0 && !hasActiveFilters(customersQuery);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -131,9 +133,7 @@ export default async function AdminCustomersPage({
           stats={stats}
           locale={locale}
           dict={dict}
-          initialQuery={initialQuery}
-          initialStatus={initialStatus}
-          initialLink={initialLink}
+          query={customersQuery}
         />
       )}
     </div>
