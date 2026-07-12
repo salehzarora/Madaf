@@ -2005,6 +2005,13 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_timeline_actor_labels_for_ids: {
+        Args: { p_actor_user_ids: string[]; p_tenant_id: string }
+        Returns: {
+          actor_email: string
+          actor_user_id: string
+        }[]
+      }
       get_token_catalog: { Args: { p_token: string }; Returns: Json }
       has_tenant_role: {
         Args: {

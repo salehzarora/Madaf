@@ -1,7 +1,7 @@
 # M8G.3 — Customer Timeline (bounded entity audit read)
 
 **Status:** implemented on `feature/m8g3-customer-timeline` (NOT merged, NOT
-deployed, migration NOT applied to hosted staging). Local-stack verified.
+deployed, neither M8G.3 migration applied to hosted staging). Local-stack verified.
 
 ## What this adds
 
@@ -63,45 +63,65 @@ can_access_customer(tenant_id, entity_id))`. So:
 
 No RLS was loosened; no new policy, grant, or table write was added.
 
-## Actor resolution (bounded to the page, no N+1, no identity leak)
+## Actor resolution (a bounded id-query, no roster read, no N+1, no identity leak)
 
 `auth.users` is the only identity (email only — there is no profile/display-name
 table). Labels are resolved through one bounded data-layer contract,
 `getTimelineActorLabelsForIds(actorIds)` (Supabase `sbGetTimelineActorLabels` /
-mock `mockActorLabels`):
+mock `mockActorLabels`), backed by a **genuinely bounded RPC**:
 
 - **input is bounded** — `distinctActorIds` collects the **distinct, non-null**
   `actor_user_id`s on the current page only, deduped and hard-capped at 50 (the
   page maximum). The resolver only ever sees this page's actors, never a per-row
-  lookup and never the whole roster fanned out;
-- **empty input performs no lookup** — a page with no attributed actors issues
-  zero queries;
-- **owner/admin viewer** → the authorized, tenant-scoped, owner/admin-gated roster
-  is fetched **at most once** and **projected** (via a `Set` membership test) to
-  only the requested page ids, so the returned map is `{ actorId → email }` for
-  this page's actors — the full roster is never returned to the caller or the
-  client. A resolved id → `named` (email); an id no longer a member →
-  `former team member`;
-- **sales_rep viewer** → the label lookup short-circuits with an empty map and
-  **no query**, so every attributed actor shows the neutral `A team member` label
-  — **the identity is deliberately not shown.** `resolveTimelineActor`
-  additionally guards on `isAdmin` *before* consulting the map, so a sales_rep can
-  never receive an email even if a map leaked in (defense-in-depth);
+  lookup;
+- **empty input performs no query** — a page with no attributed actors issues
+  zero database calls;
+- **owner/admin viewer** → **exactly one** call to
+  `get_timeline_actor_labels_for_ids(p_tenant_id, p_actor_user_ids[])`, which
+  joins **only** the requested ids to the tenant's members + `auth.users` and
+  returns at most `{ actor_user_id, actor_email }` rows for them. The **full
+  roster is never read** — the query drives from the ≤50 requested ids into the
+  `tenant_users` PK, not the other way around. A resolved id → `named` (email); an
+  id that is not a current member (removed / off-roster) → `former team member`;
+- **sales_rep viewer** → the lookup short-circuits with an empty map and **no
+  query**, so every attributed actor shows the neutral `A team member` label —
+  the identity is deliberately not shown. (The RPC itself *also* denies a
+  sales_rep via `authorize_tenant`, so even a direct call cannot leak emails.)
+  `resolveTimelineActor` additionally guards on `isAdmin` *before* consulting the
+  map (defense-in-depth);
 - **`actor_user_id IS NULL`** (the acting user was deleted —
   `ON DELETE SET NULL`) → `Unknown user`.
 
-**Why the roster RPC (and not an id-filtered query).** Member emails are readable
-only through the SECURITY DEFINER `list_tenant_members(p_tenant_id)` RPC —
-`auth.users` is not client-readable, and no id-parameterized email RPC exists. An
-id-filtered variant would require a new migration, which is intentionally out of
-scope for this actor-resolution correction. The contract therefore calls the
-existing authorized RPC at most once and **projects** its result to the page's
-distinct actors; the bounding, dedup, empty/sales_rep short-circuits, and the
-projection all live in the data layer, and only final display labels cross to the
-client. (A future migration could push the id filter into the DB.)
+### Why projection-after-`list_tenant_members` was not enough — and the RPC
 
-This reuses the existing team-roster visibility boundary exactly; it needs **no**
-new RPC and never exposes another tenant's users.
+The prior correction (`60d36ea`) bounded the *result* to the page's ≤50 actors,
+but the only authorized email source at the time, `list_tenant_members(tenant)`,
+still **read the entire roster** and the projection happened afterward in
+TypeScript. Filtering after an unbounded read is not a bounded query. `auth.users`
+is not client-readable, so a minimal `SECURITY DEFINER` RPC is required (exactly
+like `list_tenant_members`). The new
+`get_timeline_actor_labels_for_ids(p_tenant_id, p_actor_user_ids uuid[])`:
+
+- **STABLE, `search_path = ''`, fully schema-qualified**, `SECURITY DEFINER` only
+  for the `auth.users` join;
+- **owner/admin gate + tenant validation via `authorize_tenant`** — the
+  client-supplied `p_tenant_id` authorizes *only* if the caller is an owner/admin
+  member of it (raises `42501` for a sales_rep, non-member, or cross-tenant
+  attempt); the tenant never self-authorizes;
+- **input bound inside the DB** — distinct non-null ids counted; **> 50 distinct →
+  `22023`**; duplicates/nulls never inflate the request; empty array → zero rows;
+- **returns only `(actor_user_id uuid, actor_email text)`** — no role, tenant,
+  phone, provider, identities, or any other `auth.users` field;
+- **requested-only, current-member-only** — a cross-tenant / non-member / unknown /
+  removed id simply yields no row (never a fabricated one); at most 50 rows;
+- **least privilege** — `revoke all from public, anon`; `grant execute to
+  authenticated` only; **no `service_role` grant** (the RPC is only ever invoked
+  by an authenticated owner/admin). No RLS, policy, grant on any existing object,
+  producer, index, taxonomy, or data changed. `list_tenant_members` is left
+  untouched (still used by the team roster).
+
+Migration: `supabase/migrations/20260801110000_m8g3_timeline_actor_lookup_rpc.sql`
+(additive; **not applied to hosted staging**).
 
 ## Client-safe rendering (no raw metadata, PII, tokens, hashes, or URLs)
 
@@ -159,13 +179,18 @@ is not part of the type surface) so it is not re-committed.
   read-only "load more" server action (validates id + bounds cursor length).
 - `src/components/admin/customer-timeline.tsx` — the client list (load-more with
   an in-flight guard, empty / error+retry states, a11y, ar/he/en + RTL).
-- `supabase/migrations/20260801100000_m8g3_customer_timeline_index.sql`.
-- `src/lib/customer-timeline.test.ts` (71 checks) + `supabase/tests/customer_timeline_index.test.sql` (22 checks).
+- `supabase/migrations/20260801100000_m8g3_customer_timeline_index.sql` (the
+  Timeline event index) + `supabase/migrations/20260801110000_m8g3_timeline_actor_lookup_rpc.sql`
+  (the bounded actor-label RPC).
+- `src/lib/customer-timeline.test.ts` (app checks) +
+  `supabase/tests/customer_timeline_index.test.sql` (index) +
+  `supabase/tests/timeline_actor_labels_rpc.test.sql` (the actor RPC).
 
 **Modified**
 - `src/lib/data/supabase-reads.ts` — `sbGetCustomerTimelinePage` (the bounded,
-  RLS-scoped read) + `sbGetTimelineActorLabels` (the page-bounded, projected,
-  owner/admin-gated actor-label lookup).
+  RLS-scoped read) + `sbGetTimelineActorLabels` (one bounded RPC call keyed on the
+  page's ≤50 distinct actor ids; the `list_tenant_members` roster read is gone).
+- `src/lib/supabase/database.types.ts` — regenerated: the new RPC signature only.
 - `src/lib/audit-events.ts` — `renderCustomerAuditDetails` param loosened to the
   structural `{ eventType, metadata }` shape (a full `AuditEvent` still satisfies it).
 - `src/app/[locale]/admin/customers/[id]/page.tsx` — the Activity `<Card>`.
@@ -178,19 +203,28 @@ is not part of the type surface) so it is not re-committed.
 
 ## Verification (local)
 
-- `npm test` → **282** app checks pass (incl. the 71 new timeline checks).
-- `supabase test db` → **202** pgTAP checks pass (incl. the 22 new index checks:
-  index shape, additivity, keyset order + tie-break + no-overlap, EXPLAIN uses
-  the index with no Sort, and RLS rep/owner/cross-tenant scoping with the index
-  present).
+- `npm test` → **298** app checks pass (incl. **87** timeline checks — the bounded
+  id-RPC path, dedup/cap/empty/oversized, sales_rep no-query, no-roster/no-N+1
+  source guards, and the additive-RPC migration guard).
+- `supabase test db` → **235** pgTAP checks pass, incl. the **33** new actor-RPC
+  checks (signature, 2-column return, DEFINER/STABLE/empty-search_path, the
+  PUBLIC/anon/service_role-denied + authenticated privilege matrix, 0/50/51 input
+  bounds, requested-only + no-full-roster + cross-tenant + unknown/removed +
+  ≤50-row behavior, owner/admin resolve, sales_rep + non-member denial, no tenant
+  forgery, email-only exposure, and M8G.2 RLS/producers/index/no-mutation
+  regressions) plus the 22 index checks.
 - `npm run lint`, `npx tsc --noEmit`, `npm run build` → clean; build ends
   `[check-dynamic-routes] OK`; the customer detail route is dynamic (`ƒ`).
+  `npm audit --omit=dev` → 0 vulnerabilities. Generated types regenerated locally
+  (RPC signature only).
 - Client bundle scan → **0** hits for `sb_secret_`, `service_role`,
-  `SUPABASE_SERVICE`, `_log_customer_audit_event`, `token_hash`, or the server
-  read symbol.
+  `NEXT_PUBLIC_SERVICE_ROLE`, Postgres connection strings,
+  `_log_customer_audit_event`, `token_hash`, the server-only Timeline read /
+  actor-RPC symbols, `list_tenant_members`, or any fixture email; the browser key
+  is publishable/anon only.
 
 ## Explicitly out of scope
 
 No global Activity-Log route/screen; no new mutation or audit event; no change to
 the M8G.2 producers, taxonomy, RLS policy, or grants; no customer/order mutation;
-no re-committed generated types.
+no hosted-staging migration; not merged, not deployed.

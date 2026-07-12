@@ -65,7 +65,6 @@ import {
   resolveTimelineActor,
   type TimelinePage,
 } from "@/lib/customer-timeline";
-import { listTenantMembers } from "./team";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -790,30 +789,34 @@ export async function sbGetCustomerTimelinePage(input: {
 
 /**
  * Display labels for ONLY the given DISTINCT page actor ids (bounded ≤ 50 by
- * {@link distinctActorIds}; empty input → NO lookup). Named labels are
- * owner/admin-only, matching the existing team-roster visibility: a sales_rep /
- * non-member gets an empty map with no query, so no actor identity is exposed.
+ * {@link distinctActorIds}; empty input → NO query). Named labels are
+ * owner/admin-only, matching the team-roster visibility: a sales_rep / non-member
+ * gets an empty map with NO query, so no actor identity is exposed.
  *
- * The only authorized email source is the tenant-scoped, owner/admin-gated
- * roster RPC (`auth.users` is not client-readable, and an id-parameterized RPC
- * would require a migration — out of scope for this correction). We therefore
- * call it AT MOST ONCE and PROJECT it to just the requested ids via a Set
- * membership test, so the full roster is never returned to the caller and never
- * reaches the client; only `{ actorId → email }` for this page's actors crosses
- * the boundary. Runs as the caller under RLS (never an elevated credential); the
- * tenant is server-derived and no client-supplied tenant is trusted.
+ * Resolution is ONE genuinely bounded RPC — `get_timeline_actor_labels_for_ids`
+ * (20260801110000) — that joins ONLY these requested ids to the tenant's current
+ * members and `auth.users`, returning at most `{ actor_user_id, actor_email }`
+ * rows for them. The full roster is never read (no `list_tenant_members`), a
+ * cross-tenant / non-member / unknown id yields no row, and only final labels
+ * reach the caller — raw member/auth rows never cross the boundary. The tenant is
+ * server-derived and re-validated inside the RPC (owner/admin of the NAMED
+ * tenant); no client-supplied tenant is trusted and there is no elevated path.
  */
 export async function sbGetTimelineActorLabels(
   actorIds: string[],
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (actorIds.length === 0) return out;
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return out;
   const role = (await getSessionContext()).membership?.role ?? null;
-  if (role !== "owner" && role !== "admin") return out; // sales_rep → no identity
-  const want = new Set(actorIds);
-  for (const m of await listTenantMembers()) {
-    if (want.has(m.userId)) out.set(m.userId, m.email);
-  }
+  if (role !== "owner" && role !== "admin") return out; // sales_rep → no query
+  const { data, error } = await client.rpc("get_timeline_actor_labels_for_ids", {
+    p_tenant_id: tenantId,
+    p_actor_user_ids: actorIds,
+  });
+  if (error || !data) return out;
+  for (const row of data) out.set(row.actor_user_id, row.actor_email);
   return out;
 }
 

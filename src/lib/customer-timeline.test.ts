@@ -496,6 +496,16 @@ test("i18n: audit.timeline exists + every string is non-empty in ar/he/en", () =
 
 // ── 60–64. Source guards: server read is bounded, scoped, no-leak, no-N+1 ───
 const READS = readSrc("lib/data/supabase-reads.ts");
+// Precise per-function slices (the label lookup is CALLED inside the page read,
+// so a plain indexOf on the call site would mis-bound the page function).
+const TIMELINE_PAGE_FN = READS.slice(
+  READS.indexOf("export async function sbGetCustomerTimelinePage"),
+  READS.indexOf("export async function sbGetTimelineActorLabels"),
+);
+const ACTOR_LABEL_FN = READS.slice(
+  READS.indexOf("export async function sbGetTimelineActorLabels"),
+  READS.indexOf("export async function sbListCustomers"),
+);
 test("guard: the server read selects NO token/hash/url/entity columns", () => {
   const sel = READS.match(/\.select\("id, event_type, actor_user_id, metadata, created_at"\)/);
   assert.ok(sel, "explicit safe column list");
@@ -504,11 +514,11 @@ test("guard: the server read selects NO token/hash/url/entity columns", () => {
   assert.ok(!/token|hash|\burl\b/i.test(block.slice(0, block.indexOf("return"))), "no secret columns read");
 });
 test("guard: server read fixes entity_type + server-derives tenant (no client trust)", () => {
-  const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
+  const block = TIMELINE_PAGE_FN; // the event query only
   assert.ok(/\.eq\("entity_type", "customer"\)/.test(block), "entity_type is a fixed literal");
   assert.ok(/\.eq\("tenant_id", tenantId\)/.test(block), "tenant from getReadContext");
   assert.ok(/getReadContext\(\)/.test(block), "tenant is server-derived");
-  assert.ok(!/p_tenant|input\.tenant/.test(block), "no client tenant param");
+  assert.ok(!/input\.tenant/.test(block), "no client tenant param in the event query");
 });
 test("guard: server read is BOUNDED (limit pageSize+1) + ordered DESC,DESC", () => {
   const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
@@ -516,22 +526,25 @@ test("guard: server read is BOUNDED (limit pageSize+1) + ordered DESC,DESC", () 
   assert.ok(/\.order\("created_at", \{ ascending: false \}\)/.test(block), "created_at DESC");
   assert.ok(/\.order\("id", \{ ascending: false \}\)/.test(block), "id DESC tie-break");
 });
-test("guard: server read resolves actors via ONE bounded, projected lookup (no N+1)", () => {
-  const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
-  // The page read resolves ONLY the page's distinct actor ids (bounded), never
-  // a per-row lookup and never the whole roster held in the page function.
+test("guard: server read resolves actors via ONE bounded id-query (no roster, no N+1)", () => {
+  // The page read resolves ONLY the page's distinct actor ids (bounded ≤50),
+  // never per-row and never the whole roster.
   assert.ok(
-    /sbGetTimelineActorLabels\(\s*distinctActorIds\(page\.map/.test(block),
+    /sbGetTimelineActorLabels\(\s*distinctActorIds\(page\.map/.test(TIMELINE_PAGE_FN),
     "page read resolves only this page's distinct actor ids",
   );
-  // The label lookup performs AT MOST ONE roster call, projected to the ids.
-  const rosterCalls = (block.match(/listTenantMembers\(\)/g) ?? []).length;
-  assert.equal(rosterCalls, 1, "exactly one roster lookup, inside the projection");
-  assert.ok(/want\.has\(m\.userId\)/.test(block), "roster projected to ONLY the requested ids");
-  assert.ok(!/\.map\([^)]*listTenantMembers/.test(block), "no per-row (N+1) roster lookup");
+  // The label lookup is a SINGLE bounded RPC keyed on the requested ids — NOT a
+  // full-roster read: list_tenant_members / listTenantMembers must not appear.
+  const rpcCalls = (ACTOR_LABEL_FN.match(/get_timeline_actor_labels_for_ids/g) ?? []).length;
+  assert.equal(rpcCalls, 1, "exactly one bounded actor RPC call");
+  assert.ok(!/listTenantMembers|list_tenant_members/.test(ACTOR_LABEL_FN), "no full-roster fetch");
+  assert.ok(/p_actor_user_ids: actorIds/.test(ACTOR_LABEL_FN), "RPC receives exactly the requested ids");
+  assert.ok(!/\.map\([^)]*rpc\(/.test(ACTOR_LABEL_FN), "no per-row (N+1) RPC");
   // sales_rep / non-member → empty labels with NO query; empty ids → NO query.
-  assert.ok(/role !== "owner" && role !== "admin"/.test(block), "sales_rep → no identity, no query");
-  assert.ok(/if \(actorIds\.length === 0\) return out/.test(block), "empty page → no roster query");
+  assert.ok(/role !== "owner" && role !== "admin"/.test(ACTOR_LABEL_FN), "sales_rep → no query");
+  assert.ok(/if \(actorIds\.length === 0\) return out/.test(ACTOR_LABEL_FN), "empty page → no query");
+  // No stray roster call remains anywhere in the whole file's timeline path.
+  assert.ok(!/listTenantMembers/.test(TIMELINE_PAGE_FN), "page read never calls the roster");
 });
 test("guard: server read uses the row-value keyset predicate (not id-only)", () => {
   const block = READS.slice(READS.indexOf("sbGetCustomerTimelinePage"), READS.indexOf("sbListCustomers"));
@@ -668,16 +681,61 @@ test("guard: the mock label source projects the demo roster to requested ids onl
   assert.ok(/auditActors\.get\(id\)/.test(src), "mock reads ONLY requested ids from the roster");
   assert.ok(!/for \(const \w+ of auditActors/.test(src), "mock never iterates the full roster");
 });
-test("guard: the supabase label lookup is bounded, projected, no service_role", () => {
-  const fn = READS.slice(READS.indexOf("sbGetTimelineActorLabels"), READS.indexOf("sbListCustomers"));
+test("guard: the supabase label lookup is a bounded id-RPC, no roster, no service_role", () => {
+  const fn = ACTOR_LABEL_FN;
   assert.ok(!/service_role/i.test(stripComments(fn)), "no service_role in code");
-  assert.ok(/want\.has\(m\.userId\)/.test(fn), "projects the roster to ONLY the requested ids");
+  assert.ok(/\.rpc\("get_timeline_actor_labels_for_ids"/.test(fn), "calls the bounded actor RPC");
+  assert.ok(/p_tenant_id: tenantId/.test(fn), "tenant is server-derived (getReadContext)");
+  assert.ok(/p_actor_user_ids: actorIds/.test(fn), "passes exactly the requested ids");
+  assert.ok(!/listTenantMembers|list_tenant_members/.test(fn), "no full-roster fetch");
   assert.ok(/Promise<Map<string, string>>/.test(fn), "returns id→label map, not member rows");
   assert.ok(/role !== "owner" && role !== "admin"/.test(fn), "sales_rep → empty, no query");
 });
 
-// ── 87. Guard: the index migration is additive-only (no policy/grant change) ─
-test("guard: the M8G.3 migration is an additive index only (no policy/grant/data)", () => {
+// ── 88–89. Guards: no roster fetch in the Timeline path + the bounded RPC ────
+test("guard: no full-roster fetch remains in the Timeline production path", () => {
+  for (const rel of [
+    "lib/data/supabase-reads.ts",
+    "lib/data/customer-timeline.ts",
+    "lib/actions/customer-timeline.ts",
+    "components/admin/customer-timeline.tsx",
+  ]) {
+    // Scan CODE (a doc-comment may legitimately say "no list_tenant_members").
+    assert.ok(
+      !/listTenantMembers|list_tenant_members/.test(stripComments(readSrc(rel))),
+      `${rel} must not fetch the tenant roster`,
+    );
+  }
+});
+test("guard: the actor-lookup migration is an additive, least-privilege RPC", () => {
+  const mig = readRepo(
+    "supabase/migrations/20260801110000_m8g3_timeline_actor_lookup_rpc.sql",
+  );
+  assert.ok(/create function public\.get_timeline_actor_labels_for_ids\(/.test(mig), "creates the RPC");
+  assert.ok(/returns table \(actor_user_id uuid, actor_email text\)/.test(mig), "returns ONLY id + email");
+  assert.ok(
+    /security definer/.test(mig) && /\bstable\b/.test(mig) && /set search_path = ''/.test(mig),
+    "definer + stable + empty search_path",
+  );
+  assert.ok(
+    /authorize_tenant\(\s*p_tenant_id, array\['owner', 'admin'\]/.test(mig),
+    "owner/admin gate via authorize_tenant (tenant never self-authorizes)",
+  );
+  assert.ok(/v_count > 50/.test(mig) && /errcode = '22023'/.test(mig), "rejects >50 distinct ids with 22023");
+  assert.ok(/revoke all on function[\s\S]*from public, anon/.test(mig), "revokes public + anon");
+  assert.ok(/grant execute on function[\s\S]*to authenticated;/.test(mig), "grants authenticated");
+  assert.ok(
+    !/to authenticated, service_role/.test(mig) && !/grant execute[\s\S]*to service_role/i.test(mig),
+    "no service_role grant",
+  );
+  assert.ok(
+    !/create table|alter table|drop table|create policy|drop policy|alter policy|create index|_log_customer_audit_event|insert into|update |delete from/i.test(mig),
+    "additive: no schema/policy/producer/data change",
+  );
+});
+
+// ── 90. Guard: the index migration is additive-only (no policy/grant change) ─
+test("guard: the M8G.3 index migration is an additive index only (no policy/grant/data)", () => {
   const mig = readRepo("supabase/migrations/20260801100000_m8g3_customer_timeline_index.sql");
   assert.ok(/create index/i.test(mig), "creates an index");
   assert.ok(/audit_events \(tenant_id, entity_type, entity_id, created_at desc, id desc\)/i.test(mig));
