@@ -9,9 +9,10 @@ import { CustomerLinksManager } from "@/components/admin/customer-links-manager"
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getCustomer, getDataMode, listOrders } from "@/lib/data";
+import { getCustomer, getDataMode, searchOrders } from "@/lib/data";
 import { listCustomerLinks } from "@/lib/data/customer-links";
 import { formatDate } from "@/lib/format";
+import { parseOrdersQuery } from "@/lib/orders-query";
 
 /** Shop detail + private order-link management (links are Supabase-mode). */
 export default async function AdminCustomerDetailPage({
@@ -39,11 +40,12 @@ export default async function AdminCustomerDetailPage({
   const canEdit = isSupabase && canManageLinks;
   const links = isSupabase && canManageLinks ? await listCustomerLinks(id) : [];
 
-  // Recent orders for this store (tenant/rep-scoped by the data layer).
-  const recentOrders = (await listOrders())
-    .filter((order) => order.customerId === id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 5);
+  // Recent orders for this store — a BOUNDED, customer-filtered page (newest
+  // first) via the M8F.1 orders search RPC; no full-orders scan (M8F.3).
+  // RLS/rep-scoping is enforced by searchOrders (can_access_order).
+  const recentOrders = (
+    await searchOrders(parseOrdersQuery({ customer: id, pageSize: "5" }))
+  ).rows;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">

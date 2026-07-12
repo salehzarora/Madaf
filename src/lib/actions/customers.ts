@@ -14,9 +14,11 @@ import { revalidatePath } from "next/cache";
 
 import {
   createCustomer,
+  getCustomerStatsForIds,
   searchCustomers,
   setCustomerActive,
   updateCustomer,
+  type CustomerRowStat,
   type CustomerWriteInput,
 } from "@/lib/data";
 import {
@@ -88,6 +90,9 @@ const CUSTOMERS_PAGE = 50;
 export interface CustomerSearchResult {
   ok: boolean;
   customers?: Customer[];
+  /** Per-store order stats for THIS page's ids only (M8F.3) — keyed by
+   * customer id; the table merges them into its stats map. */
+  stats?: Record<string, CustomerRowStat>;
   /** True when a full page came back — more pages may exist. */
   hasMore?: boolean;
 }
@@ -119,9 +124,13 @@ export async function searchCustomersAction(input: {
     if (typeof input.hasLink === "boolean") query.hasLink = input.hasLink;
 
     const customers = await searchCustomers(query, offset, CUSTOMERS_PAGE);
+    // Bounded stats for just this page's ids (≤ CUSTOMERS_PAGE) — no full-orders
+    // load; the client merges them into its stats map for load-more/filter rows.
+    const stats = await getCustomerStatsForIds(customers.map((c) => c.id));
     return {
       ok: true,
       customers,
+      stats,
       hasMore: customers.length >= CUSTOMERS_PAGE,
     };
   } catch (error) {

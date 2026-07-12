@@ -2,10 +2,80 @@
  * Customer (shop) data access. Mock by default; Supabase branch is
  * server-only local dev (see ./supabase-reads for the access model).
  */
-import { customerById, customers } from "@/lib/mock";
+import { customerById, customers, orders } from "@/lib/mock";
 import type { Customer, CustomerQuery, CustomerType } from "@/lib/types";
 
 import { getDataMode } from "./mode";
+
+// ── Customer order statistics (M8F.3) ─────────────────────────────────────
+// The Customers admin list shows two per-store stats: the number of LINKED
+// orders and the last-order date. These used to be computed by loading the
+// ENTIRE orders collection into the app; now they come from a bounded aggregate
+// for the CURRENT page's customer ids only (get_customer_stats_for_ids RPC in
+// supabase; the mock mirrors it).
+
+/** Max customer ids per stats request — the admin page-size maximum. The app
+ * only ever passes one page (≤ 50); this bound is enforced here AND in the RPC. */
+export const CUSTOMER_STATS_MAX_IDS = 100;
+
+/** Per-store order stats (the exact contract the Customers UI already renders):
+ * `count` = number of orders linked via customer_id (guest orders excluded; all
+ * statuses); `lastOrder` = most recent linked order's created_at (undefined when
+ * the store has no orders). No monetary metric exists in this contract. */
+export interface CustomerRowStat {
+  count: number;
+  lastOrder?: string;
+}
+
+/** Dedupe + bound-check the requested ids (shared by mock + supabase). Throws on
+ * an oversized request rather than silently truncating. */
+function normalizeStatIds(ids: string[]): string[] {
+  const deduped = [
+    ...new Set(ids.filter((id) => typeof id === "string" && id.length > 0)),
+  ];
+  if (deduped.length > CUSTOMER_STATS_MAX_IDS) {
+    throw new Error(
+      `[madaf/data] getCustomerStatsForIds: at most ${CUSTOMER_STATS_MAX_IDS} customer ids`,
+    );
+  }
+  return deduped;
+}
+
+/**
+ * Order stats for a BOUNDED set of current-page customer ids, keyed by
+ * customer_id. One aggregate (no N+1, no full-orders load); supabase runs the
+ * `get_customer_stats_for_ids` RPC under RLS, mock aggregates the demo arrays
+ * with the SAME semantics. Every AUTHORIZED requested customer that exists gets
+ * a row — including zero-order stores (`count: 0`, no `lastOrder`); an unknown
+ * or inaccessible id simply has no entry (never fabricated).
+ */
+export async function getCustomerStatsForIds(
+  ids: string[],
+): Promise<Record<string, CustomerRowStat>> {
+  const wanted = normalizeStatIds(ids);
+  if (wanted.length === 0) return {};
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbGetCustomerStatsForIds(wanted);
+  }
+  // Mock: start from the requested customers that EXIST (mirrors the RPC's
+  // "visible customers" base — a missing id yields no row), seed each with a
+  // zero-state, then fold in linked orders (guest orders have no customerId).
+  const requested = new Set(wanted);
+  const existing = new Set(
+    customers.filter((c) => requested.has(c.id)).map((c) => c.id),
+  );
+  const out: Record<string, CustomerRowStat> = {};
+  for (const id of existing) out[id] = { count: 0 };
+  for (const order of orders) {
+    if (!order.customerId || !existing.has(order.customerId)) continue;
+    const s = out[order.customerId];
+    s.count += 1;
+    if (!s.lastOrder || order.createdAt > s.lastOrder) {
+      s.lastOrder = order.createdAt;
+    }
+  }
+  return out;
+}
 
 export async function listCustomers(): Promise<Customer[]> {
   if (getDataMode() === "supabase") {

@@ -1,13 +1,13 @@
 import { Plus, Store, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CustomersTable, type CustomerRowStat } from "@/components/admin/customers-table";
+import { CustomersTable } from "@/components/admin/customers-table";
 import { EmptyState } from "@/components/empty-state";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listOrders, searchCustomers } from "@/lib/data";
+import { getCustomerStatsForIds, getDataMode, searchCustomers } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
 import type { CustomerQuery } from "@/lib/types";
 
@@ -40,10 +40,7 @@ export default async function AdminCustomersPage({
   if (initialStatus !== "all") query.status = initialStatus;
   if (initialLink !== "all") query.hasLink = initialLink === "has";
 
-  const [firstPage, orders] = await Promise.all([
-    searchCustomers(query, 0, PAGE_SIZE),
-    listOrders(),
-  ]);
+  const firstPage = await searchCustomers(query, 0, PAGE_SIZE);
 
   // Creating a store is owner/admin-only (enforced by create_customer). In
   // mock mode it's the open demo, so the CTA always shows.
@@ -57,18 +54,10 @@ export default async function AdminCustomersPage({
     ? (await listSignupRequests()).filter((r) => r.status === "pending").length
     : 0;
 
-  // Per-store order stats, keyed by customer id (built from every order, so a
-  // "load more" page's rows still resolve their stats). A future aggregate
-  // RPC could avoid loading the full orders list.
-  const stats: Record<string, CustomerRowStat> = {};
-  for (const order of orders) {
-    if (!order.customerId) continue;
-    const s = (stats[order.customerId] ??= { count: 0 });
-    s.count += 1;
-    if (!s.lastOrder || order.createdAt > s.lastOrder) {
-      s.lastOrder = order.createdAt;
-    }
-  }
+  // Per-store order stats for ONLY the current page's ids — one bounded
+  // aggregate (get_customer_stats_for_ids), never the full orders collection
+  // (M8F.3). "Load more" pages fetch their own stats via searchCustomersAction.
+  const stats = await getCustomerStatsForIds(firstPage.map((c) => c.id));
 
   const hasFilters =
     initialQuery.trim() !== "" || initialStatus !== "all" || initialLink !== "all";

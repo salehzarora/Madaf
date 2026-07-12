@@ -11,13 +11,11 @@ import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { searchCustomersAction } from "@/lib/actions/customers";
+import type { CustomerRowStat } from "@/lib/data/customers";
 import { formatDate, formatNumber } from "@/lib/format";
 import type { Customer } from "@/lib/types";
 
-export interface CustomerRowStat {
-  count: number;
-  lastOrder?: string;
-}
+export type { CustomerRowStat };
 
 /** Server page size — mirrors CUSTOMERS_PAGE in the action. */
 const PAGE_SIZE = 50;
@@ -35,7 +33,7 @@ type LinkFilter = "all" | "has" | "none";
  */
 export function CustomersTable({
   customers: initialCustomers,
-  stats,
+  stats: initialStats,
   locale,
   dict,
   initialQuery = "",
@@ -57,6 +55,10 @@ export function CustomersTable({
   const [linkFilter, setLinkFilter] = useState<LinkFilter>(initialLink);
 
   const [rows, setRows] = useState<Customer[]>(initialCustomers);
+  // Per-store stats accumulate across pages: seeded from the SSR page, then
+  // MERGED with each server page's stats (searchCustomersAction returns stats
+  // for only that page's ids). On a filter change page 0 REPLACES the map.
+  const [stats, setStats] = useState<Record<string, CustomerRowStat>>(initialStats);
   const [hasMore, setHasMore] = useState(initialCustomers.length >= PAGE_SIZE);
   const [loading, startLoading] = useTransition();
   const firstRun = useRef(true);
@@ -99,6 +101,7 @@ export function CustomersTable({
       if (loadGen.current !== myGen) return; // superseded by a newer filter
       if (result.ok) {
         setRows(result.customers ?? []);
+        setStats(result.stats ?? {}); // fresh page 0 → replace the stats map
         setHasMore(!!result.hasMore);
       }
     });
@@ -118,6 +121,8 @@ export function CustomersTable({
         const seen = new Set(rows.map((c) => c.id));
         setRows((prev) => [...prev, ...page.filter((c) => !seen.has(c.id))]);
       }
+      // Merge this page's stats (keyed by id) into the accumulated map.
+      if (result.stats) setStats((prev) => ({ ...prev, ...result.stats }));
       setHasMore(!!result.hasMore && page.length > 0);
     });
   }

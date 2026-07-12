@@ -32,10 +32,13 @@ export {
 export {
   createCustomer,
   getCustomer,
+  getCustomerStatsForIds,
   listCustomers,
   searchCustomers,
   setCustomerActive,
   updateCustomer,
+  CUSTOMER_STATS_MAX_IDS,
+  type CustomerRowStat,
   type CustomerWriteInput,
 } from "./customers";
 export {

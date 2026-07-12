@@ -55,6 +55,7 @@ import {
 } from "@/lib/products-query";
 
 import type { Db } from "./supabase-context";
+import type { CustomerRowStat } from "./customers";
 import { getDataContext, NO_TENANT } from "@/lib/auth/session";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
@@ -657,6 +658,42 @@ export async function sbGetManufacturer(
     mapManufacturer(data),
   ]);
   return signed;
+}
+
+// ── Customer order statistics (M8F.3) ─────────────────────────────────────
+// One bounded aggregate for the current Customers page's ids — replaces the
+// former full-orders scan. SECURITY INVOKER RPC: RLS scopes both customers
+// (can_access_customer) and the joined orders (can_access_order), so a
+// sales_rep's stats cover only their assigned stores and an inaccessible id
+// yields no row. The tenant is server-derived; ids are a bounded array arg.
+type CustomerStatDbRow = {
+  customer_id: string;
+  order_count: number | string;
+  last_order_at: string | null;
+};
+
+export async function sbGetCustomerStatsForIds(
+  ids: string[],
+): Promise<Record<string, CustomerRowStat>> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return {};
+  // Only UUID ids can match customers.id (a non-UUID would cast-fail the uuid[]
+  // arg); the RPC starts from visible customers, so a dropped id has no row.
+  const uuidIds = ids.filter(isUuid);
+  if (uuidIds.length === 0) return {};
+  const { data, error } = await client.rpc("get_customer_stats_for_ids", {
+    p_tenant_id: tenantId,
+    p_customer_ids: uuidIds,
+  });
+  if (error) fail("getCustomerStatsForIds", error.message);
+  const out: Record<string, CustomerRowStat> = {};
+  for (const row of (data as CustomerStatDbRow[] | null) ?? []) {
+    out[row.customer_id] = {
+      count: Number(row.order_count) || 0,
+      lastOrder: row.last_order_at ?? undefined,
+    };
+  }
+  return out;
 }
 
 export async function sbListCustomers(): Promise<Customer[]> {

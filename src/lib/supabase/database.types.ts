@@ -1953,6 +1953,14 @@ export type Database = {
         }
         Returns: string
       }
+      get_customer_stats_for_ids: {
+        Args: { p_customer_ids: string[]; p_tenant_id: string }
+        Returns: {
+          customer_id: string
+          last_order_at: string
+          order_count: number
+        }[]
+      }
       get_showcase_catalog: { Args: { p_token: string }; Returns: Json }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }
