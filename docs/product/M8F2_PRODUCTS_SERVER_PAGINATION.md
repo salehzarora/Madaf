@@ -56,49 +56,75 @@ to 1 (`withProductFilterChange`); pagination links keep all active filters
 
 ## Supported search fields
 
-Free-text `q` matches (complete, server-side, exact-count- and
-pagination-compatible):
+Free-text `q` matches the product's **own top-level columns** — complete,
+server-side, exact-count- and pagination-compatible in one bounded `.or()`:
 
 - product name (`name_ar`, `name_he`, `name_en`)
 - SKU (`sku`)
 - barcode (`barcode`) — **added** in M8F.2 (the old UI didn't search it)
-- **manufacturer / brand name (all three locales)** — the pre-M8F.2 search
-  matched the manufacturer name (current locale only); **restored** here and
-  **improved** to all three locales.
+
+**Manufacturer scoping** is the first-class manufacturer **FILTER** (`.eq` on
+`manufacturer_id`) — complete, bounded, exact — and category scoping is the
+category filter. Category name was never free-text searchable.
 
 ### Previous search contract (verified against base `c4e9929`)
 
-The base `ProductsTable` predicate matched: `translations.{he,ar,en}.name`,
-`sku`, and `manufacturer.name[locale]` (current locale only). It did **not**
-match barcode or category name. So the previously-searchable fields were
-**product name (3 locales), SKU, and manufacturer name (current locale)**.
-M8F.2 preserves all of them (manufacturer name broadened to 3 locales) and adds
-barcode. **Category name was never searchable and is not added.**
+The base `ProductsTable` predicate matched `translations.{he,ar,en}.name`,
+`sku`, and `manufacturer.name[locale]` (current locale only) — not barcode, not
+category name. So the previously-searchable fields were **product name (3
+locales), SKU, and manufacturer name (current locale)**.
 
-### How the manufacturer-name search stays complete + safe (no migration)
+### Manufacturer/brand-name free-text search — BLOCKED ON DATABASE DESIGN
 
-Product-name/SKU/barcode are the product's own columns → one `.or(... ilike)`.
-Manufacturer name lives on the related `manufacturers` table; PostgREST can't
-`OR` a top-level column with a related-table column in one query. Rather than a
-migration, M8F.2 resolves the matching brand ids **first** and unions them in:
+The base substring-matched the manufacturer NAME (it held the full manufacturer
+list in memory). Reproducing that as a **complete, exact, count-/pagination-
+compatible** server-side query is **not expressible** in PostgREST:
 
-1. `sbManufacturerIdsMatching(client, tenant, term)` — a **complete (uncapped),
-   tenant-scoped** query over the `manufacturers` reference table returning
-   **all** brand ids whose `name_ar/he/en` match. This is **not** a capped
-   pre-scan of a large relation and **not** an unbounded id list: `manufacturers`
-   is bounded per-tenant reference data — the very set already loaded once for
-   the filter dropdown. Precedent: `sbSearchCustomers` (`hasLink`) and
-   `sbSearchInventoryMovements` (`productIds`) use the same pattern.
-2. The products `.or()` adds `manufacturer_id.in.(…thoseIds)` alongside the
-   name/sku/barcode `ilike`s. The **same** pre-resolved id set feeds the count,
-   the page, and the export, so count == list and pagination is exact.
+- The top-level `.or()` can reference only the parent (`products`) columns.
+- An embedded/`!inner` filter (`manufacturers!inner … name.ilike`) filters the
+  parent by manufacturer name but with **AND** semantics — it cannot be `OR`-ed
+  with the product's own-column matches, so products that match by name/SKU but
+  not by brand would be dropped.
+- The only single-query fold-in is pre-resolving the matching brand ids and
+  adding `manufacturer_id.in.(…all of them…)` — an **unbounded** URL list whose
+  size grows with the match set and can exceed URL/query limits (a prior
+  attempt did exactly this). That is not acceptable and has been **removed**.
 
-Mock mirrors this exactly: `filterMockProducts` passes each product's
-manufacturer name (via `manufacturerById`) to `productMatchesSearch`, which ORs
-the product's own columns with the brand name (all locales). Because the brand
-pre-query is **complete** and expressible with the **existing schema +
-authenticated PostgREST**, this is the "implement it" path — **not**
-`BLOCKED ON DATABASE DESIGN`.
+A complete, exact, pagination-compatible union of the product's own columns with
+the related manufacturer name therefore **requires a database object** (below).
+Until then, manufacturer-name **free-text** search is not provided; the bounded
+manufacturer **filter** preserves the operator's ability to see a brand's
+products. Guarded by a source-level test
+(`no unbounded manufacturer-id .in() expansion`).
+
+#### Smallest additive database design (proposal — NOT implemented)
+
+Preferred: a **generated `search_text` column** on `products` that concatenates
+the product's searchable text with the manufacturer name, kept current.
+
+- **Option (a) — generated column + trigger:** `products.search_text text`
+  populated by a `BEFORE INSERT/UPDATE` trigger on `products` from its own
+  columns **plus** a lookup of `manufacturers.name_{ar,he,en}` by
+  `manufacturer_id`, plus an `AFTER UPDATE OF name_* ON manufacturers` trigger
+  that refreshes `search_text` for that brand's products. Search becomes one
+  bounded `search_text ILIKE '%term%'` — complete, exact count, server
+  pagination, no id list.
+- **Option (b) — denormalized `manufacturer_name`:** a `products.manufacturer_name`
+  text column synced by the same two triggers; the `.or()` adds one
+  `manufacturer_name.ilike` term (still bounded).
+- **Option (c) — RPC / view:** a `SECURITY INVOKER` view or RPC that joins
+  `products`→`manufacturers` and exposes the combined text; the data layer
+  filters/paginates/counts against it.
+- **RLS / tenant:** unchanged — the column/view stays on `products` under the
+  existing tenant-scoped SELECT policy; `search_text`/`manufacturer_name` carry
+  no cross-tenant data; the trigger writes run in the product/manufacturer write
+  path already gated by the catalog RPCs.
+- **Params / count / pagination / fields:** identical to today
+  (`ProductsQuery`; count-first + `.range`; sort unchanged); search field set
+  gains manufacturer name.
+- **Index:** only if measured — a `pg_trgm` GIN on `search_text` for large
+  catalogs; **not** added now.
+- **Not implemented / no migration** pending control-room approval.
 
 ## Filters
 
@@ -160,35 +186,62 @@ uncapped, tenant-scoped `listCategories`/`listManufacturers`.
 
 ## Deterministic sorting
 
-**The single mock/supabase contract:**
+Per-mode deterministic order (skip-/dup-free within each mode):
 
-1. Non-blank SKUs sort **before** blank ones. A SKU is **blank** when it is
-   NULL/missing, empty (`""`), or whitespace-only.
-2. Among non-blank SKUs: ascending by raw SKU, **by UTF-16 code unit**
-   (`<`/`>`) — **not** `localeCompare` (whose result varies by environment
-   locale). For the ASCII SKUs the app produces this equals the DB byte order.
-3. Case: code-unit, so uppercase sorts before lowercase (`'D'`=0x44 < `'a'`=0x61).
-4. Numeric-looking SKUs: plain string order (`"A-10"` < `"A-2"` because
-   `'1'` < `'2'`) — no natural/numeric sort.
-5. Duplicate SKUs → the **id** tie-break.
-6. Final unique tie-breaker: `id` ascending (code-unit).
+1. Non-blank SKUs before blank (NULL/empty/whitespace) ones.
+2. Non-blank SKUs ascending: mock by UTF-16 **code unit** (`compareProductsForList`
+   + `isBlankSku`); supabase `.order("sku", { ascending, nullsFirst:false })`.
+3. Final unique tie-break: `id` ascending.
 
-Mock: `compareProductsForList` (+ `isBlankSku`). Supabase:
-`.order("sku", { ascending: true, nullsFirst: false }).order("id")`. **Parity:**
-the product write path (`readProductInput` → `str()` trims blanks to
-`undefined` → stored **NULL**) never stores empty/whitespace SKUs, so the DB
-only holds a non-blank value or NULL — for which `nullsFirst:false` (NULL last)
-+ ASCII code-unit ordering matches the mock exactly. The fixture test
-(`A-2`, `A-10`, lowercase, duplicate, empty, whitespace, NULL, equal-SKU
-distinct ids) asserts the exact order and **no duplicate or skipped row across
-pages**. (A hand-inserted empty-string SKU is the one value the app can't
-produce; fully DB-guaranteed byte ordering for arbitrary SKUs would need a
-`COLLATE "C"`/generated sort column — a migration, out of scope.)
+The old list sorted by **category shelf order then SKU** (client-side); shelf
+order lives on the `categories` relation and can't be expressed server-side
+without a denormalized column, so SKU (the old secondary key) is promoted to
+primary — within a selected category the order is identical to before.
 
-The old list sorted by **category shelf order then SKU**, but shelf order lives
-on the `categories` relation and can't be expressed server-side without a
-denormalized column (migration). SKU (the old **secondary** key) is promoted to
-primary; within a selected category the order is identical to before.
+### Exact mock/supabase parity — BLOCKED ON DATABASE DESIGN
+
+The accepted SKU domain is **not** collation-safe, and the two modes order it
+differently. Findings:
+
+- **Validation (`create_product`/`update_product` RPCs):** SKU is
+  `nullif(trim(...), '')` (blank → NULL) and length-capped at 64. There is **no
+  format restriction** — lowercase, mixed case, Unicode, punctuation and
+  internal spaces are all accepted.
+- **Schema:** `products.sku` is plain `text` with **no explicit `COLLATE`**;
+  the unique index is `(tenant_id, sku) where sku is not null`.
+- **Local DB / column collation (measured):** database `lc_collate =
+  en_US.UTF-8`; the `sku` column inherits the **default** (`en_US.UTF-8`) — not
+  `C`, and not pinned by any migration.
+- **Measured divergence** (`ORDER BY sku` vs code-unit / `COLLATE "C"`):
+  - `en_US`: `A-10, A-2, a-5, A-C, AB, DUP`
+  - `C`    : `A-10, A-2, A-C, AB, DUP, a-5`
+  A lowercase/punctuation SKU (`a-5`, `A-C`) sorts **differently** — so mock
+  (code-unit) and supabase (`en_US`) do **not** agree over the full valid SKU
+  domain. (Empty/whitespace never reach the DB — the write path stores NULL —
+  and current seed/fixture SKUs are uppercase `MDF-NNNN` where the two agree,
+  but the application accepts values where they do not.)
+
+Neither the schema nor validation restricts SKUs to a collation-safe domain
+(rules out outcome A), the DB collation can't be forced per-`ORDER BY` through
+PostgREST (no collation option), and replicating `en_US` ICU/glibc collation in
+JS is infeasible (rules out mirroring the DB in mock). Exact parity therefore
+requires a **database object** and is **not** created here.
+
+#### Smallest additive database design (proposal — NOT implemented)
+
+- **Preferred — pin the sort collation:** `ALTER TABLE products ALTER COLUMN sku
+  TYPE text COLLATE "C";` (or add a generated `sku_sort text COLLATE "C"`
+  mirroring `sku`). `ORDER BY sku` (or `sku_sort`) then equals byte/code-unit
+  order in **every** environment, matching the mock comparator exactly for all
+  SKUs. The unique index `(tenant_id, sku)` is unaffected by ordering collation.
+- **Alternative — normalized generated sort key:** a generated column (e.g.
+  lower/normalized) if a case-insensitive operator order is preferred; the mock
+  comparator would mirror that same normalization.
+- **RLS / tenant / params / count / pagination / fields:** all unchanged — this
+  only changes the SKU **ordering** collation.
+- **Index:** the existing `(tenant_id, sku)` unique index already supports the
+  ordered scan; a dedicated sort index only if measured.
+- **Not implemented / no migration** pending control-room approval.
 
 ## URL state & rapid-filter behavior
 
@@ -304,16 +357,22 @@ orders-search + products-search; CI runs `npm test`.
 No migration; no `.sql`/RLS/storage-policy change; no `service_role` change; no
 product/inventory lifecycle, legal, or payment change; no hosted command.
 
-## Deferred (not done in this phase)
+## BLOCKED ON DATABASE DESIGN (require control-room approval)
+
+- **Complete manufacturer/brand-name free-text search** — needs a generated
+  `search_text` / denormalized `manufacturer_name` column (or RPC/view). See
+  _Manufacturer/brand-name free-text search_ above. Interim: the manufacturer
+  filter.
+- **Exact mock/supabase SKU-sort parity over the full valid SKU domain** — needs
+  `sku` (or a generated sort column) `COLLATE "C"`. See _Exact mock/supabase
+  parity_ above. Interim: per-mode deterministic SKU order (agrees for the
+  current uppercase-ASCII SKUs).
+
+## Deferred (not done in this phase, no migration)
 
 - **Category-shelf-ordered server sort.** Would need a denormalized
-  `category_sort_order` column on `products` (a migration). SKU order is used
-  instead (documented above).
-- **DB-guaranteed byte-exact SKU ordering for pathological SKUs** (empty/
-  whitespace/collation-sensitive). Would need a `COLLATE "C"`/generated sort
-  column (migration). The app write path prevents such SKUs, so mock/supabase
-  agree for all app-producible data.
-- **Full-catalog reads on other admin routes** (e.g. `admin/orders/[id]`,
+  `category_sort_order` column (a migration). SKU order is used instead.
+- **Full-catalog reads on other admin routes** (`admin/orders/[id]`,
   `admin/manufacturers`, `admin/documents/[id]`) load their own products as
   props — pre-existing, out of M8F.2 scope (which targets the Products list).
 

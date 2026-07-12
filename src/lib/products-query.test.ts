@@ -16,7 +16,6 @@ import {
   compareProductsForList,
   hasActiveProductFilters,
   isBlankSku,
-  manufacturerMatchesSearch,
   parseProductsQuery,
   productMatchesSearch,
   productMatchesStatus,
@@ -28,23 +27,17 @@ import {
   type ProductsQuery,
 } from "./products-query";
 import { listProductsForExport, searchProducts } from "./data/products";
-import { manufacturerById, products as mockProducts } from "./mock";
-import type { LocalizedText, Product } from "./types";
+import { products as mockProducts } from "./mock";
+import type { Product } from "./types";
 
 const TOTAL = mockProducts.length; // 34 mock catalog rows
 const DRINKS = "cat-drinks"; // 7 products
 const COCA = "m-coca"; // 6 products
-const STRAUSS = "m-strauss"; // 4 products; brand name "Strauss" not in product names
 
-/** The manufacturer name for a product (mirrors what the data layer passes to
- * productMatchesSearch), so the tests derive the SAME expected set as the
- * mock/supabase search. */
-function manOf(p: Product): LocalizedText | undefined {
-  return manufacturerById.get(p.manufacturerId)?.name;
-}
-/** Full search match INCLUDING manufacturer name — the data-layer contract. */
+/** Free-text match — the data-layer contract (product's own columns only;
+ * manufacturer/brand-name free-text search is BLOCKED ON DATABASE DESIGN). */
 function matches(p: Product, term: string): boolean {
-  return productMatchesSearch(p, term, manOf(p));
+  return productMatchesSearch(p, term);
 }
 
 /** Base query = no filters, page 1, default size. */
@@ -418,49 +411,21 @@ test("searchProducts (mock): every row carries an id (edit/detail links work)", 
   assert.ok(res.products.every((p) => typeof p.id === "string" && p.id.length > 0));
 });
 
-// ── 37. Manufacturer/brand-name search (all locales) — restored in M8F.2 ───
-// The pre-M8F.2 client search matched the manufacturer name (current locale);
-// M8F.2 restores it (supabase via a complete tenant-scoped brand pre-query →
-// manufacturer_id.in.(…)) and improves it to all three locales.
-test("manufacturerMatchesSearch: matches brand name in ar / he / en", () => {
-  const strauss = manufacturerById.get(STRAUSS)!.name;
-  assert.ok(manufacturerMatchesSearch(strauss, "Strauss"));
-  assert.ok(manufacturerMatchesSearch(strauss, "שטראוס"));
-  assert.ok(manufacturerMatchesSearch(strauss, "شتراوس"));
-  assert.ok(!manufacturerMatchesSearch(strauss, "zzz-nomatch"));
-  assert.ok(!manufacturerMatchesSearch(null, "Strauss"));
+// ── 37. Search covers ONLY the product's own columns (manufacturer-name
+// free-text search is BLOCKED ON DATABASE DESIGN; manufacturer is a filter). ─
+test("searchProducts (mock): a brand name that isn't in any product name matches nothing", async () => {
+  // "Strauss" is a manufacturer name but appears in no product's own columns →
+  // free-text search must NOT return its products (that capability is blocked).
+  const res = await searchProducts(base({ search: "Strauss", pageSize: 100 }));
+  assert.equal(res.total, mockProducts.filter((p) => matches(p, "Strauss")).length);
+  assert.ok(res.products.every((p) => productMatchesSearch(p, "Strauss")));
 });
 
-test("searchProducts (mock): finds a brand's products by brand name (en/he/ar)", async () => {
-  const straussIds = mockProducts
-    .filter((p) => p.manufacturerId === STRAUSS)
-    .map((p) => p.id);
-  assert.ok(straussIds.length > 0);
-  for (const term of ["Strauss", "שטראוס", "شتراوس"]) {
-    const res = await searchProducts(base({ search: term, pageSize: 100 }));
-    // Expected = full contract (own columns OR brand name) — mock/supabase mirror.
-    assert.equal(res.total, mockProducts.filter((p) => matches(p, term)).length);
-    // ALL of the brand's products are returned (found via the brand name).
-    const got = new Set(res.products.map((p) => p.id));
-    assert.ok(straussIds.every((id) => got.has(id)), `all Strauss products for ${term}`);
-    assert.ok(res.products.every((p) => matches(p, term)));
-  }
-});
-
-test("searchProducts (mock): brand-name search composes with category filter", async () => {
-  const cat = mockProducts.find((p) => p.manufacturerId === STRAUSS)!.categoryId;
-  const res = await searchProducts(base({ search: "Strauss", categoryId: cat, pageSize: 100 }));
-  assert.equal(
-    res.total,
-    mockProducts.filter((p) => p.categoryId === cat && matches(p, "Strauss")).length,
-  );
-  assert.ok(res.products.every((p) => p.categoryId === cat));
-  // A category with no Strauss products + brand search → empty (complete & exact).
-  const drinks = await searchProducts(base({ search: "Strauss", categoryId: DRINKS, pageSize: 100 }));
-  assert.equal(
-    drinks.total,
-    mockProducts.filter((p) => p.categoryId === DRINKS && matches(p, "Strauss")).length,
-  );
+test("searchProducts (mock): manufacturer scoping stays available via the FILTER", async () => {
+  // The bounded manufacturer FILTER still returns exactly that brand's products.
+  const res = await searchProducts(base({ manufacturerId: "m-strauss", pageSize: 100 }));
+  assert.equal(res.total, mockProducts.filter((p) => p.manufacturerId === "m-strauss").length);
+  assert.ok(res.products.every((p) => p.manufacturerId === "m-strauss"));
 });
 
 // ── 38. Exact sort contract on the tricky SKU fixture + no dup/skip ─────────
@@ -544,4 +509,29 @@ test("guard: root layout no longer hydrates the full catalog", () => {
   const root = readSrc("app/[locale]/layout.tsx");
   assert.ok(!/\blistProducts\b/.test(root), "root layout must NOT load products");
   assert.ok(!root.includes("ShopDataProvider"), "root layout must NOT provide ShopData");
+});
+
+// The products search must never fold matching manufacturer ids into an
+// unbounded `.in()` URL list (query size proportional to the match set).
+test("guard: no unbounded manufacturer-id .in() expansion in the products query", () => {
+  const src = readSrc("lib/data/supabase-reads.ts");
+  assert.ok(!/manufacturer_id\.in\./.test(src), "must NOT fold brand-match ids into an .in() list");
+  assert.ok(!/sbManufacturerIdsMatching/.test(src), "must NOT run a brand-id pre-query");
+});
+
+// Provider COVERAGE (not just absence): the storefront + documents routes that
+// require full ShopData must keep a full provider after the layout split.
+test("guard: (shop) layout provides FULL ShopData + Cart to storefront routes", () => {
+  const shop = readSrc("app/[locale]/(shop)/layout.tsx");
+  assert.ok(shop.includes("ShopDataProvider"), "(shop) must provide ShopData");
+  assert.ok(shop.includes("CartProvider"), "(shop) must provide Cart");
+  assert.ok(/\blistProducts\b/.test(shop), "(shop) must hydrate full products");
+  assert.ok(/\blistCustomers\b/.test(shop), "(shop) must hydrate full customers");
+});
+
+test("guard: admin/documents/[id] provides products+customers to DocumentView", () => {
+  const doc = readSrc("app/[locale]/admin/documents/[id]/page.tsx");
+  assert.ok(doc.includes("ShopDataProvider"), "documents page must wrap DocumentView in a provider");
+  assert.ok(/\blistProducts\b/.test(doc), "documents page must load products for line-item names");
+  assert.ok(/\blistCustomers\b/.test(doc), "documents page must load customers for the buyer name");
 });

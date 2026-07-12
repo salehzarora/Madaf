@@ -19,7 +19,7 @@
  *   pageSize     rows per page (bounded).
  */
 import type { Locale } from "@/i18n/config";
-import type { LocalizedText, Product } from "@/lib/types";
+import type { Product } from "@/lib/types";
 
 /** Default rows per page — mirrors the orders/customers/movements convention. */
 export const PRODUCTS_PAGE_SIZE = 50;
@@ -194,45 +194,29 @@ export interface ProductExportRow {
 const SEARCH_LOCALES: Locale[] = ["ar", "he", "en"];
 
 /**
- * Does a product match a free-text term? Mirrors the supabase search EXACTLY:
- * the product's own top-level columns — name (all three locales), SKU, barcode
- * — OR (when the manufacturer is supplied) the manufacturer/brand NAME in any
- * locale. The manufacturer-name match preserves the pre-M8F.2 client search
- * (which matched the manufacturer name) and improves it to all three locales;
- * supabase resolves it via a complete, tenant-scoped manufacturer pre-query
- * feeding `manufacturer_id.in.(…)` (see supabase-reads.ts). Used by the mock
- * data layer and the tests so mock and supabase agree. Category name is NOT
- * searched (it was not searchable before M8F.2 either).
+ * Does a product match a free-text term? Mirrors the supabase `.or()` search
+ * EXACTLY: the product's own top-level columns — name (all three locales), SKU,
+ * and barcode. Used by the mock data layer and the tests so mock and supabase
+ * agree and stay exact + count-/pagination-compatible.
+ *
+ * Manufacturer/brand NAME and category NAME are NOT free-text searched here:
+ * OR-unioning a related table's name with the product's own columns cannot be
+ * expressed in one count/pagination-compatible PostgREST query without a DB
+ * object (generated search column / denormalized column / RPC / view), and the
+ * only fold-in — `manufacturer_id.in.(all matching ids)` — is an unbounded URL
+ * list. Manufacturer scoping is instead the first-class manufacturer FILTER
+ * (bounded `.eq`). Complete brand-name free-text search is BLOCKED ON DATABASE
+ * DESIGN — see docs/product/M8F2_PRODUCTS_SERVER_PAGINATION.md. (Category name
+ * was never searchable.)
  */
-export function productMatchesSearch(
-  product: Product,
-  term: string,
-  manufacturerName?: LocalizedText | null,
-): boolean {
+export function productMatchesSearch(product: Product, term: string): boolean {
   const q = term.trim().toLowerCase();
   if (!q) return true;
-  const ownMatch = [
+  return [
     ...SEARCH_LOCALES.map((l) => product.translations[l]?.name ?? ""),
     product.sku ?? "",
     product.barcode ?? "",
   ]
-    .join(" ")
-    .toLowerCase()
-    .includes(q);
-  if (ownMatch) return true;
-  return manufacturerMatchesSearch(manufacturerName, term);
-}
-
-/** Does a manufacturer/brand NAME (any locale) match the term? The mirror of the
- * supabase manufacturer pre-query. Kept separate so both the combined product
- * match and the pre-query semantics are unit-tested directly. */
-export function manufacturerMatchesSearch(
-  name: LocalizedText | null | undefined,
-  term: string,
-): boolean {
-  const q = term.trim().toLowerCase();
-  if (!q || !name) return false;
-  return SEARCH_LOCALES.map((l) => name[l] ?? "")
     .join(" ")
     .toLowerCase()
     .includes(q);

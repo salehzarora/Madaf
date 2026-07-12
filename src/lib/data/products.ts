@@ -129,14 +129,10 @@ function filterMockProducts(query: ProductsQuery): Product[] {
         return false;
       }
       if (!productMatchesStatus(p, query.status)) return false;
-      // Search matches the product's own columns OR its manufacturer/brand
-      // name (mirrors the supabase manufacturer pre-query) — the pre-M8F.2
-      // client search matched the manufacturer name too.
-      return productMatchesSearch(
-        p,
-        query.search,
-        manufacturerById.get(p.manufacturerId)?.name,
-      );
+      // Product's own columns only (name/sku/barcode) — mirrors the supabase
+      // `.or()`. Manufacturer/brand-name free-text search is BLOCKED ON DATABASE
+      // DESIGN; manufacturer scoping is the bounded manufacturer FILTER above.
+      return productMatchesSearch(p, query.search);
     })
     .sort(compareProductsForList);
 }
