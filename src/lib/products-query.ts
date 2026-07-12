@@ -19,7 +19,7 @@
  *   pageSize     rows per page (bounded).
  */
 import type { Locale } from "@/i18n/config";
-import type { Product } from "@/lib/types";
+import type { LocalizedText, Product } from "@/lib/types";
 
 /** Default rows per page — mirrors the orders/customers/movements convention. */
 export const PRODUCTS_PAGE_SIZE = 50;
@@ -193,33 +193,47 @@ export interface ProductExportRow {
 
 const SEARCH_LOCALES: Locale[] = ["ar", "he", "en"];
 
+/** Literal, case-insensitive substring match on ONE field — mirrors the RPC's
+ * `strpos(lower(field), lower(term)) > 0` (per-field, not a joined haystack, so
+ * a term can't match across a field boundary). */
+function fieldMatches(field: string | null | undefined, q: string): boolean {
+  return (field ?? "").toLowerCase().includes(q);
+}
+
 /**
- * Does a product match a free-text term? Mirrors the supabase `.or()` search
- * EXACTLY: the product's own top-level columns — name (all three locales), SKU,
- * and barcode. Used by the mock data layer and the tests so mock and supabase
- * agree and stay exact + count-/pagination-compatible.
- *
- * Manufacturer/brand NAME and category NAME are NOT free-text searched here:
- * OR-unioning a related table's name with the product's own columns cannot be
- * expressed in one count/pagination-compatible PostgREST query without a DB
- * object (generated search column / denormalized column / RPC / view), and the
- * only fold-in — `manufacturer_id.in.(all matching ids)` — is an unbounded URL
- * list. Manufacturer scoping is instead the first-class manufacturer FILTER
- * (bounded `.eq`). Complete brand-name free-text search is BLOCKED ON DATABASE
- * DESIGN — see docs/product/M8F2_PRODUCTS_SERVER_PAGINATION.md. (Category name
- * was never searchable.)
+ * Does a product match a free-text term? Mirrors the RPC search EXACTLY (M8F.2):
+ * a literal, case-insensitive substring against the product's OWN columns —
+ * name (all three locales), SKU, barcode — OR (when the manufacturer name is
+ * supplied) the manufacturer/brand NAME in any locale. The manufacturer-name
+ * arm restores the pre-M8F.2 brand search and broadens it to all three locales;
+ * supabase resolves it through the `search_product_page_ids` RPC's real
+ * products⇄manufacturers LEFT JOIN. Category name is NOT searched (it never was).
+ * Used by the mock data layer and the tests so mock and supabase agree.
  */
-export function productMatchesSearch(product: Product, term: string): boolean {
+export function productMatchesSearch(
+  product: Product,
+  term: string,
+  manufacturerName?: LocalizedText | null,
+): boolean {
   const q = term.trim().toLowerCase();
   if (!q) return true;
-  return [
-    ...SEARCH_LOCALES.map((l) => product.translations[l]?.name ?? ""),
-    product.sku ?? "",
-    product.barcode ?? "",
-  ]
-    .join(" ")
-    .toLowerCase()
-    .includes(q);
+  const own =
+    SEARCH_LOCALES.some((l) => fieldMatches(product.translations[l]?.name, q)) ||
+    fieldMatches(product.sku, q) ||
+    fieldMatches(product.barcode, q);
+  return own || manufacturerMatchesSearch(manufacturerName, term);
+}
+
+/** Does a manufacturer/brand NAME (any locale) match the term? The mock mirror
+ * of the RPC's manufacturer-name arm — kept separate so both the combined match
+ * and the brand-name semantics are unit-tested directly. */
+export function manufacturerMatchesSearch(
+  name: LocalizedText | null | undefined,
+  term: string,
+): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q || !name) return false;
+  return SEARCH_LOCALES.some((l) => fieldMatches(name[l], q));
 }
 
 /** True when a product passes the status facet ("all" always passes; mock rows
@@ -233,39 +247,60 @@ export function productMatchesStatus(
   return true;
 }
 
-/** A SKU is "blank" (sorts last) when it is NULL/absent, empty, or only
- * whitespace — the mock/supabase-agreed normalization for the no-SKU case. */
-export function isBlankSku(sku: string | null | undefined): boolean {
-  return sku == null || sku.trim() === "";
+/**
+ * The SKU SORT KEY — mirrors the SQL `nullif(btrim(sku), '')`: trim ONLY ASCII
+ * spaces (btrim's default, NOT all whitespace) and treat the result as absent
+ * when empty. So a NULL/absent, all-spaces SKU sorts as "blank" (last); the
+ * ordering key for a non-blank SKU is its space-trimmed value.
+ */
+export function skuSortKey(sku: string | null | undefined): string | null {
+  if (sku == null) return null;
+  const trimmed = sku.replace(/^ +/, "").replace(/ +$/, "");
+  return trimmed === "" ? null : trimmed;
 }
 
-/** Deterministic, LOCALE-INDEPENDENT string order: compare by UTF-16 code unit
- * (`<`/`>`), never `localeCompare` (whose result varies by environment locale).
- * For the ASCII SKUs the app produces this equals the DB's byte ordering. */
-function codeUnitCompare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/** A SKU is "blank" (sorts last) when its sort key is absent — NULL, empty, or
+ * spaces-only — matching SQL `nullif(btrim(sku), '') is null`. */
+export function isBlankSku(sku: string | null | undefined): boolean {
+  return skuSortKey(sku) === null;
+}
+
+const utf8 = new TextEncoder();
+
+/**
+ * Compare two strings by their UTF-8 BYTES — EXACTLY PostgreSQL `COLLATE "C"`
+ * (byte order on the UTF-8 encoding). Not `localeCompare` (locale-dependent) and
+ * not JS `<`/`>` (UTF-16 code-UNIT order, which mis-sorts astral characters vs
+ * high-BMP relative to code points / UTF-8 bytes). Browser- and Node-safe.
+ */
+export function utf8ByteCompare(a: string, b: string): number {
+  const ba = utf8.encode(a);
+  const bb = utf8.encode(b);
+  const n = Math.min(ba.length, bb.length);
+  for (let i = 0; i < n; i++) {
+    if (ba[i] !== bb[i]) return ba[i] < bb[i] ? -1 : 1;
+  }
+  return ba.length === bb.length ? 0 : ba.length < bb.length ? -1 : 1;
 }
 
 /**
- * Deterministic product sort — the ONE contract shared by mock and supabase:
- *   1. non-blank SKUs sort BEFORE blank ones (NULL/empty/whitespace last);
- *   2. among non-blank SKUs, ascending by raw SKU, code-unit (not locale-aware);
- *   3. final unique tie-breaker: id ascending (code-unit).
- * Paging is therefore skip-/dup-free. This promotes the existing SECONDARY key
- * (SKU) to primary — the old list sorted by category SHELF order then SKU, but
- * shelf order lives on the categories relation and can't be expressed in a
- * single server-side query without a denormalized column (a migration — out of
- * scope). Supabase mirror: `.order("sku", { ascending, nullsFirst:false })`
- * (NULL last) `.order("id")`; the write path stores SKUs trimmed-or-NULL and as
- * ASCII, so the DB ordering matches this. See the M8F.2 doc.
+ * Deterministic product sort — the ONE contract shared by mock and supabase,
+ * mirroring the RPC's `order by (nullif(btrim(sku),'') is null),
+ * nullif(btrim(sku),'') collate "C" asc, id asc`:
+ *   1. non-blank SKUs before blank ones (NULL/empty/spaces-only last);
+ *   2. non-blank SKUs ascending by their space-trimmed value, UTF-8 byte order
+ *      (== `COLLATE "C"`) — locale-independent, exact in every environment;
+ *   3. final unique tie-breaker: id ascending (UTF-8 byte order).
+ * Paging is therefore skip-/dup-free. (Supabase's id is a uuid ordered by its
+ * binary value — the SKU ordering is what must match; id is only a tie-break.)
  */
 export function compareProductsForList(a: Product, b: Product): number {
-  const blankA = isBlankSku(a.sku);
-  const blankB = isBlankSku(b.sku);
-  if (blankA !== blankB) return blankA ? 1 : -1;
-  if (!blankA) {
-    const bySku = codeUnitCompare(a.sku as string, b.sku as string);
+  const ka = skuSortKey(a.sku);
+  const kb = skuSortKey(b.sku);
+  if ((ka === null) !== (kb === null)) return ka === null ? 1 : -1;
+  if (ka !== null && kb !== null) {
+    const bySku = utf8ByteCompare(ka, kb);
     if (bySku !== 0) return bySku;
   }
-  return codeUnitCompare(a.id, b.id);
+  return utf8ByteCompare(a.id, b.id);
 }

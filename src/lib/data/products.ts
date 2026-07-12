@@ -129,10 +129,13 @@ function filterMockProducts(query: ProductsQuery): Product[] {
         return false;
       }
       if (!productMatchesStatus(p, query.status)) return false;
-      // Product's own columns only (name/sku/barcode) — mirrors the supabase
-      // `.or()`. Manufacturer/brand-name free-text search is BLOCKED ON DATABASE
-      // DESIGN; manufacturer scoping is the bounded manufacturer FILTER above.
-      return productMatchesSearch(p, query.search);
+      // Own columns (name/sku/barcode) OR manufacturer/brand name — mirrors the
+      // search_product_page_ids RPC's products⇄manufacturers LEFT JOIN.
+      return productMatchesSearch(
+        p,
+        query.search,
+        manufacturerById.get(p.manufacturerId)?.name,
+      );
     })
     .sort(compareProductsForList);
 }

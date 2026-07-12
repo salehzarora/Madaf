@@ -2124,6 +2124,24 @@ export type Database = {
         }
         Returns: Json
       }
+      search_product_page_ids: {
+        Args: {
+          p_category_id?: string
+          p_manufacturer_id?: string
+          p_page?: number
+          p_page_size?: number
+          p_search?: string
+          p_status?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          page: number
+          page_size: number
+          product_ids: string[]
+          total_count: number
+          total_pages: number
+        }[]
+      }
       set_customer_active: {
         Args: { p_active: boolean; p_customer_id: string; p_tenant_id: string }
         Returns: boolean

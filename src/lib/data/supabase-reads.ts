@@ -49,7 +49,6 @@ import {
 } from "@/lib/orders-query";
 import {
   PRODUCTS_MAX_PAGE_SIZE,
-  totalProductPagesFor,
   type ProductExportRow,
   type ProductsListResult,
   type ProductsQuery,
@@ -466,51 +465,64 @@ export async function sbGetProduct(id: string): Promise<Product | undefined> {
 const PRODUCT_LIST_SELECT =
   "*, inventory_items (quantity_available, low_stock_threshold)";
 
-/** Build the tenant-scoped, filtered products query (no order/range yet).
- * Shared by the count, the paged list, and the export so their filter semantics
- * are identical. A non-UUID category/manufacturer id is handled by the callers
- * (returns empty) BEFORE calling this — those DB columns are uuid.
- *
- * Free-text searches the product's OWN columns only (name ar/he/en, sku,
- * barcode) — one bounded `.or()`. Manufacturer/brand-NAME free-text search is
- * NOT folded in: it would require either an unbounded id list (a URL that grows
- * with the match set) or a DB object; manufacturer scoping is the bounded
- * manufacturer FILTER (`.eq`) instead. Complete brand-name search is BLOCKED ON
- * DATABASE DESIGN (see the M8F.2 doc). */
-function buildProductsQuery(
+// One metadata row from public.search_product_page_ids (M8F.2). Complete
+// free-text search (product name ar/he/en + sku + barcode OR manufacturer name
+// ar/he/en) via a tenant-safe LEFT JOIN, deterministic COLLATE "C" SKU order,
+// exact count, and the CURRENT page's ordered ids (bounded ≤ page size). The
+// RPC is SECURITY INVOKER — RLS is the authorization boundary; p_tenant_id is
+// server-derived (getReadContext) belt-and-braces. Detail rows (incl. inventory
+// for availability) are fetched afterwards for just those bounded ids.
+type SearchPageRow = {
+  total_count: number | string;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  product_ids: string[] | null;
+};
+
+async function callSearchProductPage(
   client: Db,
   tenantId: string,
   query: ProductsQuery,
-  select: string,
-  selectOptions?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
-) {
-  let qb = client
+  page: number,
+  pageSize: number,
+): Promise<SearchPageRow | null> {
+  const { data, error } = await client.rpc("search_product_page_ids", {
+    p_tenant_id: tenantId,
+    p_search: query.search,
+    // Non-UUID ids are guarded to empty by the callers before we get here, so
+    // these are a valid uuid or omitted (→ RPC default null; no cast failure).
+    p_category_id: query.categoryId ?? undefined,
+    p_manufacturer_id: query.manufacturerId ?? undefined,
+    p_status: query.status,
+    p_page: page,
+    p_page_size: pageSize,
+  });
+  if (error) fail("searchProductPage", error.message);
+  return (data as SearchPageRow[] | null)?.[0] ?? null;
+}
+
+/** Fetch the detail rows for a BOUNDED set of current-page ids (≤ page size),
+ * preserving the RPC order and safely skipping any id whose row vanished
+ * between the count and the fetch (deleted concurrently). */
+async function sbProductRowsByIdsOrdered(
+  client: Db,
+  tenantId: string,
+  ids: string[],
+): Promise<ProductRow[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await client
     .from("products")
-    .select(select, selectOptions)
-    .eq("tenant_id", tenantId);
-
-  if (query.status === "active") qb = qb.eq("is_active", true);
-  else if (query.status === "inactive") qb = qb.eq("is_active", false);
-
-  if (query.categoryId) qb = qb.eq("category_id", query.categoryId);
-  if (query.manufacturerId) qb = qb.eq("manufacturer_id", query.manufacturerId);
-
-  // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
-  // then union the product's own name (all locales) / sku / barcode.
-  const term = query.search.replace(/[,()%\\*]/g, " ").trim();
-  if (term) {
-    const like = `%${term}%`;
-    qb = qb.or(
-      [
-        `name_ar.ilike.${like}`,
-        `name_he.ilike.${like}`,
-        `name_en.ilike.${like}`,
-        `sku.ilike.${like}`,
-        `barcode.ilike.${like}`,
-      ].join(","),
-    );
-  }
-  return qb;
+    .select(PRODUCT_LIST_SELECT)
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (error) fail("productRowsByIds", error.message);
+  const byId = new Map(
+    (data as unknown as ProductRow[]).map((r) => [r.id, r]),
+  );
+  return ids
+    .map((id) => byId.get(id))
+    .filter((r): r is ProductRow => r != null);
 }
 
 export async function sbSearchProducts(
@@ -526,44 +538,26 @@ export async function sbSearchProducts(
     totalPages: 1,
   };
   if (isTenantless(tenantId)) return empty;
-  // A present-but-non-UUID category/manufacturer id can match no product
-  // (those columns are uuid); return zero rows rather than a DB cast error.
+  // A present-but-non-UUID category/manufacturer id can match no product (the
+  // RPC's uuid params would cast-fail); return zero rows instead.
   if (query.categoryId && !isUuid(query.categoryId)) return empty;
   if (query.manufacturerId && !isUuid(query.manufacturerId)) return empty;
 
-  // COUNT FIRST (head, no rows) → derive totalPages → CLAMP the page, so a
-  // stale/shared/hand-edited ?page normalizes to the last page instead of a
-  // PostgREST 416 (a ranged fetch past the row count errors).
-  const { count, error: countError } = await buildProductsQuery(
-    client,
-    tenantId,
-    query,
-    "id",
-    { count: "exact", head: true },
-  );
-  if (countError) fail("searchProducts", countError.message);
-  const total = count ?? 0;
-  const totalPages = totalProductPagesFor(total, pageSize);
-  if (total === 0) return { products: [], total: 0, page: 1, pageSize, totalPages };
+  // The RPC does the search (incl. manufacturer-name via JOIN), the exact
+  // count, the deterministic C-collation order, the page clamp, and returns the
+  // current page's ORDERED ids (bounded ≤ pageSize) — no unbounded id set.
+  const row = await callSearchProductPage(client, tenantId, query, query.page, pageSize);
+  if (!row) return empty;
+  const total = Number(row.total_count) || 0;
+  const page = row.page ?? 1;
+  const totalPages = row.total_pages ?? 1;
+  const ids = row.product_ids ?? [];
+  if (ids.length === 0) return { products: [], total, page, pageSize, totalPages };
 
-  const page = Math.min(Math.max(1, query.page), totalPages);
-  const offset = (page - 1) * pageSize; // < total ⇒ always a satisfiable range
-  const { data, error } = await buildProductsQuery(
-    client,
-    tenantId,
-    query,
-    PRODUCT_LIST_SELECT,
-  )
-    .order("sku", { ascending: true, nullsFirst: false })
-    .order("id", { ascending: true })
-    .range(offset, offset + pageSize - 1);
-  if (error) fail("searchProducts", error.message);
-  // Sign ONLY the current page's images (per-request signed URLs).
-  const signed = await signProductImages(
-    client,
-    tenantId,
-    (data as unknown as ProductRow[]).map(mapProduct),
-  );
+  // Detail fetch for the bounded page ids only, kept in RPC order; sign ONLY
+  // the current page's images.
+  const rows = await sbProductRowsByIdsOrdered(client, tenantId, ids);
+  const signed = await signProductImages(client, tenantId, rows.map(mapProduct));
   return { products: signed, total, page, pageSize, totalPages };
 }
 
@@ -576,27 +570,35 @@ export async function sbListProductsForExport(
   if (query.categoryId && !isUuid(query.categoryId)) return [];
   if (query.manufacturerId && !isUuid(query.manufacturerId)) return [];
   const limit = Math.max(1, cap);
-  const { data, error } = await buildProductsQuery(
-    client,
-    tenantId,
-    query,
-    PRODUCT_LIST_SELECT,
-  )
-    .order("sku", { ascending: true, nullsFirst: false })
-    .order("id", { ascending: true })
-    .range(0, limit - 1);
-  if (error) fail("listProductsForExport", error.message);
-  // The CSV never includes images — strip the raw storage path so it never
-  // reaches the client, and sign NO images for the (potentially large) export.
-  return (data as unknown as ProductRow[]).map((row) => {
-    const product = { ...mapProduct(row), imageUrl: undefined, imageStoragePath: undefined };
-    const inv = row.inventory_items;
-    return {
-      product,
-      stockPackages: inv ? inv.quantity_available : null,
-      isLowStock: inv ? inv.quantity_available < inv.low_stock_threshold : null,
-    };
-  });
+  const batch = PRODUCTS_MAX_PAGE_SIZE; // bounded per-request id set (≤ 100)
+  const out: ProductExportRow[] = [];
+  const seen = new Set<string>();
+  // Bounded loop over RPC pages: at most one page more than needed to reach the
+  // cap; the total_pages break + the maxPages guard prevent an infinite loop,
+  // and `seen` de-dupes any id that reappears (concurrent insert shifting rows).
+  const maxPages = Math.ceil(limit / batch) + 2;
+  for (let page = 1, totalPages = 1; page <= maxPages && out.length < limit; page++) {
+    const row = await callSearchProductPage(client, tenantId, query, page, batch);
+    if (!row) break;
+    totalPages = row.total_pages ?? 1;
+    const ids = (row.product_ids ?? []).filter((id) => !seen.has(id));
+    if (ids.length > 0) {
+      ids.forEach((id) => seen.add(id));
+      const rows = await sbProductRowsByIdsOrdered(client, tenantId, ids);
+      // The CSV never includes images — strip the raw storage path so it never
+      // reaches the client; sign NO images for the export.
+      for (const r of rows) {
+        const inv = r.inventory_items;
+        out.push({
+          product: { ...mapProduct(r), imageUrl: undefined, imageStoragePath: undefined },
+          stockPackages: inv ? inv.quantity_available : null,
+          isLowStock: inv ? inv.quantity_available < inv.low_stock_threshold : null,
+        });
+      }
+    }
+    if (page >= totalPages) break;
+  }
+  return out.slice(0, limit);
 }
 
 export async function sbListCategories(): Promise<Category[]> {

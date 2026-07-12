@@ -16,28 +16,37 @@ import {
   compareProductsForList,
   hasActiveProductFilters,
   isBlankSku,
+  manufacturerMatchesSearch,
   parseProductsQuery,
   productMatchesSearch,
   productMatchesStatus,
   productsQueryToParams,
   PRODUCTS_MAX_PAGE_SIZE,
   PRODUCTS_PAGE_SIZE,
+  skuSortKey,
   totalProductPagesFor,
+  utf8ByteCompare,
   withProductFilterChange,
   type ProductsQuery,
 } from "./products-query";
 import { listProductsForExport, searchProducts } from "./data/products";
-import { products as mockProducts } from "./mock";
-import type { Product } from "./types";
+import { manufacturerById, products as mockProducts } from "./mock";
+import type { LocalizedText, Product } from "./types";
 
 const TOTAL = mockProducts.length; // 34 mock catalog rows
 const DRINKS = "cat-drinks"; // 7 products
 const COCA = "m-coca"; // 6 products
+const STRAUSS = "m-strauss"; // 4 products; brand "Strauss" not in any product name
 
-/** Free-text match — the data-layer contract (product's own columns only;
- * manufacturer/brand-name free-text search is BLOCKED ON DATABASE DESIGN). */
+/** The manufacturer name for a product (what the data layer passes to
+ * productMatchesSearch), so tests derive the SAME set as the mock/supabase RPC. */
+function manOf(p: Product): LocalizedText | undefined {
+  return manufacturerById.get(p.manufacturerId)?.name;
+}
+/** Full free-text match INCLUDING manufacturer name — the M8F.2 data-layer
+ * contract (mirrors the search_product_page_ids RPC). */
 function matches(p: Product, term: string): boolean {
-  return productMatchesSearch(p, term);
+  return productMatchesSearch(p, term, manOf(p));
 }
 
 /** Base query = no filters, page 1, default size. */
@@ -411,56 +420,110 @@ test("searchProducts (mock): every row carries an id (edit/detail links work)", 
   assert.ok(res.products.every((p) => typeof p.id === "string" && p.id.length > 0));
 });
 
-// ── 37. Search covers ONLY the product's own columns (manufacturer-name
-// free-text search is BLOCKED ON DATABASE DESIGN; manufacturer is a filter). ─
-test("searchProducts (mock): a brand name that isn't in any product name matches nothing", async () => {
-  // "Strauss" is a manufacturer name but appears in no product's own columns →
-  // free-text search must NOT return its products (that capability is blocked).
-  const res = await searchProducts(base({ search: "Strauss", pageSize: 100 }));
-  assert.equal(res.total, mockProducts.filter((p) => matches(p, "Strauss")).length);
-  assert.ok(res.products.every((p) => productMatchesSearch(p, "Strauss")));
+// ── 37. Manufacturer/brand-name free-text search — RESTORED via the RPC ────
+// The search_product_page_ids RPC OR-joins products⇄manufacturers; the mock
+// mirrors it (productMatchesSearch with the manufacturer name).
+test("manufacturerMatchesSearch: brand name in ar / he / en", () => {
+  const strauss = manufacturerById.get(STRAUSS)!.name;
+  assert.ok(manufacturerMatchesSearch(strauss, "Strauss"));
+  assert.ok(manufacturerMatchesSearch(strauss, "שטראוס"));
+  assert.ok(manufacturerMatchesSearch(strauss, "شتراوس"));
+  assert.ok(!manufacturerMatchesSearch(strauss, "zzz-nomatch"));
+  assert.ok(!manufacturerMatchesSearch(null, "Strauss"));
 });
 
-test("searchProducts (mock): manufacturer scoping stays available via the FILTER", async () => {
-  // The bounded manufacturer FILTER still returns exactly that brand's products.
-  const res = await searchProducts(base({ manufacturerId: "m-strauss", pageSize: 100 }));
-  assert.equal(res.total, mockProducts.filter((p) => p.manufacturerId === "m-strauss").length);
-  assert.ok(res.products.every((p) => p.manufacturerId === "m-strauss"));
+test("searchProducts (mock): finds a brand's products by brand name (en/he/ar)", async () => {
+  const straussIds = mockProducts.filter((p) => p.manufacturerId === STRAUSS).map((p) => p.id);
+  assert.ok(straussIds.length > 0);
+  for (const term of ["Strauss", "שטראוס", "شتراوس"]) {
+    const res = await searchProducts(base({ search: term, pageSize: 100 }));
+    assert.equal(res.total, mockProducts.filter((p) => matches(p, term)).length);
+    const got = new Set(res.products.map((p) => p.id));
+    // Direct-field-negative products (brand-only match) ARE included.
+    assert.ok(straussIds.every((id) => got.has(id)), `all Strauss products for ${term}`);
+    assert.ok(res.products.every((p) => matches(p, term)));
+  }
 });
 
-// ── 38. Exact sort contract on the tricky SKU fixture + no dup/skip ─────────
+test("searchProducts (mock): direct product-field match wins even when brand does NOT match", async () => {
+  // "zero" is in a Coca-Cola product name but NOT in the "Coca-Cola" brand name.
+  const own = mockProducts.filter((p) => productMatchesSearch(p, "zero"));
+  assert.ok(own.length > 0);
+  const res = await searchProducts(base({ search: "zero", pageSize: 100 }));
+  assert.equal(res.total, mockProducts.filter((p) => matches(p, "zero")).length);
+  assert.ok(own.every((p) => res.products.some((r) => r.id === p.id)));
+});
+
+test("searchProducts (mock): brand search composes with a category filter", async () => {
+  const cat = mockProducts.find((p) => p.manufacturerId === STRAUSS)!.categoryId;
+  const res = await searchProducts(base({ search: "Strauss", categoryId: cat, pageSize: 100 }));
+  assert.equal(res.total, mockProducts.filter((p) => p.categoryId === cat && matches(p, "Strauss")).length);
+  assert.ok(res.products.every((p) => p.categoryId === cat));
+});
+
+// ── 38. Exact SKU sort contract (UTF-8 byte == COLLATE "C") + no dup/skip ───
 const SORT_FIXTURE: Product[] = [
   ["i-empty", ""],
-  ["i-ws", "   "],
+  ["i-ws", "   "], // spaces-only → blank (btrim)
   ["i-null", null],
   ["i-A10", "A-10"],
   ["i-A2", "A-2"],
-  ["i-lower", "a-5"],
+  ["i-lead", "  B-1"], // leading spaces → sorts by "B-1" (btrim)
+  ["i-lower", "a-5"], // lowercase 'a'(0x61) AFTER uppercase (byte order)
   ["i-dupB", "DUP"],
   ["i-dupA", "DUP"],
+  ["i-uni-bmp", ""], // high-BMP (UTF-8 EE…)
+  ["i-uni-astral", "\u{10000}"], // astral (UTF-8 F0…): byte order AFTER high-BMP
 ].map(([id, sku]) => ({ ...synth({ id: id as string }), sku: sku as unknown as string }));
 
-test("isBlankSku: NULL / empty / whitespace-only are blank; a real SKU is not", () => {
+test("isBlankSku / skuSortKey: btrim (spaces-only) semantics", () => {
   assert.ok(isBlankSku(null));
   assert.ok(isBlankSku(undefined));
   assert.ok(isBlankSku(""));
-  assert.ok(isBlankSku("   "));
+  assert.ok(isBlankSku("   ")); // spaces-only → blank
   assert.ok(!isBlankSku("A-1"));
+  // btrim trims leading/trailing SPACES only, and the sort key is the trimmed
+  // value (mirrors nullif(btrim(sku),'')).
+  assert.equal(skuSortKey("  B-1  "), "B-1");
+  assert.equal(skuSortKey("A-1"), "A-1");
+  assert.equal(skuSortKey("   "), null);
+});
+
+test('utf8ByteCompare equals COLLATE "C" (UTF-8 bytes, NOT UTF-16 code units)', () => {
+  // ASCII: uppercase before lowercase.
+  assert.ok(utf8ByteCompare("DUP", "a-5") < 0);
+  assert.ok(utf8ByteCompare("A-10", "A-2") < 0); // '1' < '2'
+  // Unicode: a high-BMP char (UTF-8 0xEE…) sorts BEFORE an astral char
+  // (UTF-8 0xF0…) — the SAME as Postgres COLLATE "C"/byte order. JS `<`
+  // (code units) would sort them the OTHER way (surrogate 0xD8.. < 0xE0..),
+  // which is why the comparator uses UTF-8 bytes.
+  assert.ok(utf8ByteCompare("", "\u{10000}") < 0);
+  assert.ok("\u{10000}" < ""); // proof the code-unit order is opposite
+});
+
+test('compareProductsForList: reproduces the DB COLLATE "C" order (parity)', () => {
+  // The EXACT values + order the local Postgres RPC produced for these SKUs
+  // (see the migration probe): A-10, A-2, A-C, AB, DUP, a-5, then blanks.
+  const skus = ["a-5", "A-C", "AB", "A-10", "A-2", "DUP", "   ", null];
+  const ps = skus.map((s, i) => ({ ...synth({ id: `p${i}` }), sku: s as unknown as string }));
+  const ordered = [...ps]
+    .sort(compareProductsForList)
+    .map((p) => skuSortKey(p.sku) ?? "<blank>");
+  assert.deepEqual(ordered, ["A-10", "A-2", "A-C", "AB", "DUP", "a-5", "<blank>", "<blank>"]);
 });
 
 test("compareProductsForList: exact deterministic order on the SKU fixture", () => {
   const order = [...SORT_FIXTURE].sort(compareProductsForList).map((p) => p.id);
-  // Non-blank first, code-unit ascending: "A-10" < "A-2" ('1'<'2'); uppercase
-  // "DUP" < lowercase "a-5" ('D'0x44 < 'a'0x61); duplicate "DUP" → id order
-  // (i-dupA < i-dupB). Blank (empty/whitespace/NULL) LAST, id-ordered
-  // (i-empty < i-null < i-ws). No locale collation, no duplicate, no skip.
   assert.deepEqual(order, [
-    "i-A10",
-    "i-A2",
-    "i-dupA",
-    "i-dupB",
-    "i-lower",
-    "i-empty",
+    "i-A10", // A-10
+    "i-A2", // A-2
+    "i-lead", // "  B-1" → B-1
+    "i-dupA", // DUP (id tie-break i-dupA < i-dupB)
+    "i-dupB", // DUP
+    "i-lower", // a-5 (lowercase after uppercase, byte order)
+    "i-uni-bmp", //  (UTF-8 0xEE)
+    "i-uni-astral", // \u{10000} (UTF-8 0xF0) — after high-BMP
+    "i-empty", // blanks last, id order (i-empty < i-null < i-ws)
     "i-null",
     "i-ws",
   ]);

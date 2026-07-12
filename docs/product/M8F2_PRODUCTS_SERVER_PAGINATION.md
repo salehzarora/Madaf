@@ -54,77 +54,57 @@ Defaults are omitted from the serialized URL. Any filter change resets `page`
 to 1 (`withProductFilterChange`); pagination links keep all active filters
 (`productsQueryToParams(q, { page })`).
 
+## The read-only search RPC (`public.search_product_page_ids`)
+
+Migration `supabase/migrations/20260728100000_m8f2_product_search_page_rpc.sql`
+adds ONE additive function that resolves both earlier blockers (complete
+brand-name search + exact deterministic SKU order). It is the reason the prior
+`manufacturer_id.in.(…)` fold-in and the sort-collation divergence are gone.
+
+- **Signature:** `search_product_page_ids(p_tenant_id uuid, p_search text,
+  p_category_id uuid, p_manufacturer_id uuid, p_status text, p_page int,
+  p_page_size int)`.
+- **Returns** ONE row (even for zero matches): `total_count bigint`,
+  normalized `page`, `page_size`, `total_pages`, and `product_ids uuid[]` — the
+  CURRENT page's ordered ids only, **bounded by the page size (≤ 100)**. No
+  signed image URLs, no unbounded id set.
+- **Security:** `SECURITY INVOKER`, `STABLE`, `set search_path = ''`, fully
+  schema-qualified. Runs as the authenticated caller, so the existing RLS SELECT
+  policies on `products` + `manufacturers` (`is_tenant_member(tenant_id)`) are
+  the authorization boundary. `p_tenant_id` is **server-derived**
+  (`getReadContext`) and applied as an explicit belt-and-braces filter — it
+  never authorizes by itself: an authenticated user passing a tenant they are
+  not a member of gets **zero** rows (proven in pgTAP). `revoke all … from
+  public, anon`; `grant execute … to authenticated` only (no anon/PUBLIC/
+  service_role). No `SECURITY DEFINER`.
+- **Detail fetch:** the data layer calls the RPC for the page's ids, then
+  fetches detail rows (incl. the `inventory_items` embed for availability) for
+  just those **bounded** ids (`.in("id", ids)`, ≤ page size), re-orders them by
+  the RPC order, and **safely skips** any id whose row vanished between count
+  and fetch. Only the current page's images are signed.
+
 ## Supported search fields
 
-Free-text `q` matches the product's **own top-level columns** — complete,
-server-side, exact-count- and pagination-compatible in one bounded `.or()`:
+Free-text `q` is a **literal, case-insensitive substring** (the RPC uses
+`strpos(lower(field), lower(term)) > 0` per field, so `%`/`_` are never wildcard
+operators and no term matches across a field boundary). It covers, via a
+tenant-safe `products ⟕ manufacturers` LEFT JOIN expressed as
+`product-field match OR manufacturer-name match`:
 
 - product name (`name_ar`, `name_he`, `name_en`)
 - SKU (`sku`)
 - barcode (`barcode`) — **added** in M8F.2 (the old UI didn't search it)
+- **manufacturer / brand name (`name_ar`, `name_he`, `name_en`)** — the
+  pre-M8F.2 search matched the brand name (current locale only); **restored and
+  broadened to all three locales**.
 
-**Manufacturer scoping** is the first-class manufacturer **FILTER** (`.eq` on
-`manufacturer_id`) — complete, bounded, exact — and category scoping is the
-category filter. Category name was never free-text searchable.
-
-### Previous search contract (verified against base `c4e9929`)
-
-The base `ProductsTable` predicate matched `translations.{he,ar,en}.name`,
-`sku`, and `manufacturer.name[locale]` (current locale only) — not barcode, not
-category name. So the previously-searchable fields were **product name (3
-locales), SKU, and manufacturer name (current locale)**.
-
-### Manufacturer/brand-name free-text search — BLOCKED ON DATABASE DESIGN
-
-The base substring-matched the manufacturer NAME (it held the full manufacturer
-list in memory). Reproducing that as a **complete, exact, count-/pagination-
-compatible** server-side query is **not expressible** in PostgREST:
-
-- The top-level `.or()` can reference only the parent (`products`) columns.
-- An embedded/`!inner` filter (`manufacturers!inner … name.ilike`) filters the
-  parent by manufacturer name but with **AND** semantics — it cannot be `OR`-ed
-  with the product's own-column matches, so products that match by name/SKU but
-  not by brand would be dropped.
-- The only single-query fold-in is pre-resolving the matching brand ids and
-  adding `manufacturer_id.in.(…all of them…)` — an **unbounded** URL list whose
-  size grows with the match set and can exceed URL/query limits (a prior
-  attempt did exactly this). That is not acceptable and has been **removed**.
-
-A complete, exact, pagination-compatible union of the product's own columns with
-the related manufacturer name therefore **requires a database object** (below).
-Until then, manufacturer-name **free-text** search is not provided; the bounded
-manufacturer **filter** preserves the operator's ability to see a brand's
-products. Guarded by a source-level test
-(`no unbounded manufacturer-id .in() expansion`).
-
-#### Smallest additive database design (proposal — NOT implemented)
-
-Preferred: a **generated `search_text` column** on `products` that concatenates
-the product's searchable text with the manufacturer name, kept current.
-
-- **Option (a) — generated column + trigger:** `products.search_text text`
-  populated by a `BEFORE INSERT/UPDATE` trigger on `products` from its own
-  columns **plus** a lookup of `manufacturers.name_{ar,he,en}` by
-  `manufacturer_id`, plus an `AFTER UPDATE OF name_* ON manufacturers` trigger
-  that refreshes `search_text` for that brand's products. Search becomes one
-  bounded `search_text ILIKE '%term%'` — complete, exact count, server
-  pagination, no id list.
-- **Option (b) — denormalized `manufacturer_name`:** a `products.manufacturer_name`
-  text column synced by the same two triggers; the `.or()` adds one
-  `manufacturer_name.ilike` term (still bounded).
-- **Option (c) — RPC / view:** a `SECURITY INVOKER` view or RPC that joins
-  `products`→`manufacturers` and exposes the combined text; the data layer
-  filters/paginates/counts against it.
-- **RLS / tenant:** unchanged — the column/view stays on `products` under the
-  existing tenant-scoped SELECT policy; `search_text`/`manufacturer_name` carry
-  no cross-tenant data; the trigger writes run in the product/manufacturer write
-  path already gated by the catalog RPCs.
-- **Params / count / pagination / fields:** identical to today
-  (`ProductsQuery`; count-first + `.range`; sort unchanged); search field set
-  gains manufacturer name.
-- **Index:** only if measured — a `pg_trgm` GIN on `search_text` for large
-  catalogs; **not** added now.
-- **Not implemented / no migration** pending control-room approval.
+A product that matches its **own** name/SKU/barcode is kept even when its
+manufacturer does not match (LEFT JOIN); a product whose own fields don't match
+is included when its **manufacturer** name matches. Category name was never
+free-text searchable and is not added; category + manufacturer remain
+first-class **filters**. Mock mirrors this exactly (`productMatchesSearch` with
+the manufacturer name). Verified against base `c4e9929`: the previously-
+searchable fields (product name ×3, SKU, manufacturer name) are all preserved.
 
 ## Filters
 
@@ -142,17 +122,16 @@ extra per-row query and no full product collection shipped for M8F.2.
 
 ## Pagination & count
 
-Count-first, exactly like M8F.1:
-
-1. `count: "exact", head: true` on a `select("id")` — the exact filtered total,
-   **no row bodies fetched**.
-2. `totalPages = ceil(total / pageSize)` (≥ 1); `page` clamped to `[1, totalPages]`.
-3. Range-fetch only the current page: `.range(offset, offset + pageSize - 1)`.
-
-An out-of-range `?page` (stale/shared/hand-edited) **normalizes to the last
-page** — never a 500, a PostgREST 416, or a redirect loop. Defaults: page size
-**50**, max **100** (`PRODUCTS_PAGE_SIZE` / `PRODUCTS_MAX_PAGE_SIZE`). Mock
-mirrors count/clamp/slice identically.
+The RPC computes it all in one round trip: filters + search are applied, then a
+window (`count(*) over ()` + `row_number()`) yields the **exact** `total_count`,
+`total_pages = ceil(total / page_size)` (≥ 1), the page **clamped** to
+`[1, total_pages]`, and the current page's ordered `product_ids` (via the
+`row_number` range). An out-of-range `?page` (stale/shared/hand-edited)
+**normalizes to the last page** — never a 500/416/redirect-loop; zero matches
+return `total 0, page 1, total_pages 1, product_ids '{}'`. `page_size` is bounded
+1…100 and `page` ≥ 1 inside the RPC. Defaults: page size **50**, max **100**
+(`PRODUCTS_PAGE_SIZE` / `PRODUCTS_MAX_PAGE_SIZE`). Mock mirrors count/clamp/slice
+identically.
 
 ## Admin-route payload (full catalog no longer shipped)
 
@@ -184,64 +163,42 @@ admin/root layout fails the suite. Only the current page's images are signed
 (the list route). Category/manufacturer option lists come from the complete,
 uncapped, tenant-scoped `listCategories`/`listManufacturers`.
 
-## Deterministic sorting
+## Deterministic sorting — exact mock/supabase parity
 
-Per-mode deterministic order (skip-/dup-free within each mode):
+The ONE contract, applied identically in both modes:
 
-1. Non-blank SKUs before blank (NULL/empty/whitespace) ones.
-2. Non-blank SKUs ascending: mock by UTF-16 **code unit** (`compareProductsForList`
-   + `isBlankSku`); supabase `.order("sku", { ascending, nullsFirst:false })`.
-3. Final unique tie-break: `id` ascending.
+1. non-blank SKUs before blank ones — **blank** = `nullif(btrim(sku), '') is
+   null` (NULL, empty, or spaces-only; `btrim` trims **spaces** only);
+2. non-blank SKUs ascending by their space-trimmed value in **`COLLATE "C"`**
+   (byte order);
+3. final unique tie-break: `id` ascending.
+
+- **Supabase (the RPC):** `order by (nullif(btrim(sku),'') is null),
+  nullif(btrim(sku),'') collate "C" asc, id asc`. `COLLATE "C"` pins the order to
+  **byte order in every environment** — independent of the DB's `lc_collate`
+  (measured `en_US.UTF-8`), which is exactly why a per-`ORDER BY` collation
+  (i.e. an in-query object) was required rather than relying on the column
+  default.
+- **Mock (`compareProductsForList`):** blank via `skuSortKey` (btrim spaces →
+  null if empty); non-blank compared by **UTF-8 bytes** (`utf8ByteCompare` via
+  `TextEncoder`) — **not** `localeCompare` and **not** JS `<` (UTF-16 code
+  units, which mis-order astral vs high-BMP characters relative to code points).
+  UTF-8 byte order == `COLLATE "C"` for **every** Unicode string.
+
+**Parity evidence (measured on the local DB):** `COLLATE "C"` orders
+`A-10, A-2, A-C, AB, DUP, a-5` then blanks — the app test
+`compareProductsForList reproduces the DB COLLATE "C" order` asserts the mock
+produces the identical sequence; the pgTAP suite asserts the RPC's order for
+mixed-case, punctuation, Unicode (high-BMP U+E000 before astral U+10000),
+NULL/blank-last, and the duplicate-sort-key id tie-break. So the contract holds
+for uppercase/lowercase/mixed-case/digits/punctuation/internal-spaces/Unicode/
+duplicate/NULL/empty/whitespace, with an `id` tie-break and no dup/skip across
+adjacent pages.
 
 The old list sorted by **category shelf order then SKU** (client-side); shelf
 order lives on the `categories` relation and can't be expressed server-side
 without a denormalized column, so SKU (the old secondary key) is promoted to
 primary — within a selected category the order is identical to before.
-
-### Exact mock/supabase parity — BLOCKED ON DATABASE DESIGN
-
-The accepted SKU domain is **not** collation-safe, and the two modes order it
-differently. Findings:
-
-- **Validation (`create_product`/`update_product` RPCs):** SKU is
-  `nullif(trim(...), '')` (blank → NULL) and length-capped at 64. There is **no
-  format restriction** — lowercase, mixed case, Unicode, punctuation and
-  internal spaces are all accepted.
-- **Schema:** `products.sku` is plain `text` with **no explicit `COLLATE`**;
-  the unique index is `(tenant_id, sku) where sku is not null`.
-- **Local DB / column collation (measured):** database `lc_collate =
-  en_US.UTF-8`; the `sku` column inherits the **default** (`en_US.UTF-8`) — not
-  `C`, and not pinned by any migration.
-- **Measured divergence** (`ORDER BY sku` vs code-unit / `COLLATE "C"`):
-  - `en_US`: `A-10, A-2, a-5, A-C, AB, DUP`
-  - `C`    : `A-10, A-2, A-C, AB, DUP, a-5`
-  A lowercase/punctuation SKU (`a-5`, `A-C`) sorts **differently** — so mock
-  (code-unit) and supabase (`en_US`) do **not** agree over the full valid SKU
-  domain. (Empty/whitespace never reach the DB — the write path stores NULL —
-  and current seed/fixture SKUs are uppercase `MDF-NNNN` where the two agree,
-  but the application accepts values where they do not.)
-
-Neither the schema nor validation restricts SKUs to a collation-safe domain
-(rules out outcome A), the DB collation can't be forced per-`ORDER BY` through
-PostgREST (no collation option), and replicating `en_US` ICU/glibc collation in
-JS is infeasible (rules out mirroring the DB in mock). Exact parity therefore
-requires a **database object** and is **not** created here.
-
-#### Smallest additive database design (proposal — NOT implemented)
-
-- **Preferred — pin the sort collation:** `ALTER TABLE products ALTER COLUMN sku
-  TYPE text COLLATE "C";` (or add a generated `sku_sort text COLLATE "C"`
-  mirroring `sku`). `ORDER BY sku` (or `sku_sort`) then equals byte/code-unit
-  order in **every** environment, matching the mock comparator exactly for all
-  SKUs. The unique index `(tenant_id, sku)` is unaffected by ordering collation.
-- **Alternative — normalized generated sort key:** a generated column (e.g.
-  lower/normalized) if a case-insensitive operator order is preferred; the mock
-  comparator would mirror that same normalization.
-- **RLS / tenant / params / count / pagination / fields:** all unchanged — this
-  only changes the SKU **ordering** collation.
-- **Index:** the existing `(tenant_id, sku)` unique index already supports the
-  ordered scan; a dedicated sort index only if measured.
-- **Not implemented / no migration** pending control-room approval.
 
 ## URL state & rapid-filter behavior
 
@@ -291,24 +248,34 @@ against another in the REST grammar) — a migration, out of scope; **not** fake
 ## Export behavior
 
 Products already had a CSV export (owner/admin). Preserved and moved server-side
-as `exportProductsAction`:
+as `exportProductsAction`, sharing the RPC search semantics with the list:
 
 - owner/admin gated in supabase mode (a sales_rep is refused); mock stays open.
 - re-parses the same filters, **drops** `page`/`pageSize`, fetches `cap+1` to
   flag truncation (`PRODUCTS_EXPORT_CAP = 5000`) → exports **all filtered rows**
   up to the cap, not the visible page.
+- **bounded page batching:** `sbListProductsForExport` loops the RPC at
+  `page_size = 100`, accumulating each page's ordered detail rows until the cap
+  or `total_pages`. Each request's id set is bounded (≤ 100 — no unbounded id
+  expression); a `seen` set de-dupes any id that reappears (concurrent insert),
+  and a `maxPages` guard + the `total_pages` break prevent any infinite loop,
+  repeated page, or missing/duplicate id. Order is preserved across pages.
 - localized headers (`t.csv.*`), UTF-8 BOM, and CSV formula-injection guard are
   all preserved (`src/lib/csv.ts`, unchanged).
-- no signed image URLs / storage paths in the CSV.
+- no image signing, and no image URL / storage path in the CSV.
 
 ## Roles / RLS / tenant isolation
 
 Unchanged and preserved. Reads use `getReadContext` (= `getDataContext`, the
-authenticated cookie-bound client) under existing RLS; the tenant is derived
-server-side and applied as belt-and-braces `.eq("tenant_id", …)`; a tenantless
-caller short-circuits to empty. No client-supplied tenant/role is trusted (the
-`ProductsQuery` carries neither). The admin list still shows inactive products
-under the products SELECT policy; no role's product visibility is broadened.
+authenticated cookie-bound client) under existing RLS. The search RPC is
+SECURITY INVOKER, so RLS on `products` + `manufacturers` is the boundary; the
+server-derived tenant is passed as `p_tenant_id` and applied as a belt-and-braces
+filter, never as authorization (an unauthorized tenant arg → zero rows, proven
+in pgTAP). The bounded detail fetch adds an explicit `.eq("tenant_id", …)`; a
+tenantless caller short-circuits to empty. No client-supplied tenant/role is
+trusted (`ProductsQuery` carries neither). The admin list still shows inactive
+products (member-visible SELECT policy); no role's product visibility is
+broadened (sales_rep sees the same set — proven in pgTAP).
 
 ## Activity Log / audit
 
@@ -337,70 +304,57 @@ changes**, never reads.
 
 ## Test coverage
 
-`src/lib/products-query.test.ts` — 38 tests via the production functions
-(`parseProductsQuery`, `productsQueryToParams`, `withProductFilterChange`,
-`productMatchesSearch`, `productMatchesStatus`, `compareProductsForList`,
-`searchProducts`, `listProductsForExport`) in mock mode: default/invalid parsing,
-page & page-size bounds, search trim, status/category/manufacturer parsing,
-unknown-param normalization, page-reset on filter change, pagination preserves
-filters, rapid two-filter composition, filter-during-pagination, clear-one-keeps-
-others, deep-link compatibility, deterministic sort, no-filter list, combined
-filters, page-only slice, count/total-pages, out-of-range clamp, URL round-trip,
-search by name/SKU/barcode, category/manufacturer/status semantics, export
-parity (drops page, keeps filters, cap), image-path stripped, id present.
+**Database — pgTAP** (`supabase/tests/product_search_page.test.sql`, 32
+assertions, run via `supabase test db`): function signature; SECURITY INVOKER;
+PUBLIC/anon/service_role cannot execute + authenticated can; tenant isolation +
+unauthorized-tenant-arg → zero rows; sales_rep not broadened; owner sees
+inactive; zero-result metadata; exact count; page-size normalization;
+out-of-range clamp; search by name/SKU/barcode/manufacturer-name;
+direct-field-OR-manufacturer; category/manufacturer/active/inactive/combined
+filters; `COLLATE "C"` mixed-case/punctuation/Unicode ordering; NULL+blank last;
+duplicate-sort-key id tie-break; two adjacent pages disjoint; no cross-tenant
+manufacturer-JOIN leakage. Fixtures create disposable second/third tenants +
+authenticated users (rolled back).
 
-`package.json` adds `test:products-search`; `npm test` runs public-url +
-orders-search + products-search; CI runs `npm test`.
+**Application** (`src/lib/products-query.test.ts`, mock mode, production
+functions): parsing/bounds/URL round-trip; filter/pagination/rapid-composition;
+search by product name/SKU/barcode **and manufacturer name (ar/he/en)**;
+direct-field-OR-manufacturer; combined filters; deterministic order incl. the
+`compareProductsForList reproduces the DB COLLATE "C" order` parity check, the
+Unicode `utf8ByteCompare` check, and the tricky SKU fixture with no dup/skip;
+export parity; image-path stripped; provider-coverage + no-unbounded-`.in()`
+guards.
+
+`npm test` runs public-url + orders-search + products-search; CI runs `npm test`.
 
 ## Migration & boundaries
 
-No migration; no `.sql`/RLS/storage-policy change; no `service_role` change; no
-product/inventory lifecycle, legal, or payment change; no hosted command.
+- **Additive migration** `20260728100000_m8f2_product_search_page_rpc.sql` —
+  creates ONE function (`search_product_page_ids`). No table/policy/grant change
+  (other than the function's own grant), **no existing migration edited**,
+  no storage-policy change, no `service_role` grant, no product/inventory
+  lifecycle / legal / payment change. Applied and validated **locally only**
+  (`supabase db reset` from zero, `supabase db lint` clean, `supabase test db`
+  PASS). **Not applied to hosted staging** in this phase.
 
-## BLOCKED ON DATABASE DESIGN (require control-room approval)
+## Deferred index recommendation (do NOT add now)
 
-- **Complete manufacturer/brand-name free-text search** — needs a generated
-  `search_text` / denormalized `manufacturer_name` column (or RPC/view). See
-  _Manufacturer/brand-name free-text search_ above. Interim: the manufacturer
-  filter.
-- **Exact mock/supabase SKU-sort parity over the full valid SKU domain** — needs
-  `sku` (or a generated sort column) `COLLATE "C"`. See _Exact mock/supabase
-  parity_ above. Interim: per-mode deterministic SKU order (agrees for the
-  current uppercase-ASCII SKUs).
-
-## Deferred (not done in this phase, no migration)
-
-- **Category-shelf-ordered server sort.** Would need a denormalized
-  `category_sort_order` column (a migration). SKU order is used instead.
-- **Full-catalog reads on other admin routes** (`admin/orders/[id]`,
-  `admin/manufacturers`, `admin/documents/[id]`) load their own products as
-  props — pre-existing, out of M8F.2 scope (which targets the Products list).
-
-### Deferred index recommendation (do NOT add now)
-
-For large catalogs the hot query is:
-
-```sql
-select ... from products
-where tenant_id = $1 [and is_active = ...] [and category_id = ...]
-      [and manufacturer_id = ...]
-      [and (name_ar ilike $q or name_he ilike $q or name_en ilike $q
-            or sku ilike $q or barcode ilike $q)]
-order by sku nulls last, id
-limit $n offset $m;
-```
-
-- Bottleneck at scale: the `ilike '%term%'` union (no btree help for a leading
-  wildcard) and the `order by sku`.
-- Proposal (when measured): a `pg_trgm` GIN index on the searchable text columns
-  (or a generated `search_text`), plus a btree on `(tenant_id, sku)` for the
-  sort. **Not added now** — no measured evidence, and the current catalogs are
-  small; adding an index speculatively is out of scope.
+The RPC's hot path is the `strpos(lower(...), lower(term))` OR across product +
+joined manufacturer columns, plus the `order by … collate "C"`. For large
+catalogs, a future option (when measured): a `pg_trgm` GIN over a materialized
+`search_text`, plus a btree supporting the `(tenant_id, sku COLLATE "C", id)`
+order. **Not added** — no measured evidence; catalogs are small; the RPC returns
+only a bounded page.
 
 ## Deployment & smoke checklist
 
-No deployment in this phase. After a future deploy, run the manual smoke plan in
-the M8F.2 report (search by name/SKU/barcode; category/manufacturer/status
+**Deployment order (when approved):** apply the additive migration to hosted
+staging FIRST (the browser client calls the RPC, so it must exist before the app
+build deploys), then deploy the app. The migration is additive and safe to apply
+ahead of the app. **No hosted migration has been applied yet.**
+
+After deploy, run the manual smoke plan in the M8F.2 report (search by
+name/SKU/barcode **and manufacturer/brand name**; category/manufacturer/status
 filters; combined filters; pagination; back/forward; shared filtered URL;
 out-of-range `?page`; current-page image loading; edit/detail links;
 create/edit/activate/deactivate regression; shop/showcase visibility; role
