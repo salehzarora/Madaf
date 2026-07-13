@@ -20,7 +20,7 @@
 -- Disposable tenants C + B in THIS transaction; everything rolls back.
 -- ═══════════════════════════════════════════════════════════════════════
 begin;
-select plan(37);
+select plan(45);
 
 set local request.jwt.claims = '{"role":"service_role"}';
 
@@ -95,6 +95,24 @@ select throws_ok(
 select ok(public._is_valid_timezone('Asia/Jerusalem'), 'validator accepts a pg-recognized name');
 select ok(not public._is_valid_timezone('Mars/Olympus'), 'validator rejects an unknown name');
 
+-- ── ICU ⇄ PostgreSQL catalog compatibility ────────────────────────────────
+-- The picker offers the RUNTIME's (Node/ICU) canonical zones; the database judges
+-- them against ITS OWN (IANA) catalog. These are different datasets, so the awkward
+-- ones are pinned here — including Nepal, where ECMA-402 hands us the deprecated
+-- spelling `Asia/Katmandu` while IANA prefers `Asia/Kathmandu`. BOTH must be
+-- accepted, or the UI would advertise a timezone that cannot be saved.
+-- (`npm run check:timezone-catalog` proves the whole 418-name list against this
+-- very function; this is the pinned regression subset.)
+select ok(
+  public._is_valid_timezone('Asia/Kathmandu')      -- IANA canonical (+05:45)
+  and public._is_valid_timezone('Asia/Katmandu')   -- ICU/ECMA-402 canonical, same zone
+  and public._is_valid_timezone('Pacific/Chatham')     -- +12:45 / +13:45
+  and public._is_valid_timezone('Australia/Lord_Howe') -- 30-minute DST step
+  and public._is_valid_timezone('Antarctica/Troll')    -- TWO-hour DST step
+  and public._is_valid_timezone('America/Santiago')    -- nonexistent local midnight
+  and public._is_valid_timezone('UTC'),
+  'every awkward selectable zone (incl. both Kathmandu spellings) is DB-accepted');
+
 -- ── 15–19. The write RPC: catalog + privileges ────────────────────────────
 select has_function('public', 'update_tenant_timezone', array['uuid', 'text'],
   'update_tenant_timezone(uuid, text) exists');
@@ -109,10 +127,54 @@ select ok(
   and not has_function_privilege('anon', 'public.update_tenant_timezone(uuid,text)', 'EXECUTE')
   and has_function_privilege('authenticated', 'public.update_tenant_timezone(uuid,text)', 'EXECUTE'),
   'PUBLIC + anon denied; authenticated granted (gated internally)');
+-- service_role must not pick up a grant it has no use for.
+select ok(
+  not has_function_privilege('service_role', 'public.update_tenant_timezone(uuid,text)', 'EXECUTE'),
+  'service_role has NO grant on the write RPC (it never needs one)');
+
+-- ── The two PRIVATE helpers: no application role may execute them ─────────
+-- PostgreSQL grants EXECUTE to PUBLIC on every new function by default. These are
+-- internal (one probes pg_timezone_names, one is a trigger body) and no app role
+-- ever calls them, so that default is revoked.
+select ok(
+  not has_function_privilege('public', 'public._is_valid_timezone(text)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public._is_valid_timezone(text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public._is_valid_timezone(text)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'public._is_valid_timezone(text)', 'EXECUTE'),
+  '_is_valid_timezone is PRIVATE — PUBLIC/anon/authenticated/service_role all denied');
+select ok(
+  not has_function_privilege('public', 'public._tenants_validate_timezone()', 'EXECUTE')
+  and not has_function_privilege('anon', 'public._tenants_validate_timezone()', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public._tenants_validate_timezone()', 'EXECUTE')
+  and not has_function_privilege('service_role', 'public._tenants_validate_timezone()', 'EXECUTE'),
+  'the trigger function is PRIVATE — every application role is denied');
+-- It must be SECURITY DEFINER, otherwise the trigger body would call
+-- _is_valid_timezone as the CALLING role and the revoke above would break the
+-- legitimate owner/admin write.
+select is(
+  (select prosecdef from pg_proc where oid='public._tenants_validate_timezone()'::regprocedure),
+  true, 'the trigger function is SECURITY DEFINER (so the private helper stays private)');
 
 -- ═══ owner ════════════════════════════════════════════════════════════════
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000001","role":"authenticated"}';
+
+-- ── The privilege lockdown did NOT break the trigger ──────────────────────
+-- A trigger function's EXECUTE privilege is checked when the trigger is CREATED,
+-- not each time it fires — so validation still runs for a caller who cannot invoke
+-- the helper at all. These three assertions are what make the revoke safe.
+select throws_ok(
+  $$ select public._is_valid_timezone('UTC') $$,
+  '42501', NULL, 'an authenticated owner CANNOT call the private validator directly');
+select throws_ok(
+  $$ update public.tenants set timezone = '+03:00'
+       where id = '33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL,
+  'yet the TRIGGER still refuses a fixed offset on a direct table UPDATE by that owner');
+select lives_ok(
+  $$ update public.tenants set timezone = 'Pacific/Chatham'
+       where id = '33333333-3333-4333-8333-333333333333' $$,
+  'and a VALID zone still saves — the revoke broke no legitimate path');
 
 -- ── 20–21. owner can update; only the timezone changes ───────────────────
 select is(

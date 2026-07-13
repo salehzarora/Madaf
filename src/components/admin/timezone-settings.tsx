@@ -54,13 +54,22 @@ export function TimezoneSettings({
     }
   }, []);
 
+  // The tenant's CURRENT zone is always offered, even if this runtime's catalog
+  // doesn't list that exact spelling. PostgreSQL accepts IANA's full set including
+  // backward-compat aliases, while ICU reports only its own canonical names (it
+  // says `Asia/Katmandu`, IANA says `Asia/Kathmandu`) — so a perfectly valid stored
+  // zone can be absent from the picker. Without this, an owner would open Settings
+  // and not see their own timezone in the list.
+  const offered = useMemo(
+    () => (options.includes(current) ? options : [current, ...options]),
+    [options, current],
+  );
+
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = q
-      ? options.filter((z) => z.toLowerCase().includes(q))
-      : options;
+    const list = q ? offered.filter((z) => z.toLowerCase().includes(q)) : offered;
     return list.slice(0, 40); // bounded render; refine with search
-  }, [options, search]);
+  }, [offered, search]);
 
   const dirty = selected !== current;
 

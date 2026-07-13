@@ -27,9 +27,9 @@ import {
   isValidTimeZone,
   nextCalendarDay,
   resolveTenantTimeZone,
-  tenantDayStartUtcIso,
   tenantToday,
 } from "./time";
+import { tenantDateRangeUtc, tenantDayStartUtcIso } from "./tenant-day";
 import { getTenantTimeZone } from "./data/supplier";
 import { getDictionary } from "../i18n/dictionaries";
 
@@ -418,20 +418,122 @@ test("guard: no timezone N+1 — the zone comes from the cached session context"
 // ══ Date filters use the tenant zone (count == list == export) ═══════════
 test("guard: the orders count, list and export share ONE tenant-zone bound", () => {
   const reads = stripComments(readSrc("lib/data/supabase-reads.ts"));
-  assert.ok(/tenantDayStartUtcIso\(query\.dateFrom, timeZone\)/.test(reads));
-  assert.ok(
-    /tenantDayStartUtcIso\(nextCalendarDay\(query\.dateTo\), timeZone\)/.test(reads),
-    "the `to` bound is next-day-start EXCLUSIVE",
-  );
-  // buildOrdersQuery is the single builder for count + page + export.
+  // ONE builder resolves the bounds — the count, the page and the export all call
+  // buildOrdersQuery, so they cannot disagree about where a calendar day begins.
+  assert.ok(/tenantDateRangeUtc\(\s*query\.dateFrom,\s*query\.dateTo,\s*timeZone,?\s*\)/.test(reads));
+  assert.ok(/\.gte\("created_at", gteIso\)/.test(reads), "start-INCLUSIVE");
+  assert.ok(/\.lt\("created_at", ltIso\)/.test(reads), "next-day-start EXCLUSIVE");
   assert.ok(/function buildOrdersQuery\([\s\S]*?timeZone: string/.test(reads));
   assert.ok(!/ORDERS_MARKET_TIME_ZONE|marketDayStartUtcIso/.test(reads), "no hard-coded market zone");
 });
 test("guard: the mock filter mirrors the same tenant-zone bounds", () => {
   const orders = stripComments(readSrc("lib/data/orders.ts"));
-  assert.ok(/tenantDayStartUtcIso\(query\.dateFrom, timeZone\)/.test(orders));
-  assert.ok(/nextCalendarDay\(query\.dateTo\), timeZone/.test(orders));
+  assert.ok(/tenantDateRangeUtc\(\s*query\.dateFrom,\s*query\.dateTo,\s*timeZone,?\s*\)/.test(orders));
   assert.ok(/getTenantTimeZone\(\)/.test(orders));
+});
+test("guard: the reverse conversion uses a real timezone primitive, not offset math", () => {
+  const src = stripComments(readSrc("lib/tenant-day.ts"));
+  // Temporal's PlainDate.toZonedDateTime IS "start of day" — the first instant that
+  // belongs to the date. Offset arithmetic cannot express that: local 00:00 does not
+  // exist in every zone on every date.
+  assert.ok(/@js-temporal\/polyfill/.test(src), "delegates to Temporal");
+  assert.ok(/toZonedDateTime\(zone\)/.test(src));
+  // The old two-pass offset math (and any successor) must not come back.
+  assert.ok(!/getTimezoneOffset|formatToParts|offset1|offset2/.test(src), "no offset passes");
+  // Server-only: the Temporal polyfill must never reach the browser bundle, and
+  // date filtering is a server concern (count/list/export must agree).
+  assert.ok(/^import "server-only";/m.test(src), "server-only");
+  const ordersQuery = stripComments(readSrc("lib/orders-query.ts"));
+  assert.ok(
+    !/tenant-day|tenantDayStartUtcIso/.test(ordersQuery),
+    "the client-imported query module must not pull in the server-only converter",
+  );
+});
+
+// ══ The zones the old offset math got WRONG (fast subset of the matrix) ══
+test("nonexistent local midnight: the day starts at the FIRST instant that exists", () => {
+  // These zones spring forward AT midnight — 00:00 never happens. The previous
+  // two-pass offset math returned 23:00 of the PREVIOUS day, so an hour of the
+  // previous day was counted, listed and exported under this date.
+  const SPRING_AT_MIDNIGHT: Array<[zone: string, date: string, expected: string]> = [
+    ["America/Santiago", "2025-09-07", "2025-09-07T04:00:00.000Z"],
+    ["America/Havana", "2025-03-09", "2025-03-09T05:00:00.000Z"],
+    ["America/Asuncion", "2025-10-05", "2025-10-05T04:00:00.000Z"],
+    ["Atlantic/Azores", "2025-03-30", "2025-03-30T01:00:00.000Z"],
+    ["Asia/Beirut", "2026-03-29", "2026-03-28T22:00:00.000Z"],
+  ];
+  for (const [zone, date, expected] of SPRING_AT_MIDNIGHT) {
+    const iso = tenantDayStartUtcIso(date, zone);
+    assert.equal(iso, expected, `${zone} ${date}`);
+    const ms = Date.parse(iso!);
+    // It belongs to the requested date…
+    assert.equal(
+      new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date(ms)),
+      date,
+      `${zone} ${date}: the start must be IN the requested date`,
+    );
+    // …it is the EARLIEST instant that does…
+    assert.notEqual(
+      new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date(ms - 1)),
+      date,
+      `${zone} ${date}: nothing earlier may belong to it`,
+    );
+    // …and the wall clock reads 01:00, not 00:00 (which does not exist).
+    assert.equal(formatTenantTime(iso!, "en", zone), "01:00", `${zone} ${date}`);
+  }
+});
+test("non-hour offsets: Kathmandu (+05:45), Chatham (+12:45/+13:45), Lord Howe (30m DST)", () => {
+  // Any code that thinks offsets are whole hours breaks here.
+  assert.equal(
+    tenantDayStartUtcIso("2026-07-13", "Asia/Kathmandu"),
+    "2026-07-12T18:15:00.000Z",
+  );
+  assert.equal(
+    tenantDayStartUtcIso("2026-07-13", "Pacific/Chatham"),
+    "2026-07-12T11:15:00.000Z", // +12:45
+  );
+  assert.equal(
+    tenantDayStartUtcIso("2026-12-13", "Pacific/Chatham"),
+    "2026-12-12T10:15:00.000Z", // +13:45 (DST)
+  );
+  // Lord Howe's DST step is THIRTY minutes → +10:30 in winter, +11:00 in summer.
+  assert.equal(
+    tenantDayStartUtcIso("2026-07-13", "Australia/Lord_Howe"),
+    "2026-07-12T13:30:00.000Z",
+  );
+  assert.equal(
+    tenantDayStartUtcIso("2026-12-13", "Australia/Lord_Howe"),
+    "2026-12-12T13:00:00.000Z",
+  );
+});
+test("a local day is not always 23/24/25 hours (Antarctica/Troll moves TWO hours)", () => {
+  const dayHours = (date: string, zone: string) =>
+    (Date.parse(tenantDayStartUtcIso(nextCalendarDay(date), zone)!) -
+      Date.parse(tenantDayStartUtcIso(date, zone)!)) /
+    3_600_000;
+  assert.equal(dayHours("2025-03-30", "Antarctica/Troll"), 22, "a 22-hour day");
+  assert.equal(dayHours("2025-10-26", "Antarctica/Troll"), 26, "a 26-hour day");
+  // …and Lord Howe's half-hour step makes half-hour days.
+  assert.equal(dayHours("2026-04-05", "Australia/Lord_Howe"), 24.5);
+  assert.equal(dayHours("2026-10-04", "Australia/Lord_Howe"), 23.5);
+});
+test("the ONE range builder is start-inclusive / next-day-start-exclusive", () => {
+  // tenantDateRangeUtc is what the Orders page, its exact count, the CSV export and
+  // the mock filter all call — so this is the property they all inherit.
+  const { gteIso, ltIso } = tenantDateRangeUtc("2026-07-05", "2026-07-05", JLM);
+  assert.equal(gteIso, "2026-07-04T21:00:00.000Z", "the local 5th begins here");
+  assert.equal(ltIso, "2026-07-05T21:00:00.000Z", "…and the local 6th begins here");
+  assert.equal(ltIso, tenantDayStartUtcIso("2026-07-06", JLM), "end == next day's start");
+  // An open-ended range keeps the missing side null (no accidental bound).
+  assert.deepEqual(tenantDateRangeUtc(null, null, JLM), { gteIso: null, ltIso: null });
+  assert.equal(tenantDateRangeUtc("2026-07-05", null, JLM).ltIso, null);
+  assert.equal(tenantDateRangeUtc(null, "2026-07-05", JLM).gteIso, null);
+  // A whole DST-transition day is still covered end to end, at 23h not 24h.
+  const spring = tenantDateRangeUtc("2026-03-27", "2026-03-27", JLM);
+  assert.equal(
+    (Date.parse(spring.ltIso!) - Date.parse(spring.gteIso!)) / 3_600_000,
+    23,
+  );
 });
 
 // ══ Timezone change: display-only, never a data rewrite ══════════════════

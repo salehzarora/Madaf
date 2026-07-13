@@ -22,8 +22,6 @@ import {
 } from "@/lib/mock";
 import { orderSubtotal } from "@/lib/catalog-helpers";
 import {
-  tenantDayStartUtcIso,
-  nextCalendarDay,
   ORDERS_EXPORT_CAP,
   orderMatchesSearch,
   orderSourceFacet,
@@ -32,6 +30,7 @@ import {
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
+import { tenantDateRangeUtc } from "@/lib/tenant-day";
 import {
   ORDER_STATUS_TRANSITIONS,
   type Order,
@@ -172,14 +171,16 @@ function toMockListRow(order: Order): OrderListRow {
  * DESC, then id DESC) — mirrors the supabase filters/sort/search semantics. */
 function filterMockOrders(query: OrdersQuery, timeZone: string): OrderListRow[] {
   const statusSet = new Set(query.statuses);
-  // TENANT-timezone calendar-day bounds — identical to the supabase filter
-  // (inclusive `from` start, next-day-start EXCLUSIVE upper), DST-safe.
-  const fromMs = query.dateFrom
-    ? Date.parse(tenantDayStartUtcIso(query.dateFrom, timeZone) ?? "")
-    : NaN;
-  const toMs = query.dateTo
-    ? Date.parse(tenantDayStartUtcIso(nextCalendarDay(query.dateTo), timeZone) ?? "")
-    : NaN;
+  // TENANT-timezone calendar-day bounds from the SAME builder the supabase query
+  // uses (inclusive `from` start, next-day-start EXCLUSIVE upper) — so the two
+  // data modes cannot drift, and neither can survive a DST transition wrongly.
+  const { gteIso, ltIso } = tenantDateRangeUtc(
+    query.dateFrom,
+    query.dateTo,
+    timeZone,
+  );
+  const fromMs = gteIso ? Date.parse(gteIso) : NaN;
+  const toMs = ltIso ? Date.parse(ltIso) : NaN;
 
   return orders
     .map(toMockListRow)

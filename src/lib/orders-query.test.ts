@@ -12,7 +12,6 @@ import { test } from "node:test";
 
 import {
   hasActiveFilters,
-  tenantDayStartUtcIso,
   tenantToday,
   nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
@@ -26,6 +25,9 @@ import {
   withFilterChange,
   type OrdersQuery,
 } from "./orders-query";
+// The reverse conversion (calendar date → the UTC instant it begins at) is
+// server-only — see lib/tenant-day.ts.
+import { tenantDayStartUtcIso } from "./tenant-day";
 import { listOrdersForExport, searchOrders } from "./data/orders";
 import { customers as mockCustomers, orders as mockOrders } from "./mock";
 

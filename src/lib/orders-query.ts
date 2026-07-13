@@ -291,17 +291,15 @@ export function orderMatchesSearch(
 // ── Tenant-timezone date bounds (M8F.1 → per-tenant in M8H.2) ──────────────
 // A date the operator picks means a calendar day IN THE TENANT'S TIMEZONE, so
 // "from 2026-07-05" covers the WHOLE of July 5 there — not UTC (which would clip
-// the first local hours and hide orders the admin sees dated that day). The
-// conversion, DST handling and the exclusive upper bound now live in the single
-// tenant time contract (@/lib/time); this module just re-exports them so the
-// query layer keeps one import. URL values stay stable YYYY-MM-DD, and the list,
-// the count and the export all use identical bounds.
+// the first local hours and hide orders the admin sees dated that day). URL values
+// stay stable YYYY-MM-DD; the list, the exact count and the export all resolve
+// their UTC bounds through ONE builder so they can never disagree.
 //
-// M8F.1 hard-coded Asia/Jerusalem AND took the offset in a single pass, which is
-// an hour off on the two DST-transition days (duplicating an hour in spring and
-// SKIPPING the first business hour in autumn). Both are fixed in @/lib/time.
-export {
-  tenantDayStartUtcIso,
-  nextCalendarDay,
-  tenantToday,
-} from "@/lib/time";
+// Only the CLIENT-SAFE pieces are re-exported here (this module is imported by the
+// Orders table). The reverse conversion — calendar date → the UTC instant it BEGINS
+// at — is server-only and lives in `@/lib/tenant-day`: local 00:00 does not exist
+// in every zone on every date, so it needs a real timezone primitive, not offset
+// math. M8F.1's single-pass offset arithmetic was an hour off on DST-transition
+// days; a two-pass version was still wrong for zones that spring forward AT
+// midnight. Both are gone.
+export { nextCalendarDay, tenantToday } from "@/lib/time";

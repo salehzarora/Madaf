@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "check:deploy-safety": "tsx --conditions=react-server scripts/check-deployment-safety.ts",
+    "check:timezone-catalog": "tsx --conditions=react-server scripts/check-timezone-catalog.ts",
     "build": "npm run check:deploy-safety && next build && node scripts/check-dynamic-routes.mjs",
     "start": "next start",
     "lint": "eslint",
@@ -17,9 +18,11 @@
     "test:customer-audit": "tsx --conditions=react-server --test src/lib/customer-audit.test.ts",
     "test:customer-timeline": "tsx --conditions=react-server --test src/lib/customer-timeline.test.ts",
     "test:order-audit": "tsx --conditions=react-server --test src/lib/order-audit.test.ts",
-    "test:tenant-timezone": "tsx --conditions=react-server --test src/lib/tenant-timezone.test.ts"
+    "test:tenant-timezone": "tsx --conditions=react-server --test src/lib/tenant-timezone.test.ts",
+    "test:timezone-matrix": "tsx --conditions=react-server --test src/lib/timezone-matrix.test.ts"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "0.5.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",
     "lucide-react": "^1.23.0",

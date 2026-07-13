@@ -73,7 +73,7 @@ and no zone. Converting it would *shift the day* — `2026-07-13` read as UTC
 midnight and rendered in `America/New_York` displays **07-12**. `formatDateOnly`
 takes `(dateStr, locale)` and **no timezone at all**, so no zone can move it.
 
-## Tenant-local date filters (and a real DST bug fixed)
+## Tenant-local date filters, and the reverse conversion
 
 A date an operator picks means **a calendar day in the tenant's timezone**.
 Bounds are **start-inclusive, next-day-start-exclusive**, so `to=2026-07-05`
@@ -84,26 +84,67 @@ from 2026-07-05  →  created_at >= tenantDayStartUtcIso("2026-07-05", tz)
 to   2026-07-05  →  created_at <  tenantDayStartUtcIso(nextCalendarDay("2026-07-05"), tz)
 ```
 
-The **count, the page and the CSV export** are all built by one `buildOrdersQuery`
-with the same zone, so pagination can never disagree with the rows, and an export
-can never contain a different set of days than the screen it came from. The mock
-path mirrors it exactly.
+Both bounds come from **one builder**, `tenantDateRangeUtc(from, to, tz)`
+(`src/lib/tenant-day.ts`), which `buildOrdersQuery` calls once — so the **exact
+count, the page and the CSV export** physically cannot disagree about where a day
+begins. The mock path calls the same function. Date presets ("today", last 7 days)
+use `tenantToday(tz)` — *today for the business*, not for the viewer's device.
 
-**A latent DST bug from M8F.1 is fixed here.** Its offset math was single-pass: it
-took the zone offset at *00:00 UTC*, which on a transition day is the wrong offset
-for local midnight. Measured:
+### The reverse conversion is NOT offset arithmetic
 
-| Local day | one-pass result | actual local time | effect |
+The forward direction (instant → wall clock) is unambiguous. The reverse — *when
+does this local date begin?* — is the hard one, and **offset math cannot express
+it**, because **local 00:00 does not always exist**.
+
+M8F.1 took the offset in a single pass and was an hour off on Jerusalem's two
+transition days. The first M8H.2 attempt added a second pass, which fixed
+Jerusalem — and was still **wrong for every zone that springs forward AT
+midnight**. The exhaustive matrix caught it:
+
+| Zone | Local date | Two-pass returned | Which is actually |
 |---|---|---|---|
-| 2026-03-27 (spring forward) | `2026-03-26T21:00Z` | **23:00** of the *previous* day | an hour **duplicated** |
-| 2026-10-25 (fall back) | `2026-10-24T22:00Z` | **01:00** | the first business hour **skipped** |
+| America/Santiago | 2025-09-07 | `2025-09-07T03:00Z` | **2025-09-06 23:00** — the previous day |
+| America/Havana | 2025-03-09 | `2025-03-09T04:00Z` | **2025-03-08 23:00** |
+| America/Asuncion | 2025-10-05 | `2025-10-05T03:00Z` | **2025-10-04 23:00** |
+| Atlantic/Azores | 2025-03-30 | `2025-03-30T00:00Z` | **2025-03-29 23:00** |
 
-A second pass (re-read the offset at the candidate instant and correct) fixes
-both. Regression-tested, including that a spring day spans **23h**, an autumn day
-**25h**, and that consecutive days **tile exactly** with no gap or overlap.
+An hour of the *previous* day would have been counted, listed and exported under
+the requested one. Piling on a third pass would not fix the class of bug, so the
+conversion now delegates to a real timezone primitive:
 
-Date presets ("today", last 7 days) use `tenantToday(tz)` — *today for the
-business*, not for the viewer's device.
+> **`Temporal.PlainDate.from(date).toZonedDateTime(zone)`** — the TC39-specified
+> **start of day**: the *first instant that belongs to that calendar date in that
+> zone*. Not "midnight, disambiguated".
+
+via **`@js-temporal/polyfill`** (the TC39 reference implementation; MIT/ISC, one
+dependency, `npm audit` clean). It reads the platform's IANA data — the **same data
+`Intl` formats with**, so display and filtering can never drift apart — and
+hand-rolls no transition table.
+
+**Semantics (explicit, not incidental):**
+
+| Case | Behaviour |
+|---|---|
+| local 00:00 **does not exist** (DST gap) | → the **earliest instant that does** belong to the date (e.g. `01:00`). No business instant of that day is skipped. |
+| local 00:00 is **ambiguous** (DST overlap) | → the **earlier** of the two instants, so the whole repeated hour is filed under the day it displays on. |
+| range bounds | start-**inclusive** / next-day-start-**exclusive**, always. |
+
+**It is `server-only`.** Date filtering is a server concern (the count, the page and
+the export must agree), and the boundary keeps the polyfill out of the browser
+bundle — verified: the client bundle contains no `Temporal`, no `js-temporal`, no
+`tenantDayStartUtcIso`. The client only ever needs the forward direction, which is
+plain `Intl`.
+
+### Assumptions the code does NOT make
+
+Every one of these is false for some selectable zone, and each is regression-tested:
+
+| Tempting assumption | Reality |
+|---|---|
+| local 00:00 always exists | **6 zones** skip it in 2025–2028 (Africa/Cairo, America/Asuncion, America/Havana, America/Santiago, Asia/Beirut, Atlantic/Azores) |
+| a DST step is one hour | **Australia/Lord_Howe** moves 30 min; **Antarctica/Troll** moves **two hours** |
+| a local day is 23/24/25 h | **Antarctica/Troll** has a **22-hour** and a **26-hour** day |
+| offsets are whole hours | **Asia/Kathmandu** +05:45, **Pacific/Chatham** +12:45/+13:45 |
 
 ## Database
 
@@ -114,11 +155,13 @@ business*, not for the viewer's device.
    documented single market; it is **not inferred** from a tenant's name, address,
    locale, phone, IP or current UTC offset, and any tenant can be moved elsewhere.
 2. **`_is_valid_timezone(text)`** (STABLE, `search_path=''`) + a **`BEFORE INSERT
-   OR UPDATE OF timezone` trigger**. The trigger is **required, not belt-and-braces**:
-   `authenticated` holds a **direct `UPDATE` grant** on `tenants` (RLS-gated to
-   owner/admin), so RPC-only validation could be bypassed by a direct table write.
-   Validation is against `pg_catalog.pg_timezone_names`; invalid names, empty
-   strings, NULL and bare offsets all raise **`22023`**.
+   OR UPDATE OF timezone` trigger** (`SECURITY DEFINER`). The trigger is **required,
+   not belt-and-braces**: `authenticated` holds a **direct `UPDATE` grant** on
+   `tenants` (RLS-gated to owner/admin), so RPC-only validation could be bypassed by
+   a direct table write. Validation is against `pg_catalog.pg_timezone_names`;
+   invalid names, empty strings, NULL and bare offsets all raise **`22023`**. Both
+   helpers are **private** — the default `PUBLIC EXECUTE` is revoked (see
+   *Private database functions* below).
 3. **`update_tenant_timezone(p_tenant_id, p_timezone)`** — SECURITY DEFINER,
    `search_path=''`, `authorize_tenant(owner/admin)` so `p_tenant_id` **never
    self-authorizes**; sales_rep, non-members and cross-tenant callers get `42501`.
@@ -133,17 +176,38 @@ business*, not for the viewer's device.
 producer / audit RLS / order status / inventory / storage / index touched, no
 historical backfill beyond populating the new column.
 
-## Timezone options
+## Timezone options, and the ICU ⇄ PostgreSQL catalog difference
 
 `TIME_ZONE_OPTIONS` = `['UTC', ...Intl.supportedValuesOf('timeZone')]` — **418**
 canonical Region/City zones, computed **once per process on the server** and passed
 to the control as a prop (no DB query, no browser API dependency, no secret).
 
 Deliberately **not** `pg_timezone_names`: that has **1196** rows including **598
-`posix/*` aliases** and `Factory` — an unusable picker. Every one of the 418
-offered names was verified to be accepted by PostgreSQL (418/418), so the UI can
-never offer a value the database would reject. The database stores only the IANA
-identifier; no translated label is persisted.
+`posix/*` aliases** and `Factory` — an unusable picker.
+
+But the picker's catalog (Node/**ICU**) and the validator's catalog
+(PostgreSQL/**IANA**) are *two different timezone databases on two different release
+cadences*. If ICU knew a zone Postgres didn't, the UI would advertise an option that
+can never be saved. So that is a **gate**, not an assumption:
+
+```
+npm run check:timezone-catalog     # 418/418 accepted by public._is_valid_timezone
+```
+
+It asserts every offered name against the **real** database validator (not a copy of
+its rules), plus: UTC present, no duplicates, no fixed offsets, no `posix/*`,
+`right/*` or `Factory`. Local-stack only; no service_role; never hosted. Like
+`supabase db lint` it needs Docker, so it runs in the pre-merge gate rather than CI.
+
+**The one real difference found:** ECMA-402 hands us ICU's canonical spelling
+**`Asia/Katmandu`**, while IANA/PostgreSQL prefer **`Asia/Kathmandu`**. They are the
+same +05:45 zone and **both are accepted by the database** (pinned in pgTAP), so
+nothing breaks — the picker simply shows ICU's spelling. Because a stored-but-not-
+offered spelling is therefore possible, the control **always includes the tenant's
+current zone in its list**, so an owner can never open Settings and fail to see
+their own timezone.
+
+The database stores only the IANA identifier; no translated label is persisted.
 
 ## Settings UI
 
@@ -188,17 +252,74 @@ existing business-profile form).
 
 ## Verification (local)
 
-- `npm test` → **385** app checks (incl. **43** new `test:tenant-timezone`).
-- `supabase test db` → **343** pgTAP (incl. **37** new: column + NOT NULL +
-  backfill, table-level validation of valid/invalid/empty/NULL/fixed-offset,
-  RPC catalog + privilege matrix, owner/admin allowed, sales_rep + non-member +
-  cross-tenant refused, **timestamps and origin unchanged**, `list_memberships`
-  return shape, no audit/RLS/producer regression, no row lost).
+**The boundary matrix — `npm run test:timezone-matrix`.** The production conversion
+is run over **every selectable timezone × every date in a four-year window**:
+
+| | |
+|---|---|
+| Timezones | **418** (the entire catalog the UI can offer) |
+| Date range | **2025-01-01 → 2028-12-31** (1,461 dates) |
+| Cases | **610,698** |
+| Failures | **0** |
+| Runtime | **~105 s** |
+| Shortest local day found | **22 h** (Antarctica/Troll, 2025-03-30) |
+| Longest local day found | **26 h** (Antarctica/Troll, 2025-10-26) |
+| Nonexistent local midnights found | **24**, across **6** zones |
+
+For every zone/date it asserts: the start is a valid instant; the next day's start
+is strictly later; **rendering the start back in the tenant zone returns the
+requested date**; it is the **earliest** instant that does (one ms earlier is a
+different date); the day's exclusive end **is** the next day's start, so the days
+**tile the timeline with no gap and no overlap**; and the last millisecond of a day
+still belongs to it. Plus: independence from `process.env.TZ`, independence from the
+locale, determinism across repeated calls, and explicit pins for the non-hour zones
+and the four zones the old math got wrong. **It runs in CI on every PR** — a
+regression here silently mis-files orders in the list, the count and the export.
+
+**The rest:**
+
+- `npm test` → **390** app checks (incl. **48** `test:tenant-timezone`, the fast
+  representative subset of the matrix).
+- `npm run check:timezone-catalog` → **418/418** offered zones accepted by the
+  database validator.
+- `supabase test db` → **351** pgTAP (incl. **45** new: column + NOT NULL +
+  backfill; table-level validation of valid/invalid/empty/NULL/fixed-offset;
+  **private-helper privilege matrix**; RPC catalog + privileges; owner/admin
+  allowed; sales_rep + non-member + cross-tenant refused; **the trigger still
+  fires for a caller who cannot execute the validator**; ICU⇄pg catalog pins;
+  **timestamps and origin unchanged**; `list_memberships` shape; no audit/RLS/
+  producer regression; no row lost).
 - `npm run lint`, `npx tsc --noEmit`, `npm run build` → clean; build ends
   `[check-dynamic-routes] OK`. `npm audit --omit=dev` → 0 vulnerabilities.
+- `supabase db lint --schema public` → no schema errors.
 - Generated types: `tenants.timezone`, `_is_valid_timezone`,
   `update_tenant_timezone`, and `list_memberships.timezone` — nothing else.
-- Bundle scan → 0 for secrets/service-role/private helpers/tokens/snapshots.
+- Bundle scan → **0** for secrets, service-role, private helpers, tokens, snapshots
+  — **and 0 for `Temporal` / `js-temporal` / `tenantDayStartUtcIso`**, proving the
+  server-only boundary holds.
+
+## Private database functions
+
+| Function | Security | PUBLIC | anon | authenticated | service_role |
+|---|---|---|---|---|---|
+| `_is_valid_timezone(text)` | invoker | ✗ | ✗ | ✗ | ✗ |
+| `_tenants_validate_timezone()` | **definer** | ✗ | ✗ | ✗ | ✗ |
+| `update_tenant_timezone(uuid,text)` | definer | ✗ | ✗ | **✓** | ✗ |
+
+PostgreSQL grants `EXECUTE` to `PUBLIC` on every new function **by default**, which
+would have left both internal helpers callable by `anon`. They are revoked.
+
+Two things make that safe, and both are pgTAP-asserted rather than assumed:
+
+1. A trigger function's `EXECUTE` privilege is checked when the **trigger is
+   created**, not each time it **fires** — so validation still runs for callers who
+   cannot invoke it. *(Asserted: an authenticated owner gets `42501` calling
+   `_is_valid_timezone` directly, yet a direct `UPDATE` of `+03:00` is still refused
+   with `22023`, and a valid zone still saves.)*
+2. `_tenants_validate_timezone` is **`SECURITY DEFINER`**, so its nested call to
+   `_is_valid_timezone` runs as the owner. A `SECURITY INVOKER` trigger would run as
+   the *calling* role and the revoke would have broken the legitimate owner/admin
+   write — this is the reason for the definer, not incidental hardening.
 
 ## Known limitations
 
@@ -206,7 +327,15 @@ existing business-profile form).
 - Only the **Orders** list exposes a date-range filter today; the boundary
   primitive is shared, so any future filter inherits the correct semantics.
 - The option list follows the runtime's ICU data; a zone added to IANA after the
-  Node/browser build would need a runtime update (the DB would still accept it).
+  Node build would not be *offered* until the runtime updates (the database would
+  still accept it, and `check:timezone-catalog` would still pass — the gate protects
+  against the dangerous direction: offering something the DB rejects).
+- Correctness is proven for **2025–2028**. The conversion has no hardcoded
+  transition data — it reads the platform's IANA database — so it is not *limited*
+  to that window; that is simply the range under exhaustive test. Widen
+  `FIRST_DATE`/`LAST_DATE` in `timezone-matrix.test.ts` to extend the proof.
+- No timezone is intentionally excluded: the catalog is the runtime's full canonical
+  set (minus `posix/*`, `right/*`, `Factory`, which are internal aliases, not places).
 
 ## Next
 

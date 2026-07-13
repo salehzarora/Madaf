@@ -181,74 +181,16 @@ export function formatDateOnly(dateStr: string, locale: Locale): string {
 }
 
 // ── Tenant-local calendar day → UTC bounds ─────────────────────────────────
-// A date the operator picks means a calendar day IN THE TENANT TIMEZONE. Turning
-// it into UTC bounds must survive DST, where a local day is 23 or 25 hours long.
+// The REVERSE conversion (a picked calendar date → the UTC instant that date
+// BEGINS at in the tenant zone) is NOT here: local 00:00 does not always exist,
+// so it needs a real timezone primitive rather than offset arithmetic. It lives in
+// `@/lib/tenant-day` (server-only, Temporal-backed) — see that file for why.
+// What stays here is zone-INDEPENDENT date arithmetic and the FORWARD direction,
+// both of which are client-safe.
 
-/** The zone's UTC offset (ms) AT a given instant — derived from the platform's
- * IANA data, so DST is handled for us. */
-function tzOffsetMs(instant: Date, timeZone: string): number {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const p: Record<string, string> = {};
-  for (const part of dtf.formatToParts(instant)) p[part.type] = part.value;
-  const asUtc = Date.UTC(
-    Number(p.year),
-    Number(p.month) - 1,
-    Number(p.day),
-    Number(p.hour),
-    Number(p.minute),
-    Number(p.second),
-  );
-  return asUtc - instant.getTime();
-}
-
-/**
- * The UTC instant (ISO) at which YYYY-MM-DD STARTS in the tenant timezone — the
- * inclusive lower bound, and (via {@link nextCalendarDay}) the EXCLUSIVE upper
- * bound. Null if the date is malformed or not a real calendar date.
- *
- * TWO passes, deliberately. A single pass takes the offset at 00:00 *UTC*, which
- * on a DST-transition day is the WRONG offset for local midnight and lands an
- * hour off — duplicating an hour when DST starts and SKIPPING the first hour of
- * the business day when it ends. Re-reading the offset at the candidate instant
- * and correcting fixes both.
- */
-export function tenantDayStartUtcIso(
-  dateStr: string,
-  timeZone: string,
-): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
-  if (Number.isNaN(utcGuess)) return null;
-  // Reject impossible calendar dates (e.g. 2026-13-40) — Date.UTC rolls them
-  // over, so confirm the components round-trip.
-  const check = new Date(utcGuess);
-  if (
-    check.getUTCFullYear() !== y ||
-    check.getUTCMonth() !== m - 1 ||
-    check.getUTCDate() !== d
-  ) {
-    return null;
-  }
-  const zone = resolveTenantTimeZone(timeZone);
-  const offset1 = tzOffsetMs(check, zone);
-  let candidate = utcGuess - offset1;
-  const offset2 = tzOffsetMs(new Date(candidate), zone);
-  if (offset2 !== offset1) candidate = utcGuess - offset2;
-  return new Date(candidate).toISOString();
-}
-
-/** The calendar day AFTER dateStr (YYYY-MM-DD) — the EXCLUSIVE upper bound, so a
- * `to` date includes its whole local day. Pure date arithmetic (zone-independent). */
+/** The calendar day AFTER dateStr (YYYY-MM-DD) — used as the EXCLUSIVE upper
+ * bound, so a `to` date includes its whole local day. Pure date arithmetic: no
+ * zone and no instant are involved, so nothing here can shift a day. */
 export function nextCalendarDay(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));

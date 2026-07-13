@@ -39,14 +39,13 @@ import type {
   Supplier,
 } from "@/lib/types";
 import {
-  tenantDayStartUtcIso,
-  nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
   type OrderListRow,
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
+import { tenantDateRangeUtc } from "@/lib/tenant-day";
 import {
   PRODUCTS_MAX_PAGE_SIZE,
   type ProductExportRow,
@@ -1125,17 +1124,17 @@ function buildOrdersQuery(
 
   if (query.customerId) qb = qb.eq("customer_id", query.customerId);
 
-  // TENANT-timezone calendar-day bounds: `from` is the inclusive start of that
-  // local day, and `to` is INCLUSIVE of its whole local day via a next-day-start
-  // EXCLUSIVE upper bound. DST-safe (a local day may be 23h or 25h).
-  if (query.dateFrom) {
-    const iso = tenantDayStartUtcIso(query.dateFrom, timeZone);
-    if (iso) qb = qb.gte("created_at", iso);
-  }
-  if (query.dateTo) {
-    const iso = tenantDayStartUtcIso(nextCalendarDay(query.dateTo), timeZone);
-    if (iso) qb = qb.lt("created_at", iso);
-  }
+  // TENANT-timezone calendar-day bounds: `from` is the inclusive START of that
+  // local day (which is not always 00:00 — some zones spring forward AT midnight),
+  // and `to` is INCLUSIVE of its whole local day via a next-day-start EXCLUSIVE
+  // upper bound. One builder, shared with the mock path and every caller below.
+  const { gteIso, ltIso } = tenantDateRangeUtc(
+    query.dateFrom,
+    query.dateTo,
+    timeZone,
+  );
+  if (gteIso) qb = qb.gte("created_at", gteIso);
+  if (ltIso) qb = qb.lt("created_at", ltIso);
 
   // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
   // then union order_number / public_ref / recorded buyer name+phone.

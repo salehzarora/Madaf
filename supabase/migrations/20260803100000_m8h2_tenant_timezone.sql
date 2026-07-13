@@ -66,9 +66,15 @@ comment on function public._is_valid_timezone(text) is
   'M8H.2 — true only for an IANA timezone name PostgreSQL recognizes '
   '(pg_timezone_names). Empty strings and bare UTC offsets are rejected.';
 
+-- SECURITY DEFINER so the nested _is_valid_timezone call runs as the function
+-- OWNER. That is what lets both helpers be fully private (see the revokes below):
+-- a SECURITY INVOKER trigger would execute as the calling role, and revoking
+-- EXECUTE on _is_valid_timezone would then break the legitimate owner/admin write.
+-- It is safe to define: it reads NEW.timezone, writes nothing, and returns or raises.
 create function public._tenants_validate_timezone()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -87,6 +93,18 @@ $$;
 create trigger tenants_validate_timezone
   before insert or update of timezone on public.tenants
   for each row execute function public._tenants_validate_timezone();
+
+-- Both helpers are PRIVATE. PostgreSQL grants EXECUTE to PUBLIC on every new
+-- function by default, which would let anon and any authenticated user call them
+-- directly — needless reachable surface (and _is_valid_timezone probes
+-- pg_timezone_names). No application role ever calls either one:
+--   • _is_valid_timezone runs inside the trigger function and inside
+--     update_tenant_timezone, BOTH of which are SECURITY DEFINER → owner rights.
+--   • a trigger function's EXECUTE privilege is checked when the TRIGGER IS
+--     CREATED, not each time it fires, so the trigger keeps working for every role.
+-- service_role gets no grant either: it has no reason to call an internal helper.
+revoke all on function public._is_valid_timezone(text) from public, anon, authenticated;
+revoke all on function public._tenants_validate_timezone() from public, anon, authenticated;
 
 -- ── 3. The authoritative write path ───────────────────────────────────────
 -- Mirrors update_tenant_profile exactly: SECURITY DEFINER, empty search_path,
