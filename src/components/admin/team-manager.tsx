@@ -29,7 +29,7 @@ import {
   updateMemberRoleAction,
 } from "@/lib/actions/team";
 import type { InviteStatus, TenantInvite, TenantMember } from "@/lib/data/team";
-import { formatDate } from "@/lib/format";
+import { formatTenantDate, formatTenantDateTime } from "@/lib/time";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
 import { linkErrorMessage } from "./link-error-message";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ export function TeamManager({
   currentUserRole,
   initialMembers,
   initialInvites,
+  timeZone,
 }: {
   locale: Locale;
   dict: Dictionary;
@@ -56,6 +57,8 @@ export function TeamManager({
   currentUserRole: TenantRole;
   initialMembers: TenantMember[];
   initialInvites: TenantInvite[];
+  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  timeZone: string;
 }) {
   const t = dict.access.team;
   const roleLabels = dict.access.session.roles;
@@ -395,7 +398,7 @@ export function TeamManager({
                         )}
                       </td>
                       <td className="px-4 py-3.5 text-ink-muted">
-                        {formatDate(m.createdAt, locale)}
+                        {formatTenantDate(m.createdAt, locale, timeZone)}
                       </td>
                       <td className="px-4 py-3.5 text-end">
                         {canManageMembers ? (
@@ -507,7 +510,9 @@ export function TeamManager({
                       </Badge>
                     </td>
                     <td className="px-4 py-3.5 text-ink-muted">
-                      {inv.expiresAt ? formatDate(inv.expiresAt, locale) : t.never}
+                      {inv.expiresAt
+                        ? formatTenantDateTime(inv.expiresAt, locale, timeZone)
+                        : t.never}
                     </td>
                     <td className="px-4 py-3.5 text-end">
                       {inv.status === "pending" ? (

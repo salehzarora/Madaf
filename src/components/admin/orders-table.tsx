@@ -13,11 +13,12 @@ import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
 import { downloadCsv, toCsv } from "@/lib/csv";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import { exportOrdersAction } from "@/lib/actions/orders";
 import {
   hasActiveFilters,
-  marketToday,
+  tenantToday,
   orderSourceFacet,
   ordersQueryToParams,
   ORDERS_EXPORT_CAP,
@@ -38,11 +39,15 @@ const SOURCE_FACETS: readonly OrderSourceFacet[] = [
 
 type DatePreset = "today" | "7d" | "month";
 
-/** MARKET-timezone calendar-date bounds for a quick preset — computed in the
- * market tz (via marketToday) to match the server/mock date filter, so a preset
- * and a manually-typed range use identical calendar-day semantics. */
-function marketPresetRange(preset: DatePreset): { from: string; to: string } {
-  const to = marketToday(); // YYYY-MM-DD in the market timezone
+/** TENANT-timezone calendar-date bounds for a quick preset — computed in the
+ * tenant tz (via tenantToday) to match the server/mock date filter, so a preset
+ * and a manually-typed range use identical calendar-day semantics. The DEVICE's
+ * timezone is never consulted: "today" means today for the BUSINESS. */
+function tenantPresetRange(
+  preset: DatePreset,
+  timeZone: string,
+): { from: string; to: string } {
+  const to = tenantToday(timeZone); // YYYY-MM-DD in the tenant timezone
   if (preset === "today") return { from: to, to };
   const [y, m, d] = to.split("-").map(Number);
   if (preset === "7d") {
@@ -69,12 +74,16 @@ export function OrdersTable({
   locale,
   dict,
   canExport = false,
+  timeZone,
 }: {
   result: OrdersListResult;
   query: OrdersQuery;
   locale: Locale;
   dict: Dictionary;
   canExport?: boolean;
+  /** M8H.2 — the tenant's IANA zone, passed down from the server. Times and date
+   * presets render in it; the browser's zone has no authority. */
+  timeZone: string;
 }) {
   const t = dict.admin.orders;
   const router = useRouter();
@@ -126,7 +135,7 @@ export function OrdersTable({
       return;
     }
     if (value === "today" || value === "7d" || value === "month") {
-      const { from, to } = marketPresetRange(value);
+      const { from, to } = tenantPresetRange(value, timeZone);
       applyFilter({ dateFrom: from, dateTo: to });
     }
   }
@@ -165,7 +174,11 @@ export function OrdersTable({
         return [
           r.number,
           r.publicRef ?? "",
-          r.createdAt,
+          // M8H.2 — the operator's CSV is a HUMAN report under a localized "Date"
+          // header, so it shows the TENANT-local wall clock, exactly like the
+          // screen it was exported from (a raw UTC ISO here read 09:57 for an
+          // order the tenant placed at 12:57).
+          formatTenantDateTime(r.createdAt, locale, timeZone),
           r.status,
           name,
           facet === "guest" ? "yes" : "no",
@@ -412,7 +425,7 @@ export function OrdersTable({
                       <OrderStatusBadge status={order.status} dict={dict.status} />
                     </td>
                     <td className="px-4 py-3.5 text-ink-muted">
-                      {formatDate(order.createdAt, locale)}
+                      {formatTenantDateTime(order.createdAt, locale, timeZone)}
                     </td>
                   </tr>
                 ))}

@@ -533,6 +533,23 @@ export async function sbUpdateTenantProfile(
   if (error) fail("updateTenantProfile", error.message);
 }
 
+/**
+ * M8H.2 — set the tenant's IANA timezone via the owner/admin-gated RPC. The
+ * tenant is SERVER-derived (never sent by the browser); the RPC re-verifies
+ * owner/admin through authorize_tenant and rejects any value that is not a
+ * recognized IANA name (a table trigger enforces the same, so even a direct
+ * table UPDATE cannot persist a bad zone). NO stored timestamp is touched.
+ */
+export async function sbUpdateTenantTimeZone(timezone: string): Promise<string> {
+  const { client, tenantId } = await getDataContext();
+  const { data, error } = await client.rpc("update_tenant_timezone", {
+    p_tenant_id: tenantId,
+    p_timezone: timezone,
+  });
+  if (error) fail("updateTenantTimeZone", error.message);
+  return data as string;
+}
+
 /** Upload a tenant business logo to the private product-images bucket under
  * `<tenant_id>/branding/…` (M8E.4). Reuses the bucket's owner/admin storage
  * RLS (keys on the first path segment = tenant uuid). Returns the object PATH

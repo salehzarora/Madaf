@@ -18,7 +18,7 @@ import type {
   ShowcaseLink,
   ShowcaseLinkStatus,
 } from "@/lib/data/catalog-showcase";
-import { formatDate } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
 import { linkErrorMessage } from "./link-error-message";
 
@@ -30,10 +30,13 @@ export function ShowcaseLinkManager({
   locale,
   dict,
   initialLinks,
+  timeZone,
 }: {
   locale: Locale;
   dict: Dictionary;
   initialLinks: ShowcaseLink[];
+  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  timeZone: string;
 }) {
   const t = dict.admin.customers.signup;
   const router = useRouter();
@@ -221,7 +224,9 @@ export function ShowcaseLinkManager({
                     {link.tokenPreview ? `…${link.tokenPreview}` : t.none}
                   </td>
                   <td className="px-3 py-3 text-ink-muted">
-                    {link.expiresAt ? formatDate(link.expiresAt, locale) : t.never}
+                    {link.expiresAt
+                      ? formatTenantDateTime(link.expiresAt, locale, timeZone)
+                      : t.never}
                   </td>
                   <td className="px-3 py-3 text-end">
                     {link.status === "active" ? (

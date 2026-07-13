@@ -22,7 +22,8 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 import { dirFor, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { formatCurrency, formatDateLong } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
+import { formatTenantDateLong } from "@/lib/time";
 import type { DocumentType } from "@/lib/types";
 import type { OrderDocumentSource } from "./document-model";
 
@@ -245,8 +246,10 @@ export function renderOrderDocumentPdf(
     color: COLOR.inkSoft,
     align: "end",
   });
+  // M8H.2 — the printed document date is the SUPPLIER's business date: the stored
+  // UTC instant rendered in the TENANT's timezone (never the rendering server's).
   yE = text(
-    `${t.docDate}: ${formatDateLong(docDate, docLocale)}`,
+    `${t.docDate}: ${formatTenantDateLong(docDate, docLocale, source.supplier.timezone)}`,
     endBox.x,
     yE,
     endBox.w,

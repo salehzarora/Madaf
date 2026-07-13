@@ -18,20 +18,10 @@ export function formatNumber(value: number, locale: Locale): string {
   return new Intl.NumberFormat(intlLocaleFor[locale]).format(value);
 }
 
-/** Short date: 05.07.2026 / ٥.٧… (Western digits pinned for ar). */
-export function formatDate(iso: string, locale: Locale): string {
-  return new Intl.DateTimeFormat(intlLocaleFor[locale], {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(iso));
-}
-
-/** Longer, human date used on documents: "5 ביולי 2026". */
-export function formatDateLong(iso: string, locale: Locale): string {
-  return new Intl.DateTimeFormat(intlLocaleFor[locale], {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(iso));
-}
+// ── Dates/times live in @/lib/time (M8H.2) ────────────────────────────────
+// The old formatDate/formatDateLong here took NO timeZone, so they silently used
+// the server machine's zone on SSR and the DEVICE's zone in the browser. Business
+// time is now rendered ONLY through the tenant-timezone contract:
+//   formatTenantDate / formatTenantTime / formatTenantDateTime / formatTenantDateLong
+// and date-ONLY columns (a SQL `date`) through formatDateOnly.
+// See src/lib/time.ts.

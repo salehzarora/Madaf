@@ -51,7 +51,7 @@ jobs:
       - name: Type-check (no emit)
         run: npx tsc --noEmit
 
-      - name: Test (public-link [M8E.2] + orders [M8F.1] + products [M8F.2] + customer-stats [M8F.3] + customer-origin [M8G.1] + customer-audit [M8G.2] + customer-timeline [M8G.3] + order-audit [M8H.1])
+      - name: Test (public-link [M8E.2] + orders [M8F.1] + products [M8F.2] + customer-stats [M8F.3] + customer-origin [M8G.1] + customer-audit [M8G.2] + customer-timeline [M8G.3] + order-audit [M8H.1] + tenant-timezone [M8H.2])
         run: npm test
 
       # M8E.2 — exercise the deployment-safety build GATE against a representative

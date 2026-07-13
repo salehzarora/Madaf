@@ -39,7 +39,7 @@ import type {
   Supplier,
 } from "@/lib/types";
 import {
-  marketDayStartUtcIso,
+  tenantDayStartUtcIso,
   nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
@@ -53,10 +53,16 @@ import {
   type ProductsListResult,
   type ProductsQuery,
 } from "@/lib/products-query";
+import { resolveTenantTimeZone } from "@/lib/time";
 
 import type { Db } from "./supabase-context";
 import type { CustomerRowStat } from "./customers";
-import { getDataContext, getSessionContext, NO_TENANT } from "@/lib/auth/session";
+import {
+  getDataContext,
+  getSessionContext,
+  getTenantTimeZone,
+  NO_TENANT,
+} from "@/lib/auth/session";
 import {
   buildTimelineEvent,
   decodeTimelineCursor,
@@ -1095,6 +1101,9 @@ function buildOrdersQuery(
   tenantId: string,
   query: OrdersQuery,
   select: string,
+  /** M8H.2 — the TENANT's IANA zone. The count, the list and the export are all
+   * built here, so they can never disagree about where a calendar day begins. */
+  timeZone: string,
   selectOptions?: { count?: "exact" | "planned" | "estimated"; head?: boolean },
 ) {
   let qb = client
@@ -1116,14 +1125,15 @@ function buildOrdersQuery(
 
   if (query.customerId) qb = qb.eq("customer_id", query.customerId);
 
-  // Market-timezone calendar-day bounds (from inclusive, to inclusive of its
-  // whole day via the next-day exclusive upper) — see orders-query.ts.
+  // TENANT-timezone calendar-day bounds: `from` is the inclusive start of that
+  // local day, and `to` is INCLUSIVE of its whole local day via a next-day-start
+  // EXCLUSIVE upper bound. DST-safe (a local day may be 23h or 25h).
   if (query.dateFrom) {
-    const iso = marketDayStartUtcIso(query.dateFrom);
+    const iso = tenantDayStartUtcIso(query.dateFrom, timeZone);
     if (iso) qb = qb.gte("created_at", iso);
   }
   if (query.dateTo) {
-    const iso = marketDayStartUtcIso(nextCalendarDay(query.dateTo));
+    const iso = tenantDayStartUtcIso(nextCalendarDay(query.dateTo), timeZone);
     if (iso) qb = qb.lt("created_at", iso);
   }
 
@@ -1156,11 +1166,15 @@ export async function sbSearchOrders(query: OrdersQuery): Promise<OrdersListResu
   // COUNT FIRST (head, no rows) → derive totalPages → CLAMP the page. This makes
   // an out-of-range ?page (stale/shared/hand-edited link) normalize to the last
   // page instead of a PostgREST 416 (a ranged fetch past the row count errors).
+  // ONE tenant zone for BOTH the count and the page, so pagination can never
+  // disagree with the rows about which local day an order belongs to.
+  const timeZone = await getTenantTimeZone();
   const { count, error: countError } = await buildOrdersQuery(
     client,
     tenantId,
     query,
     "id",
+    timeZone,
     { count: "exact", head: true },
   );
   if (countError) fail("searchOrders", countError.message);
@@ -1170,7 +1184,13 @@ export async function sbSearchOrders(query: OrdersQuery): Promise<OrdersListResu
 
   const page = Math.min(Math.max(1, query.page), totalPages);
   const offset = (page - 1) * pageSize; // < total ⇒ always a satisfiable range
-  const { data, error } = await buildOrdersQuery(client, tenantId, query, ORDER_LIST_SELECT)
+  const { data, error } = await buildOrdersQuery(
+    client,
+    tenantId,
+    query,
+    ORDER_LIST_SELECT,
+    timeZone,
+  )
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(offset, offset + pageSize - 1);
@@ -1192,7 +1212,16 @@ export async function sbListOrdersForExport(
   if (isTenantless(tenantId)) return [];
   if (query.customerId && !isUuid(query.customerId)) return [];
   const limit = Math.max(1, cap);
-  const { data, error } = await buildOrdersQuery(client, tenantId, query, ORDER_LIST_SELECT)
+  // Same tenant-zone bounds as the list + count — an export can never contain a
+  // different set of days than the screen it was exported from.
+  const timeZone = await getTenantTimeZone();
+  const { data, error } = await buildOrdersQuery(
+    client,
+    tenantId,
+    query,
+    ORDER_LIST_SELECT,
+    timeZone,
+  )
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(0, limit - 1);
@@ -1400,5 +1429,8 @@ export async function sbGetSupplier(): Promise<Supplier> {
     logoUrl,
     logoStoragePath,
     displayVatRate: data.display_vat_rate ?? undefined,
+    // M8H.2 — a corrupt/unknown stored zone resolves to UTC and is logged, never
+    // to the server machine's or the browser's zone.
+    timezone: resolveTenantTimeZone(data.timezone),
   };
 }

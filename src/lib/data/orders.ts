@@ -22,7 +22,7 @@ import {
 } from "@/lib/mock";
 import { orderSubtotal } from "@/lib/catalog-helpers";
 import {
-  marketDayStartUtcIso,
+  tenantDayStartUtcIso,
   nextCalendarDay,
   ORDERS_EXPORT_CAP,
   orderMatchesSearch,
@@ -46,6 +46,7 @@ import {
 } from "@/lib/order-audit";
 
 import { getDataMode } from "./mode";
+import { getTenantTimeZone } from "./supplier";
 
 export type OrderSource = "sales_visit" | "remote_customer" | "admin";
 
@@ -121,7 +122,7 @@ export async function searchOrders(query: OrdersQuery): Promise<OrdersListResult
   if (getDataMode() === "supabase") {
     return (await import("./supabase-reads")).sbSearchOrders(query);
   }
-  return mockSearchOrders(query);
+  return mockSearchOrders(query, await getTenantTimeZone());
 }
 
 /** ALL rows matching the SAME filters, up to `cap` (pagination ignored) — for
@@ -133,7 +134,10 @@ export async function listOrdersForExport(
   if (getDataMode() === "supabase") {
     return (await import("./supabase-reads")).sbListOrdersForExport(query, cap);
   }
-  return filterMockOrders(query).slice(0, Math.max(0, cap));
+  return filterMockOrders(query, await getTenantTimeZone()).slice(
+    0,
+    Math.max(0, cap),
+  );
 }
 
 const mockCustomerById = new Map(mockCustomers.map((c) => [c.id, c]));
@@ -166,14 +170,15 @@ function toMockListRow(order: Order): OrderListRow {
 
 /** ALL matching mock rows, filtered + deterministically sorted (created_at
  * DESC, then id DESC) — mirrors the supabase filters/sort/search semantics. */
-function filterMockOrders(query: OrdersQuery): OrderListRow[] {
+function filterMockOrders(query: OrdersQuery, timeZone: string): OrderListRow[] {
   const statusSet = new Set(query.statuses);
-  // Market-timezone calendar-day bounds — identical to the supabase filter.
+  // TENANT-timezone calendar-day bounds — identical to the supabase filter
+  // (inclusive `from` start, next-day-start EXCLUSIVE upper), DST-safe.
   const fromMs = query.dateFrom
-    ? Date.parse(marketDayStartUtcIso(query.dateFrom) ?? "")
+    ? Date.parse(tenantDayStartUtcIso(query.dateFrom, timeZone) ?? "")
     : NaN;
   const toMs = query.dateTo
-    ? Date.parse(marketDayStartUtcIso(nextCalendarDay(query.dateTo)) ?? "")
+    ? Date.parse(tenantDayStartUtcIso(nextCalendarDay(query.dateTo), timeZone) ?? "")
     : NaN;
 
   return orders
@@ -196,8 +201,11 @@ function filterMockOrders(query: OrdersQuery): OrderListRow[] {
     );
 }
 
-function mockSearchOrders(query: OrdersQuery): OrdersListResult {
-  const all = filterMockOrders(query);
+function mockSearchOrders(
+  query: OrdersQuery,
+  timeZone: string,
+): OrdersListResult {
+  const all = filterMockOrders(query, timeZone);
   const total = all.length;
   const pageSize = query.pageSize;
   const totalPages = totalPagesFor(total, pageSize);

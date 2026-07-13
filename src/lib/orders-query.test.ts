@@ -12,8 +12,8 @@ import { test } from "node:test";
 
 import {
   hasActiveFilters,
-  marketDayStartUtcIso,
-  marketToday,
+  tenantDayStartUtcIso,
+  tenantToday,
   nextCalendarDay,
   ORDERS_MAX_PAGE_SIZE,
   ORDERS_PAGE_SIZE,
@@ -423,12 +423,14 @@ test("searchOrders (mock): finds a KNOWN customer's order by the customer name",
   assert.ok(res.rows.some((r) => r.customerId === customer.id), `search '${term}' finds the customer's order`);
 });
 
-// ── CORRECTION 3: market-timezone date bounds ──────────────────────────────
-test("marketDayStartUtcIso: DST-aware market-day start (Asia/Jerusalem)", () => {
-  assert.equal(marketDayStartUtcIso("2026-07-05"), "2026-07-04T21:00:00.000Z"); // IDT +3
-  assert.equal(marketDayStartUtcIso("2026-01-05"), "2026-01-04T22:00:00.000Z"); // IST +2
-  assert.equal(marketDayStartUtcIso("2026-13-40"), null); // impossible date
-  assert.equal(marketDayStartUtcIso("2026/07/05"), null); // malformed
+// ── CORRECTION 3 → M8H.2: TENANT-timezone date bounds ──────────────────────
+const TZ = "Asia/Jerusalem"; // the demo tenant's zone (mock supplier)
+
+test("tenantDayStartUtcIso: DST-aware tenant-day start (Asia/Jerusalem)", () => {
+  assert.equal(tenantDayStartUtcIso("2026-07-05", TZ), "2026-07-04T21:00:00.000Z"); // IDT +3
+  assert.equal(tenantDayStartUtcIso("2026-01-05", TZ), "2026-01-04T22:00:00.000Z"); // IST +2
+  assert.equal(tenantDayStartUtcIso("2026-13-40", TZ), null); // impossible date
+  assert.equal(tenantDayStartUtcIso("2026/07/05", TZ), null); // malformed
 });
 
 test("nextCalendarDay: month / leap / year boundaries", () => {
@@ -438,17 +440,17 @@ test("nextCalendarDay: month / leap / year boundaries", () => {
   assert.equal(nextCalendarDay("2026-12-31"), "2027-01-01");
 });
 
-test("marketToday returns a stable YYYY-MM-DD", () => {
-  assert.match(marketToday(), /^\d{4}-\d{2}-\d{2}$/);
+test("tenantToday returns a stable YYYY-MM-DD", () => {
+  assert.match(tenantToday(TZ), /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test("date bounds include a just-after-market-midnight order (no UTC clipping)", () => {
-  // An order at 00:30 market time on 2026-07-05 (= 2026-07-04T21:30Z). With the
-  // market-tz lower bound (2026-07-04T21:00Z) it is INCLUDED; a naive UTC bound
+test("date bounds include a just-after-tenant-midnight order (no UTC clipping)", () => {
+  // An order at 00:30 tenant time on 2026-07-05 (= 2026-07-04T21:30Z). With the
+  // tenant-tz lower bound (2026-07-04T21:00Z) it is INCLUDED; a naive UTC bound
   // (2026-07-05T00:00Z) would wrongly EXCLUDE it.
   const orderMs = Date.parse("2026-07-05T00:30:00+03:00");
-  const marketBound = Date.parse(marketDayStartUtcIso("2026-07-05")!);
-  assert.ok(orderMs >= marketBound, "market-tz bound includes the early-morning local order");
+  const tenantBound = Date.parse(tenantDayStartUtcIso("2026-07-05", TZ)!);
+  assert.ok(orderMs >= tenantBound, "tenant-tz bound includes the early-morning local order");
   assert.ok(orderMs < Date.parse("2026-07-05T00:00:00Z"), "a naive UTC bound would have excluded it");
 });
 
@@ -464,5 +466,5 @@ test("searchOrders (mock): date-from/to boundaries + list/export parity", async 
   assert.equal(outside.total, 0);
   // to is exclusive of the NEXT day: an order on 07-05 is excluded by to=07-04.
   const upTo04 = await searchOrders(parseOrdersQuery({ to: "2026-07-04", pageSize: "100" }));
-  assert.ok(upTo04.rows.every((r) => Date.parse(r.createdAt) < Date.parse(marketDayStartUtcIso("2026-07-05")!)));
+  assert.ok(upTo04.rows.every((r) => Date.parse(r.createdAt) < Date.parse(tenantDayStartUtcIso("2026-07-05", TZ)!)));
 });

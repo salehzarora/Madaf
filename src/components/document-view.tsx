@@ -16,7 +16,8 @@ import {
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { productName } from "@/lib/catalog-helpers";
-import { formatCurrency, formatDateLong } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
+import { formatTenantDateLong } from "@/lib/time";
 import { useShopData } from "@/lib/shop-data-context";
 import type { Order, OrderDocument, Supplier } from "@/lib/types";
 import { VAT_RATE } from "@/lib/types";
@@ -202,7 +203,11 @@ export function DocumentView({
               </span>
             </p>
             <p className="text-sm text-ink-soft">
-              {t.docDate}: {formatDateLong(document.date, docLocale)}
+              {/* M8H.2 — the document date is the SUPPLIER's business date: an
+                  absolute instant rendered in the TENANT's timezone, never the
+                  viewer's device zone. */}
+              {t.docDate}:{" "}
+              {formatTenantDateLong(document.date, docLocale, supplier.timezone)}
             </p>
           </div>
         </header>

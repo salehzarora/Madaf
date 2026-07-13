@@ -288,74 +288,20 @@ export function orderMatchesSearch(
     .includes(q);
 }
 
-// ── Market-timezone date bounds (M8F.1 correction) ─────────────────────────
-// The app serves a SINGLE market (Israel — see CLAUDE.md); there is no
-// per-tenant timezone contract. Date filters are interpreted as calendar days
-// in this market timezone so "from 2026-07-05" means the WHOLE of July 5 in the
-// market — not UTC (which would clip the first ~3 local hours and exclude
-// orders the admin sees dated that day). DST-aware via Intl. URL values stay
-// stable YYYY-MM-DD; list + export use identical bounds. A per-tenant timezone
-// is future work.
-export const ORDERS_MARKET_TIME_ZONE = "Asia/Jerusalem";
-
-function tzOffsetMs(instant: Date, timeZone: string): number {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const p: Record<string, string> = {};
-  for (const part of dtf.formatToParts(instant)) p[part.type] = part.value;
-  const asUtc = Date.UTC(
-    Number(p.year),
-    Number(p.month) - 1,
-    Number(p.day),
-    Number(p.hour),
-    Number(p.minute),
-    Number(p.second),
-  );
-  return asUtc - instant.getTime();
-}
-
-/** The UTC instant (ISO) at which YYYY-MM-DD STARTS in the market timezone —
- * the inclusive lower / exclusive upper `created_at` bound. Null if malformed. */
-export function marketDayStartUtcIso(dateStr: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
-  if (Number.isNaN(utcGuess)) return null;
-  // Reject impossible calendar dates (e.g. 2026-13-40) — Date.UTC rolls them
-  // over, so confirm the components round-trip.
-  const check = new Date(utcGuess);
-  if (
-    check.getUTCFullYear() !== y ||
-    check.getUTCMonth() !== m - 1 ||
-    check.getUTCDate() !== d
-  ) {
-    return null;
-  }
-  const offset = tzOffsetMs(check, ORDERS_MARKET_TIME_ZONE);
-  return new Date(utcGuess - offset).toISOString();
-}
-
-/** The calendar day AFTER dateStr (YYYY-MM-DD) — for the exclusive upper bound
- * (`to` is INCLUSIVE of its whole day). Pure date arithmetic (tz-independent). */
-export function nextCalendarDay(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + 1);
-  return dt.toISOString().slice(0, 10);
-}
-
-/** Today's calendar date (YYYY-MM-DD) in the market timezone — for date presets
- * so a preset ("today"/last-7/month) agrees with the market-timezone filter. */
-export function marketToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: ORDERS_MARKET_TIME_ZONE,
-  }).format(new Date());
-}
+// ── Tenant-timezone date bounds (M8F.1 → per-tenant in M8H.2) ──────────────
+// A date the operator picks means a calendar day IN THE TENANT'S TIMEZONE, so
+// "from 2026-07-05" covers the WHOLE of July 5 there — not UTC (which would clip
+// the first local hours and hide orders the admin sees dated that day). The
+// conversion, DST handling and the exclusive upper bound now live in the single
+// tenant time contract (@/lib/time); this module just re-exports them so the
+// query layer keeps one import. URL values stay stable YYYY-MM-DD, and the list,
+// the count and the export all use identical bounds.
+//
+// M8F.1 hard-coded Asia/Jerusalem AND took the offset in a single pass, which is
+// an hour off on the two DST-transition days (duplicating an hour in spring and
+// SKIPPING the first business hour in autumn). Both are fixed in @/lib/time.
+export {
+  tenantDayStartUtcIso,
+  nextCalendarDay,
+  tenantToday,
+} from "@/lib/time";

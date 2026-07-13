@@ -22,6 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LocalizedText } from "@/lib/types";
 import type { Database } from "@/lib/supabase/database.types";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
+import { DEFAULT_TENANT_TIME_ZONE, resolveTenantTimeZone } from "@/lib/time";
 import { readSelectedTenant } from "./selected-tenant";
 
 export type TenantRole = Database["public"]["Enums"]["tenant_role"];
@@ -31,6 +32,13 @@ export interface Membership {
   role: TenantRole;
   /** Tenant display name — used by the tenant switcher / current indicator. */
   name: LocalizedText;
+  /**
+   * M8H.2 — the tenant's IANA timezone (e.g. Asia/Jerusalem). It rides along on
+   * `list_memberships()`, which already runs exactly ONCE per request inside the
+   * React-cached session context, so every business time on the page is formatted
+   * without a single extra query (and never from the browser's timezone).
+   */
+  timezone: string;
 }
 
 export interface SessionContext {
@@ -63,6 +71,9 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
       tenantId: r.tenant_id,
       role: r.role,
       name: { ar: r.name_ar, he: r.name_he, en: r.name_en },
+      // A corrupt/unknown stored zone resolves to UTC and is logged — never the
+      // server machine's zone and never the device's.
+      timezone: resolveTenantTimeZone(r.timezone),
     }));
     if (memberships.length > 0) {
       // Honour the cookie ONLY if it names a real membership; else fall back
@@ -90,6 +101,21 @@ export async function getDataContext(): Promise<{
 }> {
   const { client, membership } = await getSessionContext();
   return { client, tenantId: membership?.tenantId ?? NO_TENANT };
+}
+
+/**
+ * M8H.2 — the authoritative timezone for ALL business-facing time on this
+ * request. It comes from the SELECTED tenant's membership (already loaded by the
+ * cached session context — no extra query, no N+1) and is therefore
+ * server-derived: the browser's timezone never has any authority here.
+ *
+ * Mock mode has no session; the data layer supplies the demo tenant's zone.
+ * A membership-less (anon/onboarding) caller gets the product's default rather
+ * than the machine's zone.
+ */
+export async function getTenantTimeZone(): Promise<string> {
+  const { membership } = await getSessionContext();
+  return membership?.timezone ?? DEFAULT_TENANT_TIME_ZONE;
 }
 
 export async function getCurrentUser(): Promise<{

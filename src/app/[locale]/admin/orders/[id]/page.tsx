@@ -16,11 +16,13 @@ import {
   getCustomer,
   getDataMode,
   getOrder,
+  getTenantTimeZone,
   listCategories,
   listDocumentsForOrder,
   listProducts,
 } from "@/lib/data";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 
 // Reads authenticated, tenant-scoped order data through the cookie-bound client,
 // so it MUST render dynamically per request — never statically generated or
@@ -39,6 +41,8 @@ export default async function AdminOrderDetailPage({
 
   const dict = getDictionary(locale);
   const t = dict.admin.orders.detail;
+  // M8H.2 — every time on this page renders in the TENANT's zone (server-derived).
+  const timeZone = await getTenantTimeZone();
   // includeInactive: order lines keep referencing DEACTIVATED products —
   // they must still render (with the subtotal they're counted in), not
   // silently disappear (M8A). The items editor excludes inactive products
@@ -95,7 +99,7 @@ export default async function AdminOrderDetailPage({
           ) : null}
         </div>
         <p className="mt-1 text-sm text-ink-muted">
-          {t.placedOn} {formatDate(order.createdAt, locale)} ·{" "}
+          {t.placedOn} {formatTenantDateTime(order.createdAt, locale, timeZone)} ·{" "}
           {interpolate(t.itemsCount, { count: order.items.length })}
         </p>
         <ShelfRule className="mt-4" />
@@ -285,9 +289,10 @@ export default async function AdminOrderDetailPage({
                             </span>
                             {" · "}
                             {dict.docs.docDate}:{" "}
-                            {formatDate(
+                            {formatTenantDateTime(
                               existing.generatedAt ?? existing.date,
                               locale,
+                              timeZone,
                             )}
                           </>
                         ) : (

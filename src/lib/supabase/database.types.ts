@@ -1644,6 +1644,7 @@ export type Database = {
           name_he: string
           order_seq: number
           phone: string | null
+          timezone: string
           updated_at: string
           vat_registration_type: string | null
         }
@@ -1665,6 +1666,7 @@ export type Database = {
           name_he: string
           order_seq?: number
           phone?: string | null
+          timezone?: string
           updated_at?: string
           vat_registration_type?: string | null
         }
@@ -1686,6 +1688,7 @@ export type Database = {
           name_he?: string
           order_seq?: number
           phone?: string | null
+          timezone?: string
           updated_at?: string
           vat_registration_type?: string | null
         }
@@ -1727,6 +1730,7 @@ export type Database = {
     }
     Functions: {
       _gen_order_public_ref: { Args: never; Returns: string }
+      _is_valid_timezone: { Args: { p_timezone: string }; Returns: boolean }
       _legal_numbering_enabled: { Args: never; Returns: boolean }
       _log_customer_audit_event: {
         Args: {
@@ -2073,6 +2077,7 @@ export type Database = {
           name_he: string
           role: Database["public"]["Enums"]["tenant_role"]
           tenant_id: string
+          timezone: string
         }[]
       }
       list_rep_assignments: {
@@ -2322,6 +2327,7 @@ export type Database = {
           name_he: string
           order_seq: number
           phone: string | null
+          timezone: string
           updated_at: string
           vat_registration_type: string | null
         }[]
@@ -2331,6 +2337,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      update_tenant_timezone: {
+        Args: { p_tenant_id: string; p_timezone: string }
+        Returns: string
       }
       upsert_inventory_item: {
         Args: { p_inventory: Json; p_product_id: string; p_tenant_id: string }

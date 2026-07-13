@@ -10,7 +10,13 @@ import { Chip } from "@/components/ui/chip";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { isLowStock, productName } from "@/lib/catalog-helpers";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
+// M8H.2 — `nearestExpiry` maps a SQL `date` (inventory_items.expiry_date): a
+// calendar date with NO instant and NO timezone. It is rendered AS WRITTEN —
+// timezone-converting it would SHIFT the day (2026-07-13 read as UTC midnight in
+// America/New_York would display 07-12). Hence formatDateOnly, deliberately NOT
+// the tenant-instant formatters.
+import { formatDateOnly } from "@/lib/time";
 import type { InventoryItem, Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -172,7 +178,7 @@ export function InventoryTable({
                             className="font-mono text-[13px] font-semibold tabular-nums text-warning"
                             dir="ltr"
                           >
-                            {formatDate(item.nearestExpiry, locale)}
+                            {formatDateOnly(item.nearestExpiry, locale)}
                           </span>
                           <Badge tone="warning" dashed dot>
                             {t.expiringSoon}
@@ -183,7 +189,7 @@ export function InventoryTable({
                           className="font-mono text-[13px] tabular-nums text-ink-soft"
                           dir="ltr"
                         >
-                          {formatDate(item.nearestExpiry, locale)}
+                          {formatDateOnly(item.nearestExpiry, locale)}
                         </span>
                       )
                     ) : (

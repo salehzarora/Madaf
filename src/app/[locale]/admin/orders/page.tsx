@@ -4,7 +4,7 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, searchOrders } from "@/lib/data";
+import { getDataMode, getTenantTimeZone, searchOrders } from "@/lib/data";
 import { parseOrdersQuery } from "@/lib/orders-query";
 
 /**
@@ -29,6 +29,10 @@ export default async function AdminOrdersPage({
 
   const query = parseOrdersQuery(await searchParams);
   const result = await searchOrders(query);
+  // M8H.2 — the tenant's IANA zone, server-derived. Every time on this screen (and
+  // the date presets in the client table) renders in it; the device zone is never
+  // consulted, so SSR and hydration agree.
+  const timeZone = await getTenantTimeZone();
 
   // CSV export is owner/admin (mock demo stays open); a sales_rep sees only
   // assigned-customer orders via RLS either way (M8C), and the export action is
@@ -55,6 +59,7 @@ export default async function AdminOrdersPage({
         locale={locale}
         dict={dict}
         canExport={canExport}
+        timeZone={timeZone}
       />
     </div>
   );

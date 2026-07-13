@@ -24,7 +24,7 @@ import type {
   SignupRequest,
   SignupRequestStatus,
 } from "@/lib/data/customer-signup";
-import { formatDate } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
 import { linkErrorMessage } from "./link-error-message";
 
@@ -36,11 +36,14 @@ export function SignupManager({
   dict,
   initialLinks,
   initialRequests,
+  timeZone,
 }: {
   locale: Locale;
   dict: Dictionary;
   initialLinks: SignupLink[];
   initialRequests: SignupRequest[];
+  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  timeZone: string;
 }) {
   const t = dict.admin.customers.signup;
   const router = useRouter();
@@ -342,7 +345,9 @@ export function SignupManager({
                       {link.tokenPreview ? `…${link.tokenPreview}` : t.none}
                     </td>
                     <td className="px-3 py-3 text-ink-muted">
-                      {link.expiresAt ? formatDate(link.expiresAt, locale) : t.never}
+                      {link.expiresAt
+                        ? formatTenantDateTime(link.expiresAt, locale, timeZone)
+                        : t.never}
                     </td>
                     <td className="px-3 py-3 text-end">
                       {link.status === "active" ? (
@@ -410,7 +415,7 @@ export function SignupManager({
                       ) : null}
                     </td>
                     <td className="px-3 py-3 text-ink-muted">
-                      {formatDate(req.createdAt, locale)}
+                      {formatTenantDateTime(req.createdAt, locale, timeZone)}
                     </td>
                     <td className="px-3 py-3">
                       <Badge tone={reqStatusTone[req.status]} dot>

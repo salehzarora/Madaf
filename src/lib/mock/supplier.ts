@@ -18,4 +18,7 @@ export const supplier: Supplier = {
   },
   email: "orders@madaf.demo",
   // display VAT rate omitted → falls back to VAT_RATE (0.18) on estimates.
+  // M8H.2 — the demo tenant's IANA timezone. Mock mirrors the Supabase contract:
+  // every business time renders in THIS zone, never the device's.
+  timezone: "Asia/Jerusalem",
 };

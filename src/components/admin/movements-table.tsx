@@ -17,7 +17,8 @@ import {
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { dateRangeBounds, type DateRangePreset } from "@/lib/date-range";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import {
   INVENTORY_MOVEMENT_REASONS,
   type InventoryMovement,
@@ -58,6 +59,7 @@ export function MovementsTable({
   canExport = false,
   locale,
   dict,
+  timeZone,
 }: {
   movements: InventoryMovement[];
   products: Product[];
@@ -66,6 +68,8 @@ export function MovementsTable({
   canExport?: boolean;
   locale: Locale;
   dict: Dictionary;
+  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  timeZone: string;
 }) {
   const t = dict.admin.inventory.movements;
   const [query, setQuery] = useState("");
@@ -346,7 +350,7 @@ export function MovementsTable({
                     className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                   >
                     <td className="px-4 py-3 whitespace-nowrap text-ink-muted">
-                      {formatDate(m.createdAt, locale)}
+                      {formatTenantDateTime(m.createdAt, locale, timeZone)}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-ink">

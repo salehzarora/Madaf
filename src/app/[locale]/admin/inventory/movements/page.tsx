@@ -8,6 +8,7 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
+  getTenantTimeZone,
   listOrders,
   listProducts,
   searchInventoryMovements,
@@ -61,6 +62,7 @@ export default async function InventoryMovementsPage({
         <ShelfRule className="mt-4" />
       </div>
       <MovementsTable
+        timeZone={await getTenantTimeZone()}
         movements={movements}
         products={products}
         orders={orders}

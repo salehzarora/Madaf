@@ -12,7 +12,12 @@ import {
   parseCustomersQuery,
   toCustomerQuery,
 } from "@/lib/customers-query";
-import { getCustomerStatsForIds, getDataMode, searchCustomers } from "@/lib/data";
+import {
+  getCustomerStatsForIds,
+  getDataMode,
+  getTenantTimeZone,
+  searchCustomers,
+} from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
 
 /** First-page size — mirrors CUSTOMERS_PAGE in the customers action. */
@@ -133,6 +138,7 @@ export default async function AdminCustomersPage({
           stats={stats}
           locale={locale}
           dict={dict}
+          timeZone={await getTenantTimeZone()}
           query={customersQuery}
         />
       )}

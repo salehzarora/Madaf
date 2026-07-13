@@ -34,6 +34,12 @@ export interface Supplier {
   /** Default VAT rate for INTERNAL/DRAFT display only (fraction in [0,1)).
    * NON-LEGAL estimate input (M8E.4); falls back to VAT_RATE when unset. */
   displayVatRate?: number;
+  /**
+   * M8H.2 — the tenant's IANA timezone (e.g. `Asia/Jerusalem`). ALL business
+   * times are displayed in it, and operator-picked calendar dates are resolved
+   * against it. Never a fixed UTC offset (an offset cannot express DST).
+   */
+  timezone: string;
 }
 
 export interface Category {

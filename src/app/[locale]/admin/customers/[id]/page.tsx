@@ -15,10 +15,11 @@ import {
   getCustomer,
   getCustomerTimelinePage,
   getDataMode,
+  getTenantTimeZone,
   searchOrders,
 } from "@/lib/data";
 import { listCustomerLinks } from "@/lib/data/customer-links";
-import { formatDate } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import { parseOrdersQuery } from "@/lib/orders-query";
 
 /** Shop detail + private order-link management (links are Supabase-mode). */
@@ -58,6 +59,11 @@ export default async function AdminCustomerDetailPage({
   // audit_events (M8G.2). RLS scopes it to accessible customers; a sales_rep
   // only reaches an assigned store here (getCustomer already gated access).
   const timelinePage = await getCustomerTimelinePage({ customerId: id });
+
+  // M8H.2 — one server-derived tenant zone for this page AND for the client
+  // components below (timeline, links), so nothing on the screen is rendered in
+  // the device's timezone and SSR/hydration agree.
+  const timeZone = await getTenantTimeZone();
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -163,6 +169,7 @@ export default async function AdminCustomerDetailPage({
                 customerId={id}
                 initialLinks={links}
                 customerInactive={customer.isActive === false}
+                timeZone={timeZone}
               />
             ) : (
               <p className="rounded-field bg-surface-sunken px-4 py-3 text-sm text-ink-soft">
@@ -208,7 +215,7 @@ export default async function AdminCustomerDetailPage({
                           </span>
                         ) : null}
                         <p className="mt-0.5 text-xs text-ink-muted">
-                          {formatDate(order.createdAt, locale)}
+                          {formatTenantDateTime(order.createdAt, locale, timeZone)}
                         </p>
                       </div>
                       <OrderStatusBadge status={order.status} dict={dict.status} />
@@ -239,6 +246,7 @@ export default async function AdminCustomerDetailPage({
             locale={locale}
             dict={dict}
             initialPage={timelinePage}
+            timeZone={timeZone}
           />
         </CardContent>
       </Card>

@@ -23,7 +23,7 @@ import {
   resolveCustomerEventKey,
 } from "@/lib/audit-events";
 import type { TimelineActor, TimelineEvent, TimelinePage } from "@/lib/customer-timeline";
-import { formatDate } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 
 /** Icon per event type — every event ALSO carries a text label, so meaning is
  * never conveyed by icon/color alone. */
@@ -79,10 +79,12 @@ function TimelineRow({
   event,
   locale,
   dict,
+  timeZone,
 }: {
   event: TimelineEvent;
   locale: Locale;
   dict: Dictionary;
+  timeZone: string;
 }) {
   const Icon = EVENT_ICON[resolveCustomerEventKey(event.eventType) ?? ""] ?? Circle;
   const details = renderCustomerAuditDetails(event, dict);
@@ -102,7 +104,7 @@ function TimelineRow({
           <p className="mt-0.5 text-xs text-ink-soft">{details.join(" · ")}</p>
         ) : null}
         <p className="mt-0.5 text-xs text-ink-muted">
-          <span>{formatDate(event.createdAt, locale)}</span>
+          <span>{formatTenantDateTime(event.createdAt, locale, timeZone)}</span>
           <span className="mx-1.5" aria-hidden>
             ·
           </span>
@@ -125,11 +127,15 @@ export function CustomerTimeline({
   locale,
   dict,
   initialPage,
+  timeZone,
 }: {
   customerId: string;
   locale: Locale;
   dict: Dictionary;
   initialPage: TimelinePage;
+  /** M8H.2 — the tenant's IANA zone (server-derived). Audit rows are absolute
+   * UTC instants; they are DISPLAYED in the business's timezone. */
+  timeZone: string;
 }) {
   const t = dict.audit.timeline;
   const [events, setEvents] = useState<TimelineEvent[]>(initialPage.events);
@@ -178,6 +184,7 @@ export function CustomerTimeline({
             event={event}
             locale={locale}
             dict={dict}
+            timeZone={timeZone}
           />
         ))}
       </ol>

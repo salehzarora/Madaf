@@ -829,6 +829,26 @@ export interface Dictionary {
         saving: string;
         savedToast: string;
         saveError: string;
+        /** M8H.2 — the tenant timezone control (owner/admin). */
+        timezone: {
+          section: string;
+          label: string;
+          /** Explains that ALL business times render in this zone. */
+          help: string;
+          /** Reassures that history is not rewritten. */
+          historyNote: string;
+          searchPlaceholder: string;
+          noMatches: string;
+          current: string;
+          /** Non-authoritative "your device is in X" hint. */
+          deviceHint: string;
+          save: string;
+          saving: string;
+          saved: string;
+          errorInvalid: string;
+          errorForbidden: string;
+          errorFailed: string;
+        };
       };
     };
   };

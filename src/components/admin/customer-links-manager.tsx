@@ -16,7 +16,7 @@ import {
 } from "@/lib/actions/customer-links";
 import { isDisplayablePublicUrl } from "@/lib/public-url";
 import type { CustomerLink, LinkStatus } from "@/lib/data/customer-links";
-import { formatDate } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import { linkErrorMessage } from "./link-error-message";
 
 const EXPIRY_CHOICES = [0, 7, 30, 90] as const;
@@ -32,6 +32,7 @@ export function CustomerLinksManager({
   customerId,
   initialLinks,
   customerInactive = false,
+  timeZone,
 }: {
   locale: Locale;
   dict: Dictionary;
@@ -39,6 +40,10 @@ export function CustomerLinksManager({
   initialLinks: CustomerLink[];
   /** M8C — deactivated store: no new/regenerated links until reactivation. */
   customerInactive?: boolean;
+  /** M8H.2 — the tenant's IANA zone: an expiry is an absolute instant, shown as
+   * the business's wall clock (a link "expiring at midnight" must mean THEIR
+   * midnight, not the viewer's device midnight). */
+  timeZone: string;
 }) {
   const t = dict.access.links;
   const router = useRouter();
@@ -317,12 +322,12 @@ export function CustomerLinksManager({
                     </td>
                     <td className="px-3 py-3 text-ink-muted">
                       {link.expiresAt
-                        ? formatDate(link.expiresAt, locale)
+                        ? formatTenantDateTime(link.expiresAt, locale, timeZone)
                         : t.never}
                     </td>
                     <td className="px-3 py-3 text-ink-muted">
                       {link.lastUsedAt
-                        ? formatDate(link.lastUsedAt, locale)
+                        ? formatTenantDateTime(link.lastUsedAt, locale, timeZone)
                         : t.none}
                     </td>
                     <td className="px-3 py-3 text-end">

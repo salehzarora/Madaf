@@ -5,7 +5,7 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listCustomers } from "@/lib/data";
+import { getDataMode, getTenantTimeZone, listCustomers } from "@/lib/data";
 import { listRepAssignments } from "@/lib/data/rep-assignments";
 import { listTenantInvites, listTenantMembers } from "@/lib/data/team";
 
@@ -60,6 +60,7 @@ export default async function AdminTeamPage({
         currentUserRole={membership.role}
         initialMembers={members}
         initialInvites={invites}
+        timeZone={await getTenantTimeZone()}
       />
       <RepAssignments
         locale={locale}

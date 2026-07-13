@@ -26,7 +26,8 @@ import {
   type CustomersQuery,
 } from "@/lib/customers-query";
 import type { CustomerRowStat } from "@/lib/data/customers";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
+import { formatTenantDate } from "@/lib/time";
 import { CUSTOMER_ORIGINS, type Customer } from "@/lib/types";
 
 export type { CustomerRowStat };
@@ -50,12 +51,15 @@ export function CustomersTable({
   locale,
   dict,
   query,
+  timeZone,
 }: {
   customers: Customer[];
   stats: Record<string, CustomerRowStat>;
   locale: Locale;
   dict: Dictionary;
   query: CustomersQuery;
+  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  timeZone: string;
 }) {
   const t = dict.admin.customers;
   const router = useRouter();
@@ -286,7 +290,9 @@ export function CustomersTable({
                       {formatNumber(stat.count, locale)}
                     </td>
                     <td className="px-4 py-3.5 text-ink-muted">
-                      {stat.lastOrder ? formatDate(stat.lastOrder, locale) : "—"}
+                      {stat.lastOrder
+                        ? formatTenantDate(stat.lastOrder, locale, timeZone)
+                        : "—"}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-2">

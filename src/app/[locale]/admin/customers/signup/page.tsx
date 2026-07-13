@@ -7,7 +7,7 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode } from "@/lib/data";
+import { getDataMode, getTenantTimeZone } from "@/lib/data";
 import { listShowcaseLinks } from "@/lib/data/catalog-showcase";
 import {
   listSignupLinks,
@@ -31,6 +31,8 @@ export default async function CustomerSignupPage({
   if (role !== "owner" && role !== "admin") notFound();
 
   const dict = getDictionary(locale);
+  // M8H.2 — link expiries are absolute instants shown in the TENANT's zone.
+  const timeZone = await getTenantTimeZone();
   const t = dict.admin.customers.signup;
   const [links, requests, showcaseLinks] = await Promise.all([
     listSignupLinks(),
@@ -59,11 +61,13 @@ export default async function CustomerSignupPage({
         dict={dict}
         initialLinks={links}
         initialRequests={requests}
+        timeZone={timeZone}
       />
       <ShelfRule />
       <ShowcaseLinkManager
         locale={locale}
         dict={dict}
+        timeZone={timeZone}
         initialLinks={showcaseLinks}
       />
     </div>

@@ -6,8 +6,13 @@ import { Card } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { listCustomers, listDocuments, listOrders } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import {
+  getTenantTimeZone,
+  listCustomers,
+  listDocuments,
+  listOrders,
+} from "@/lib/data";
+import { formatTenantDateTime } from "@/lib/time";
 import type { DocumentType } from "@/lib/types";
 
 const typeTone: Record<DocumentType, "info" | "brand" | "warning"> = {
@@ -27,10 +32,11 @@ export default async function AdminDocumentsPage({
   const dict = getDictionary(locale);
   const t = dict.admin.documents;
 
-  const [documents, orders, customers] = await Promise.all([
+  const [documents, orders, customers, timeZone] = await Promise.all([
     listDocuments(),
     listOrders(),
     listCustomers(),
+    getTenantTimeZone(), // M8H.2 — server-derived tenant zone for every time here
   ]);
   const orderById = new Map(orders.map((o) => [o.id, o]));
   const customerById = new Map(customers.map((c) => [c.id, c]));
@@ -110,7 +116,7 @@ export default async function AdminDocumentsPage({
                     {customer?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3.5 text-ink-muted">
-                    {formatDate(doc.date, locale)}
+                    {formatTenantDateTime(doc.date, locale, timeZone)}
                   </td>
                 </tr>
               );

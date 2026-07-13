@@ -27,13 +27,15 @@ import {
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
+  getTenantTimeZone,
   listCustomers,
   listInventory,
   listOrders,
   listProducts,
 } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatTenantDateTime } from "@/lib/time";
 import type { Locale } from "@/lib/types";
 
 const STATUS_COLOR = {
@@ -65,11 +67,12 @@ export default async function AdminDashboardPage({
   // includeInactive: order lines / inventory rows / low-stock entries may
   // reference DEACTIVATED products — lookups must still resolve (M8A crash
   // fix). Active-only derived values filter explicitly below.
-  const [orders, customers, inventory, products] = await Promise.all([
+  const [orders, customers, inventory, products, timeZone] = await Promise.all([
     listOrders(),
     listCustomers(),
     listInventory(),
     listProducts({ includeInactive: true }),
+    getTenantTimeZone(), // M8H.2 — server-derived tenant zone for dashboard times
   ]);
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -675,7 +678,7 @@ export default async function AdminDashboardPage({
                   {customer?.name ?? order.customerSnapshot?.name ?? "—"}
                 </span>
                 <span className="hidden text-xs text-ink-muted sm:block">
-                  {formatDate(order.createdAt, locale)} ·{" "}
+                  {formatTenantDateTime(order.createdAt, locale, timeZone)} ·{" "}
                   {interpolate(dict.admin.orders.detail.itemsCount, {
                     count: order.items.length,
                   })}

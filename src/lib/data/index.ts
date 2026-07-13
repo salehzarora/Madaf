@@ -73,7 +73,9 @@ export {
 } from "./inventory";
 export {
   getSupplier,
+  getTenantTimeZone,
   updateTenantProfile,
+  updateTenantTimeZone,
   uploadTenantLogo,
   type TenantProfileInput,
 } from "./supplier";

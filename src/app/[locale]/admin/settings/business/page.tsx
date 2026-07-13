@@ -1,10 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { BusinessProfileForm } from "@/components/admin/business-profile-form";
+import { TimezoneSettings } from "@/components/admin/timezone-settings";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, getSupplier } from "@/lib/data";
+import { TIME_ZONE_OPTIONS } from "@/lib/time";
 
 /**
  * Business profile settings — owner/admin only (Supabase mode); a demo form in
@@ -52,6 +54,19 @@ export default async function AdminBusinessSettingsPage({
         locale={locale}
         dict={dict}
         initial={initial}
+        live={live}
+      />
+      <ShelfRule />
+      {/* M8H.2 — the tenant timezone. This route is already owner/admin-only
+          (sales_rep is 404'd above), so the control never renders for a rep, and
+          the RPC re-verifies owner/admin server-side regardless. The option list
+          is computed on the SERVER (bounded, canonical IANA + UTC — no browser
+          API dependency and no query). */}
+      <TimezoneSettings
+        locale={locale}
+        dict={dict}
+        current={initial.timezone}
+        options={TIME_ZONE_OPTIONS}
         live={live}
       />
     </div>
