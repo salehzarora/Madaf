@@ -68,13 +68,17 @@ const filters = (over: Partial<MovementFilters> = {}): MovementFilters => ({
   ...over,
 });
 
+/** The generation the component would assign next (it owns the counter, so that the
+ * reducer and the in-flight request can never disagree about which session is which). */
+const nextGen = (s: MovementSession): number => s.generation + 1;
+
 /** Drive the reducer through a filter change + its first resolved page. */
 function resolvedSession(
   over: Partial<MovementFilters>,
   resolved: { from: string | null; to: string | null; timeZone: string; rows: InventoryMovement[]; hasMore?: boolean },
 ): MovementSession {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", filters: filters(over) });
+  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters(over) });
   return movementSessionReducer(s, {
     type: "resolved",
     generation: s.generation,
@@ -163,7 +167,8 @@ test("F02: a filter change atomically clears rows, hasMore, anchors and the tz b
 
   const next = movementSessionReducer(active, {
     type: "filters_changed",
-    filters: filters({ preset: "today", reason: "manual_correction" }),
+    generation: nextGen(active),
+    patch: { reason: "manual_correction" },
   });
 
   assert.equal(next.status, "resolving");
@@ -186,7 +191,8 @@ test("F02: Export and Load more are BOTH unavailable the instant a filter change
 
   const resolving = movementSessionReducer(active, {
     type: "filters_changed",
-    filters: filters({ preset: "7d" }),
+    generation: nextGen(active),
+    patch: { preset: "7d" },
   });
   // THE bug: Export stayed enabled here, and would have paired the NEW filters with
   // the OLD visible rows — a file that did not match the screen.
@@ -196,7 +202,7 @@ test("F02: Export and Load more are BOTH unavailable the instant a filter change
 
 test("F02: a resolved session re-enables Export for THAT generation only", () => {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", filters: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
   const gen = s.generation;
   assert.equal(canExportSession(s), false);
 
@@ -217,10 +223,10 @@ test("F02: a resolved session re-enables Export for THAT generation only", () =>
 
 test("F02: a STALE response cannot replace rows, anchors, hasMore or Export-readiness", () => {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", filters: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
   const oldGen = s.generation;
   // The operator changes the filter again before the first reply lands.
-  s = movementSessionReducer(s, { type: "filters_changed", filters: filters({ preset: "7d" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "7d" }) });
   const newGen = s.generation;
   assert.notEqual(oldGen, newGen);
 
@@ -283,7 +289,8 @@ test("F02: an INITIAL failure exposes no stale rows and cannot export", () => {
   );
   let s = movementSessionReducer(active, {
     type: "filters_changed",
-    filters: filters({ preset: "month" }),
+    generation: nextGen(active),
+    patch: { preset: "month" },
   });
   s = movementSessionReducer(s, { type: "resolve_failed", generation: s.generation });
 
@@ -386,7 +393,8 @@ test("F03: the request carries the SERVER-issued timezone as a comparison value"
   let fresh = initialMovementSession([], JLM);
   fresh = movementSessionReducer(fresh, {
     type: "filters_changed",
-    filters: filters({ preset: "today" }),
+    generation: nextGen(fresh),
+    patch: { preset: "today" },
   });
   assert.equal(sessionRequest(fresh, 0).expectedTimeZone, undefined);
   assert.equal(sessionRequest(fresh, 0).dateFrom, undefined, "…and no anchors yet");
@@ -426,7 +434,7 @@ test("F03: a restarted session resolves FRESH anchors under the new zone, from o
     generation: active.generation,
   });
   // Re-applying the filter starts a NEW generation…
-  s = movementSessionReducer(s, { type: "filters_changed", filters: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
   assert.equal(nextOffset(s), 0, "no offset from the previous session is reused");
   assert.equal(sessionRequest(s, 0).expectedTimeZone, undefined, "no stale binding");
 
@@ -454,7 +462,8 @@ test("F03: a stale reply for an OLD generation cannot kill the CURRENT session",
   );
   const next = movementSessionReducer(active, {
     type: "filters_changed",
-    filters: filters({ preset: "7d" }),
+    generation: nextGen(active),
+    patch: { preset: "7d" },
   });
   const resolved = movementSessionReducer(next, {
     type: "resolved",

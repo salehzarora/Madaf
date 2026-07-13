@@ -243,22 +243,44 @@ against the tenant's clock at the moment the filter is applied:
 `to` becomes a **next-day-start exclusive** UTC bound, so tomorrow's rows cannot
 enter. The label still says "Today"; the range underneath it does not move.
 
-**2. The session must be ATOMIC.** Clearing only the anchors on a filter change left
-the old rows, the old `hasMore`, and an offset derived from them — while **Export
-stayed enabled**, so an export fired in that window paired the *new* filters with the
-*old* result set. Every transition now goes through one reducer
-(`src/lib/movement-session.ts`), which the component renders from and the tests drive
-directly:
+**2. The session must be ATOMIC — in the component, not just the reducer.** Clearing
+only the anchors on a filter change left the old rows, the old `hasMore`, and an
+offset derived from them — while **Export stayed enabled**, so an export fired in that
+window paired the *new* filters with the *old* result set.
+
+A correct reducer was **not enough**. The filter controls each held their own
+`useState` and a **passive `useEffect`** noticed the change and invalidated the session
+*afterwards* — so one **committed render** still carried the new filter value beside
+the old rows, the old `hasMore` and an enabled Export. The controls and the session
+therefore now live in the **same reducer**, and a control change dispatches
+`filters_changed` **synchronously in the event handler**. There is no render in which
+they can disagree. (The mounted test proves this by firing the change event *without*
+`act()` and reading the DOM in the same synchronous turn — a passive-effect
+invalidation fails it; verified by deliberately reintroducing the defect.)
+
+Every transition goes through one reducer (`src/lib/movement-session.ts`), which the
+component renders from and the tests drive directly:
 
 ```
 filters_changed → generation++, rows [], hasMore false, anchors null, tz null
                   → Export DISABLED, Load-more unavailable, offset implicitly 0
+                  (dispatched IN THE HANDLER, not a passive effect)
 resolved(gen)   → rows, hasMore, from, to, timeZone  → Export enabled
 page_loaded(gen)→ append; a short page ends the list
 page_failed(gen)→ session and anchors SURVIVE — a retry pages the SAME range
-resolve_failed  → no rows, no export (a retry resolves a NEW session from offset 0)
-session_stale   → rows dropped; the anchors are void
+resolve_failed  → no rows, no export → a RETRY control appears
+session_stale   → rows dropped, anchors void → a RE-APPLY control appears
+retry           → same filters, NEW generation, offset 0, no old anchors, no old tz
 ```
+
+**Both dead-ends are actionable.** A stale session used to show an explanation and
+nothing to press, and a failed one showed nothing at all — and re-selecting the
+already-selected filter fires no change event, so the operator was stuck. `failed`
+now renders a localized error with a **Retry** button; `stale` renders the timezone
+explanation with a **Re-apply filter** button (both `role="alert"`, both real
+keyboard-reachable `<button>`s, ar/he/en). Both restart through the same path: same
+selected filters, new generation, **offset zero**, no old rows, no old anchors, no old
+timezone binding — so pressing either twice cannot mix generations.
 
 Every response carries the **generation** it was issued for, so a slow reply for a
 superseded filter is dropped: it cannot restore rows, anchors, `hasMore`, or
@@ -266,16 +288,27 @@ Export-readiness. Export and load-more both re-send the session's **own** canoni
 snapshot, its closed anchors and its timezone binding — so the file and the screen
 describe the same query by construction.
 
-**3. The session is BOUND to the timezone it was resolved under.** The anchors are
-tenant-*local* dates, so their UTC window depends on the tenant's zone. If an owner
-changes the zone in another tab, the identical anchors silently denote a **different**
-window. The client therefore echoes back the server-issued `resolvedTimeZone` as an
+**3. The session is BOUND to the timezone it was resolved under — for its QUERY *and*
+for its RENDERING.** The anchors are tenant-*local* dates, so their UTC window depends
+on the tenant's zone. If an owner changes the zone in another tab, the identical
+anchors silently denote a **different** window.
+
+*Query side:* the client echoes back the server-issued `resolvedTimeZone` as an
 **expected-session value** — comparison only; the server always reads the
-authoritative zone from the cached authenticated context, and the client's value
-never selects or authorizes anything. If they differ the server **refuses**
-(`timezone_changed`) without querying or exporting, and the UI invalidates the
-session and shows a localized "re-apply the filter" message. Nothing is
-reinterpreted; no two interpretations are ever mixed.
+authoritative zone from the cached authenticated context, and the client's value never
+selects or authorizes anything. If they differ the server **refuses**
+(`timezone_changed`) without querying or exporting, the rows are dropped, and Re-apply
+resolves a fresh session under the new zone.
+
+*Render side:* this is where the first attempt still leaked. The rows and the CSV were
+formatted with the **page's `timeZone` prop** — the zone the page happened to be
+rendered with. After a zone change forced a new session, the rows came from a query the
+server ran under the **new** zone but were printed under the **old** one. So the page
+prop is now **bootstrap only**: it seeds the initial SSR session (which genuinely *is*
+its zone) and is never consulted again. Every row and every CSV cell is formatted with
+**`session.timeZone`** — the zone the server resolved *that* session under. Screen and
+file therefore always agree, and a row is never printed under an interpretation other
+than the one that produced it.
 
 **Exactly-50-row behaviour (retained).** A final page that happens to be exactly
 `MOVEMENT_PAGE_SIZE` rows leaves `hasMore` true, costing one extra request that comes
@@ -500,7 +533,22 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **477** app checks.
+- `npm test` → **477** unit checks **+ 17 mounted component checks** (it runs both).
+- `npm run test:movements-table` → **17/17**, MOUNTING THE REAL `MovementsTable` in
+  jsdom (no copy, no re-implementation) with the Server Actions supplied through the
+  production injection seam and resolved by hand, so intermediate renders are
+  observable. **Reducer tests alone let three integration defects through**, so these
+  are not optional. They cover: the render committed *by the change event itself*
+  already has no old rows / no Load-more / no Export; a superseded response cannot
+  restore rows or Export; rapid double changes render only the latest; a session
+  resolved under **UTC** renders and exports **UTC**, not the Asia/Jerusalem page prop;
+  `timezone_changed` clears the rows and offers a working **Re-apply**; a failed
+  resolution offers a working **Retry**; both restart at offset zero with no old
+  anchors or timezone; Export is inert while resolving and after a stale reply; and
+  Arabic renders a bidi-safe timestamp.
+  Two of these were **verified to be falsifiable** by deliberately reintroducing the
+  defect (deferring the dispatch; formatting with the page prop) and watching them
+  fail.
 - `npm run test:movement-session` → **26/26**, driving the **production reducer** and
   the **production Server Actions** (not a copy): closed Today/7d/month ranges, a
   next-day movement excluded, offsets stable across midnight, an atomic filter reset,

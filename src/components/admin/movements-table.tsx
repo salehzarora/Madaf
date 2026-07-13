@@ -17,9 +17,13 @@ import { Input, Select } from "@/components/ui/input";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
-import {
-  exportMovementsAction,
-  searchMovementsAction,
+// TYPE-ONLY (erased at compile). A runtime import of the Server Actions would drag
+// `@/lib/tenant-day` — which is `server-only` — into this client module's graph, and
+// the component could then never be MOUNTED in a test. The actions arrive as props.
+import type {
+  MovementExportResult,
+  MovementSearchInput,
+  MovementSearchResult,
 } from "@/lib/actions/inventory";
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -29,9 +33,10 @@ import {
   canLoadMoreSession,
   initialMovementSession,
   movementSessionReducer,
+  needsRestart,
   nextOffset,
   sessionRequest,
-  type MovementDirection,
+  sessionTimeZone,
   type MovementFilters,
 } from "@/lib/movement-session";
 import { formatTenantDateTime } from "@/lib/time";
@@ -46,8 +51,6 @@ import { cn } from "@/lib/utils";
 
 // The page size (MOVEMENT_PAGE_SIZE) lives with the session reducer, which is what
 // decides whether a short page means "the end".
-
-type Direction = MovementDirection;
 
 function productMatches(p: Product, q: string): boolean {
   return [
@@ -77,6 +80,9 @@ export function MovementsTable({
   locale,
   dict,
   timeZone,
+  searchAction,
+  exportAction,
+  download = downloadCsv,
 }: {
   movements: InventoryMovement[];
   products: Product[];
@@ -85,42 +91,69 @@ export function MovementsTable({
   canExport?: boolean;
   locale: Locale;
   dict: Dictionary;
-  /** M8H.2 — the tenant's IANA zone (server-derived). */
+  /**
+   * M8H.2 — the tenant's IANA zone at SSR time. **Bootstrap only.** It seeds the
+   * initial session (the server rendered those rows under it, so it genuinely IS
+   * that session's zone) and is never consulted again: once a session is resolved,
+   * `session.timeZone` — the zone the SERVER ran the query under — owns its rows.
+   */
   timeZone: string;
+  /**
+   * The Server Actions, injected by the (server) page.
+   *
+   * They are PROPS rather than imports for one structural reason: importing
+   * `@/lib/actions/inventory` pulls in `@/lib/tenant-day`, which is `server-only`,
+   * so this component could not be mounted — and reducer-only tests are exactly what
+   * let three integration defects through. The production page passes the real
+   * actions; a test passes controllable ones. There is no test-only branch in here.
+   */
+  searchAction: (input: MovementSearchInput) => Promise<MovementSearchResult>;
+  exportAction: (input: MovementSearchInput) => Promise<MovementExportResult>;
+  /** Seam for the browser download (jsdom has no `URL.createObjectURL`). */
+  download?: (filename: string, csv: string) => void;
 }) {
   const t = dict.admin.inventory.movements;
+  /** The raw search box. NOT an applied filter until the debounce fires. */
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [reason, setReason] = useState<string>("all");
-  const [direction, setDirection] = useState<Direction>("all");
-  const [preset, setPreset] = useState<MovementDatePreset>("all");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
 
   /**
-   * THE SESSION. One resolved result set: the canonical filters, the CLOSED
-   * tenant-local range the server resolved for them, the timezone it resolved them
-   * under, the rows, and whether more exist. Every transition — filter change, page,
-   * failure, staleness — goes through the reducer in `@/lib/movement-session`, so
-   * they are ATOMIC: there is no moment when the rows on screen belong to one filter
-   * while the export would send another. The reducer is where the tests bite.
+   * THE SESSION — and the SELECTED FILTERS, in one reducer.
+   *
+   * They live together deliberately. When they were separate (`useState` per control
+   * + a `useEffect` that noticed the change and invalidated afterwards), one
+   * committed render could show the NEW filter values beside the OLD rows, the OLD
+   * `hasMore`, the OLD anchors and an ENABLED Export — an export fired in that window
+   * produced a file for a query nobody had asked for. Now a control change and the
+   * death of the previous session are ONE synchronous dispatch, so that render cannot
+   * exist. `session.filters` is both the selected snapshot and (once `ready`) the
+   * snapshot the rows came from; they can never disagree, because any change
+   * invalidates.
    */
   const [session, dispatch] = useReducer(
     movementSessionReducer,
     undefined,
     () => initialMovementSession(initialMovements, timeZone),
   );
-  const { rows } = session;
+  const { rows, filters } = session;
+  const { preset, customFrom, customTo, reason, direction } = filters;
 
   /** Export is gated on a RESOLVED session — never on a resolving/failed/stale one. */
   const exportReady = canExportSession(session);
   const loadMoreReady = canLoadMoreSession(session);
+  const restartable = needsRestart(session);
+  /** The zone THIS session's rows were resolved under — never the bootstrap prop. */
+  const rowTimeZone = sessionTimeZone(session);
 
   const [loading, startLoading] = useTransition();
   // Export runs its own server round-trip over ALL filtered rows (M8E.1).
   const [exporting, startExport] = useTransition();
   const [exportNote, setExportNote] = useState<string | null>(null);
-  const firstRun = useRef(true);
+  /** The generation counter. Bumped in EVENT HANDLERS only (never during render), so
+   * the component and the reducer always agree which request owns which session. */
+  const genRef = useRef(0);
+  /** The generation whose first page we have already requested — so the effect that
+   * performs the I/O fires exactly once per session. */
+  const firedRef = useRef(0);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -131,60 +164,65 @@ export function MovementsTable({
     [orders],
   );
 
-  // Debounce the product search (server round-trip per applied term).
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(id);
-  }, [query]);
-
-  // Resolve the search term to product ids against the loaded catalog.
-  // undefined = no product filter; [] = matched nothing → zero rows.
-  const productIds = useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase();
-    if (!q) return undefined;
-    return products.filter((p) => productMatches(p, q)).map((p) => p.id);
-  }, [debouncedQuery, products]);
-
+  /** Nothing is filtered — so an empty list means "no movements yet", not
+   * "no matches". Read from the SESSION's filters, which are the selected ones. */
   const isDefault =
     reason === "all" &&
     direction === "all" &&
     preset === "all" &&
-    productIds === undefined;
+    filters.productIds === undefined;
+
+  /** ONE synchronous transition: change the control AND invalidate the session. */
+  function applyFilters(patch: Partial<MovementFilters>): void {
+    genRef.current += 1;
+    dispatch({ type: "filters_changed", generation: genRef.current, patch });
+  }
+
+  /** Retry a failed resolution / re-apply a stale one — same filters, NEW session. */
+  function restartSession(): void {
+    genRef.current += 1;
+    dispatch({ type: "retry", generation: genRef.current });
+  }
+
+  // Debounce the product search: the term is only APPLIED (and the session only
+  // invalidated) once the operator stops typing. This effect performs no
+  // invalidation logic of its own — it just fires the same synchronous transition
+  // every other control fires. The dispatch carries a PATCH, which the reducer
+  // merges into ITS OWN current filters, so a `reason` changed during those 300ms
+  // cannot be clobbered by a stale closure; and a patch that changes nothing is a
+  // no-op there, so typing that does not alter the matched set leaves the session
+  // alone. Nothing about the session is read here, so nothing here can go stale.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const q = query.trim().toLowerCase();
+      // undefined = no product filter; [] = matched nothing → zero rows (correct).
+      const productIds = q
+        ? products.filter((p) => productMatches(p, q)).map((p) => p.id)
+        : undefined;
+      applyFilters({ productIds });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [query, products]);
 
   /**
-   * A NEW SESSION whenever any filter changes. The reducer atomically drops the old
-   * rows, offset, hasMore, anchors and timezone binding and bumps the generation —
-   * so Export is disabled the instant the filter moves, and cannot pair the NEW
-   * filters with the OLD visible rows. The very first run is skipped while the
-   * filters are still default: the SSR'd page already IS that resolved session.
+   * Perform the first-page request for whatever session is currently RESOLVING.
+   *
+   * This effect does I/O only. It never *decides* that the session is stale — the
+   * handler above already did that, synchronously, in the same transition as the
+   * control change. Keying on the generation makes it fire exactly once per session
+   * and read the reducer's authoritative filters rather than a captured snapshot.
    */
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      if (isDefault) return;
-    }
-    const filters: MovementFilters = {
-      preset,
-      customFrom,
-      customTo,
-      reason,
-      direction,
-      productIds,
-    };
-    dispatch({ type: "filters_changed", filters });
-    // The generation `filters_changed` assigns. Responses tagged with anything else
-    // are stale by definition and the reducer drops them.
-    const myGen = session.generation + 1;
+    if (session.status !== "resolving") return;
+    if (firedRef.current === session.generation) return;
+    firedRef.current = session.generation;
+    const myGen = session.generation;
+    const request = sessionRequest(session, 0);
 
     startLoading(async () => {
       // A brand-new session: no anchors and no expected zone, so the server resolves
       // the preset ONCE and hands back BOTH concrete dates plus the zone it used.
-      const result = await searchMovementsAction(
-        sessionRequest(
-          { ...session, generation: myGen, filters, from: null, to: null, timeZone: null },
-          0,
-        ),
-      );
+      const result = await searchAction(request);
       if (result.ok) {
         dispatch({
           type: "resolved",
@@ -193,6 +231,7 @@ export function MovementsTable({
           hasMore: !!result.hasMore,
           from: result.resolvedFrom ?? null,
           to: result.resolvedTo ?? null,
+          // The SERVER's zone owns this session's rows.
           timeZone: result.resolvedTimeZone ?? timeZone,
         });
       } else if (result.error === "timezone_changed") {
@@ -201,8 +240,7 @@ export function MovementsTable({
         dispatch({ type: "resolve_failed", generation: myGen });
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reason, direction, preset, customFrom, customTo, productIds]);
+  }, [session, searchAction, timeZone]);
 
   function onLoadMore() {
     // An event handler closes over the CURRENT render's session — which is exactly
@@ -210,15 +248,14 @@ export function MovementsTable({
     const active = session;
     if (!canLoadMoreSession(active)) return;
     const myGen = active.generation;
+    const request = sessionRequest(active, nextOffset(active));
     dispatch({ type: "page_requested", generation: myGen });
     startLoading(async () => {
       // The SESSION's own filters, its CLOSED anchors, and the timezone it was
       // resolved under. Never a freshly resolved preset: applying this offset to a
       // range that moved at midnight is exactly how rows get skipped or repeated.
       // A retry re-sends the identical request for the identical reason.
-      const result = await searchMovementsAction(
-        sessionRequest(active, nextOffset(active)),
-      );
+      const result = await searchAction(request);
       if (result.ok) {
         dispatch({
           type: "page_loaded",
@@ -248,11 +285,16 @@ export function MovementsTable({
     // once it has gone stale, the rows and the filters do not provably agree — and
     // an export in that window produced a file that did not match the screen.
     if (!canExportSession(active)) return;
+    // The zone THIS session's rows were resolved under. Never the bootstrap prop:
+    // after a zone change forces a new session, the rows come from a query the
+    // server ran under the NEW zone, and the page prop still holds the OLD one.
+    const exportTimeZone = sessionTimeZone(active);
+    if (!exportTimeZone) return; // unreachable: a ready session always has one
     setExportNote(null);
     startExport(async () => {
       // The SAME filters, anchors and timezone binding the visible rows came from —
       // so the file and the screen cannot describe different days.
-      const result = await exportMovementsAction(sessionRequest(active, 0));
+      const result = await exportAction(sessionRequest(active, 0));
       if (result.error === "timezone_changed") {
         dispatch({ type: "session_stale", generation: active.generation });
         return; // nothing was exported
@@ -263,11 +305,12 @@ export function MovementsTable({
         const product = m.productId ? productById.get(m.productId) : undefined;
         const order = m.orderId ? orderById.get(m.orderId) : undefined;
         return [
-          // The operator's CSV is a HUMAN report under a localized "Date"
-          // header, so it carries the SAME tenant wall clock the screen shows —
-          // not the raw UTC instant (which read 09:57 for a movement the tenant
-          // recorded at 12:57, and leaked a +00:00 offset into a business file).
-          formatTenantDateTime(m.createdAt, locale, timeZone),
+          // The operator's CSV is a HUMAN report under a localized "Date" header, so
+          // it carries the SAME tenant wall clock the screen shows — not the raw UTC
+          // instant (which read 09:57 for a movement the tenant recorded at 12:57),
+          // and not the page's bootstrap zone (which would print one session's rows
+          // under a different session's interpretation).
+          formatTenantDateTime(m.createdAt, locale, exportTimeZone),
           product ? productName(product, locale) : "",
           product?.sku ?? "",
           m.quantityDelta,
@@ -282,7 +325,7 @@ export function MovementsTable({
         [h.date, h.product, h.sku, h.delta, h.reason, h.note, h.order, h.publicRef],
         rowsCsv,
       );
-      downloadCsv(
+      download(
         `madaf-inventory-movements-${new Date().toISOString().slice(0, 10)}.csv`,
         csv,
       );
@@ -313,7 +356,7 @@ export function MovementsTable({
         </div>
         <Select
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          onChange={(e) => applyFilters({ reason: e.target.value })}
           aria-label={t.colReason}
           className="sm:w-56"
         >
@@ -329,7 +372,7 @@ export function MovementsTable({
             <Chip
               key={d}
               selected={direction === d}
-              onClick={() => setDirection(d)}
+              onClick={() => applyFilters({ direction: d })}
               className="h-9 px-3 text-xs"
             >
               {d === "manual" ? t.manualBadge : t.direction[d]}
@@ -342,7 +385,9 @@ export function MovementsTable({
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={preset}
-          onChange={(e) => setPreset(e.target.value as MovementDatePreset)}
+          onChange={(e) =>
+            applyFilters({ preset: e.target.value as MovementDatePreset })
+          }
           aria-label={dict.admin.orders.dateFilter.label}
           className="w-44"
         >
@@ -359,7 +404,7 @@ export function MovementsTable({
               <Input
                 type="date"
                 value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
+                onChange={(e) => applyFilters({ customFrom: e.target.value })}
                 className="h-9 w-38"
               />
             </label>
@@ -368,7 +413,7 @@ export function MovementsTable({
               <Input
                 type="date"
                 value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
+                onChange={(e) => applyFilters({ customTo: e.target.value })}
                 className="h-9 w-38"
               />
             </label>
@@ -391,17 +436,38 @@ export function MovementsTable({
         ) : null}
       </div>
 
-      {/* The tenant timezone changed under this session (an owner edited it in
-          another tab), so its tenant-local anchors no longer denote the window they
-          were resolved for. The rows are already gone; re-applying the filter
-          resolves a fresh session under the new zone. Nothing is reinterpreted. */}
-      {session.status === "stale" ? (
-        <p
+      {/* RECOVERY. Both dead-ends are ACTIONABLE — an explanation alone left the
+          operator stuck, because re-selecting the already-selected filter fires no
+          change event and there was nothing else to press.
+            • stale  — the tenant timezone changed under this session (an owner edited
+                       it in another tab), so its tenant-local anchors no longer denote
+                       the window they were resolved for. Re-apply resolves a FRESH
+                       session under the new zone; nothing is reinterpreted.
+            • failed — the first page never arrived. Retry starts a new session.
+          Both go through the same restart: same selected filters, new generation,
+          offset zero, no old rows, no old anchors, no old timezone binding. */}
+      {restartable ? (
+        <div
           role="alert"
-          className="rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
+          className="flex flex-wrap items-center gap-3 rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
         >
-          {t.timezoneChanged}
-        </p>
+          <span>
+            {session.status === "stale" ? t.timezoneChanged : t.loadFailed}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={restartSession}
+            disabled={loading}
+          >
+            {loading
+              ? t.loadingMore
+              : session.status === "stale"
+                ? t.reapplyFilter
+                : t.retry}
+          </Button>
+        </div>
       ) : null}
 
       {exportNote ? (
@@ -445,7 +511,13 @@ export function MovementsTable({
                     className="border-b border-line-hair transition-colors last:border-0 hover:bg-surface-warm"
                   >
                     <td className="px-4 py-3 whitespace-nowrap text-ink-muted">
-                      {formatTenantDateTime(m.createdAt, locale, timeZone)}
+                      {/* The zone THIS session was resolved under — not the page's
+                          bootstrap prop, which still holds the zone the page was
+                          rendered with and would print these rows under a different
+                          interpretation than the query that produced them. */}
+                      {rowTimeZone
+                        ? formatTenantDateTime(m.createdAt, locale, rowTimeZone)
+                        : ""}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-ink">

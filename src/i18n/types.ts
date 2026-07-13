@@ -549,6 +549,12 @@ export interface Dictionary {
          * so its tenant-local date anchors no longer denote the same window. The
          * session is discarded rather than silently reinterpreted. */
         timezoneChanged: string;
+        /** M8H.2 — re-resolve the SAME filters under the new authoritative zone. */
+        reapplyFilter: string;
+        /** M8H.2 — the first page of a filter never arrived. */
+        loadFailed: string;
+        /** M8H.2 — start a fresh session with the same filters. */
+        retry: string;
         empty: string;
         emptyHint: string;
         direction: { all: string; in: string; out: string };

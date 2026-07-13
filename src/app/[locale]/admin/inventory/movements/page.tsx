@@ -2,6 +2,10 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MovementsTable } from "@/components/admin/movements-table";
+import {
+  exportMovementsAction,
+  searchMovementsAction,
+} from "@/lib/actions/inventory";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
@@ -69,6 +73,11 @@ export default async function InventoryMovementsPage({
         canExport={canExport}
         locale={locale}
         dict={dict}
+        // The Server Actions are INJECTED rather than imported by the client
+        // component: importing them would drag the server-only Temporal module into
+        // its graph and make it impossible to mount (and therefore to test).
+        searchAction={searchMovementsAction}
+        exportAction={exportMovementsAction}
       />
     </div>
   );

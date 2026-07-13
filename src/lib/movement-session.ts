@@ -114,8 +114,22 @@ export function initialMovementSession(
 }
 
 export type MovementSessionAction =
-  /** A filter changed → invalidate EVERYTHING and start resolving a new session. */
-  | { type: "filters_changed"; filters: MovementFilters }
+  /**
+   * A filter control changed → SYNCHRONOUSLY invalidate everything and start
+   * resolving a new session. The `patch` is merged into the reducer's OWN current
+   * filters (never into a snapshot captured by a stale closure — the debounced
+   * product search fires 300ms later, by which time `reason` may have changed too).
+   * `generation` is supplied by the caller so the component and the reducer can
+   * never disagree about which request belongs to which session.
+   */
+  | {
+      type: "filters_changed";
+      generation: number;
+      patch: Partial<MovementFilters>;
+    }
+  /** Retry a failed resolution / re-apply a stale one. Same filters, NEW session:
+   * offset zero, no rows, no anchors, no timezone binding carried over. */
+  | { type: "retry"; generation: number }
   /** The first page of `generation` arrived. */
   | {
       type: "resolved";
@@ -147,20 +161,64 @@ function isCurrent(state: MovementSession, generation: number): boolean {
   return generation === state.generation;
 }
 
+function sameProductIds(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/** Two filter snapshots that would produce the identical query. */
+function sameFilters(a: MovementFilters, b: MovementFilters): boolean {
+  return (
+    a.preset === b.preset &&
+    a.customFrom === b.customFrom &&
+    a.customTo === b.customTo &&
+    a.reason === b.reason &&
+    a.direction === b.direction &&
+    sameProductIds(a.productIds, b.productIds)
+  );
+}
+
 export function movementSessionReducer(
   state: MovementSession,
   action: MovementSessionAction,
 ): MovementSession {
   switch (action.type) {
-    case "filters_changed":
-      // ATOMIC INVALIDATION. Rows, pagination, hasMore, the anchors, the timezone
-      // binding and the page error all go at once — so there is no window in which
-      // Export could pair the NEW filters with the OLD result set. Offset is
-      // implicitly zero because `rows` is empty.
+    case "filters_changed": {
+      const next = { ...state.filters, ...action.patch };
+      // A patch that changes nothing must not destroy a healthy session — typing in
+      // the search box that does not alter the matched product set is a no-op, and
+      // tearing the session down for it would refetch page 1 for no reason.
+      if (sameFilters(next, state.filters)) return state;
+      // ATOMIC INVALIDATION, in the SAME transition that changes the control. The
+      // new filter value and the death of the old session are one state update, so
+      // no committed render can ever show the new filters beside the old rows, the
+      // old hasMore, the old anchors, the old timezone binding — or an enabled
+      // Export for a result set that no longer matches what is selected.
+      // Offset is implicitly zero because `rows` is empty.
       return {
         status: "resolving",
-        generation: state.generation + 1,
-        filters: action.filters,
+        generation: action.generation,
+        filters: next,
+        from: null,
+        to: null,
+        timeZone: null,
+        rows: [],
+        hasMore: false,
+        pageFailed: false,
+      };
+    }
+
+    case "retry":
+      // The SAME selected filters, a brand-new session. Nothing from the failed or
+      // stale one is carried over: no rows, no anchors, no timezone binding, and the
+      // offset is zero. This is what makes Retry and Re-apply safe to press twice.
+      return {
+        status: "resolving",
+        generation: action.generation,
+        filters: state.filters,
         from: null,
         to: null,
         timeZone: null,
@@ -263,6 +321,25 @@ export function canExportSession(s: MovementSession): boolean {
 /** Load-more needs a resolved session with more rows behind it. */
 export function canLoadMoreSession(s: MovementSession): boolean {
   return s.hasMore && (s.status === "ready" || s.status === "paging");
+}
+
+/**
+ * The timezone a session's rows MUST be rendered and exported in — the one the
+ * server resolved them under, never the page's bootstrap prop.
+ *
+ * They are the same thing on first paint (the SSR page rendered those rows under
+ * that zone, so it IS that session's zone). They diverge the moment a zone change
+ * forces a new session: the rows now come from a query the server ran under the NEW
+ * zone, and formatting them with the page's original prop would print one
+ * interpretation over another's data. Null exactly when there are no rows.
+ */
+export function sessionTimeZone(s: MovementSession): string | null {
+  return s.timeZone;
+}
+
+/** Retry (failed) / Re-apply (stale) — the session needs an explicit restart. */
+export function needsRestart(s: MovementSession): boolean {
+  return s.status === "failed" || s.status === "stale";
 }
 
 /** The next page's offset — always derived from the ACTIVE session's own rows. */

@@ -525,6 +525,9 @@ const en: Dictionary = {
         loadingMore: "Loading…",
         timezoneChanged:
           "The business timezone changed. Re-apply the filter to see these movements under the new timezone.",
+        reapplyFilter: "Re-apply filter",
+        loadFailed: "Could not load these movements.",
+        retry: "Retry",
         empty: "No stock movements yet.",
         emptyHint: "Movements appear when orders are confirmed, edited or cancelled — or when you adjust stock manually.",
         direction: { all: "All", in: "Stock in", out: "Stock out" },

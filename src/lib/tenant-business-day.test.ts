@@ -340,7 +340,13 @@ test("guard: the client drives the SESSION REDUCER — no ad-hoc anchor state", 
   // makes the atomicity testable (and what the behavioural suite actually drives).
   assert.match(src, /useReducer\(\s*movementSessionReducer/, "the production reducer");
   assert.match(src, /initialMovementSession\(initialMovements, timeZone\)/);
-  assert.match(src, /dispatch\(\{ type: "filters_changed", filters \}\)/, "atomic reset");
+  // The control change and the invalidation are ONE synchronous dispatch, in the
+  // event handler — never a passive effect that notices the change afterwards.
+  assert.match(
+    src,
+    /dispatch\(\{ type: "filters_changed", generation: genRef\.current, patch \}\)/,
+    "atomic reset, in the handler",
+  );
   assert.match(
     src,
     /timeZone: result\.resolvedTimeZone \?\? timeZone/,
@@ -348,7 +354,7 @@ test("guard: the client drives the SESSION REDUCER — no ad-hoc anchor state", 
   );
   // Load-more and export both re-send the session's own snapshot + anchors + zone.
   assert.match(src, /sessionRequest\(active, nextOffset\(active\)\)/, "load-more, anchored");
-  assert.match(src, /exportMovementsAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
+  assert.match(src, /exportAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
   // …and both are GATED on a resolved session.
   assert.match(src, /if \(!canExportSession\(active\)\) return/, "export gated");
   assert.match(src, /if \(!canLoadMoreSession\(active\)\) return/, "load-more gated");

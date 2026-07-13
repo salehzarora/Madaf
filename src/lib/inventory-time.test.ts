@@ -108,7 +108,7 @@ test("guard: the movements CSV builder uses the tenant formatter, not the raw fi
   // The export row must format; a bare `m.createdAt,` in the row array is the bug.
   assert.match(
     src,
-    /formatTenantDateTime\(m\.createdAt, locale, timeZone\)/,
+    /formatTenantDateTime\(m\.createdAt, locale, exportTimeZone\)/,
     "the CSV date cell goes through the tenant formatter",
   );
   assert.doesNotMatch(
@@ -117,8 +117,15 @@ test("guard: the movements CSV builder uses the tenant formatter, not the raw fi
     "the raw createdAt must not be pushed into a CSV row",
   );
   // Both call sites (screen + CSV) exist and use the same 3 explicit arguments.
-  const uses = src.match(/formatTenantDateTime\(m\.createdAt, locale, timeZone\)/g);
-  assert.equal(uses?.length, 2, "screen cell AND csv cell (identical arguments)");
+  // Screen and CSV both format — each with the SESSION's resolved zone, never the
+  // page's bootstrap prop (which would print one session's rows under another's zone).
+  assert.match(src, /formatTenantDateTime\(m\.createdAt, locale, rowTimeZone\)/, "screen");
+  assert.match(src, /formatTenantDateTime\(m\.createdAt, locale, exportTimeZone\)/, "csv");
+  assert.doesNotMatch(
+    src,
+    /formatTenantDateTime\(m\.createdAt, locale, timeZone\)/,
+    "the page prop must never format a resolved session's rows",
+  );
 });
 
 // ══ DEFECT 2 — the date filter is tenant-local and server-resolved ════════
@@ -393,9 +400,9 @@ test("guard: no full movement history is loaded into the browser", () => {
   // Every fetch goes through the bounded, offset-paged server action, and every
   // payload is built from the SESSION (so load-more and export re-send the session's
   // own closed anchors, never a freshly resolved preset).
-  assert.match(src, /await searchMovementsAction\(/, "paged server action");
+  assert.match(src, /await searchAction\(request\)/, "paged server action (injected)");
   assert.match(src, /sessionRequest\(active, nextOffset\(active\)\)/, "load-more, anchored");
-  assert.match(src, /exportMovementsAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
+  assert.match(src, /exportAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
   assert.match(src, /if \(!canExportSession\(active\)\) return/, "export is GATED");
   assert.match(src, /if \(!canLoadMoreSession\(active\)\) return/, "load-more is gated");
   assert.doesNotMatch(src, /listInventoryMovements\(/, "no unbounded list in the client");
