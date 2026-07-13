@@ -553,6 +553,9 @@ export interface Dictionary {
         reapplyFilter: string;
         /** M8H.2 — the first page of a filter never arrived. */
         loadFailed: string;
+        /** M8H.2 — the export reply could not be vouched for (it did not name the
+         * timezone it was run under), so no file was written. */
+        exportFailed: string;
         /** M8H.2 — start a fresh session with the same filters. */
         retry: string;
         empty: string;

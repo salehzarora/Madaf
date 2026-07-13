@@ -339,9 +339,38 @@ export function MovementsTable({
       if (!result.ok) {
         if (result.error === "timezone_changed") {
           dispatch({ type: "session_stale", generation: active.generation });
+        } else {
+          setExportNote(t.exportFailed);
         }
         return; // nothing was exported
       }
+
+      // ── VERIFY THE REPLY BEFORE TOUCHING A SINGLE ROW ────────────────────
+      // The server refuses a mismatched `expectedTimeZone` before it queries, so this
+      // is not what keeps the export authorized. It is what stops the client TRUSTING
+      // that a success belongs to the session on screen merely because it asked
+      // nicely. A file is a durable artefact; it must not be written from a reply
+      // whose interpretation cannot be vouched for.
+
+      // (a) MALFORMED — a success that cannot name its own zone. Fail closed: no CSV,
+      // no download, and the returned rows are never even read. Never borrow the
+      // page's bootstrap zone, the browser's, or the machine's to paper over it.
+      if (!isResolvedTimeZone(result.resolvedTimeZone)) {
+        console.error(
+          "[madaf/movements] refusing an export with no resolvedTimeZone",
+        );
+        setExportNote(t.exportFailed);
+        return;
+      }
+      // (b) MISMATCHED — a well-formed success belonging to a DIFFERENT zone than the
+      // session on screen. Its rows are not reinterpreted under either zone: the
+      // session is stale, exactly as a `timezone_changed` reply would have made it.
+      if (result.resolvedTimeZone !== exportTimeZone) {
+        console.error("[madaf/movements] export zone does not match the session");
+        dispatch({ type: "session_stale", generation: active.generation });
+        return;
+      }
+
       const exportRows = result.movements;
       const rowsCsv = exportRows.map((m) => {
         const product = m.productId ? productById.get(m.productId) : undefined;

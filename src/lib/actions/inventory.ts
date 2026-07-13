@@ -276,9 +276,27 @@ export type MovementExportResult =
       movements: InventoryMovement[];
       /** True when the cap was hit and MORE matching rows exist beyond it. */
       capped: boolean;
+      /**
+       * The AUTHORITATIVE tenant timezone this export was actually run under.
+       * REQUIRED — every successful movements response must be able to name its own
+       * zone, exactly like a search page.
+       *
+       * The server already refuses a mismatched `expectedTimeZone` before it queries,
+       * so this is not what keeps the export authorized. It is what makes the reply
+       * SELF-DESCRIBING: without it the client had to *assume* the file it was about to
+       * build belonged to the session on screen, purely because it had asked nicely.
+       * Now it can check, and refuse to write a CSV it cannot vouch for.
+       */
+      resolvedTimeZone: string;
       error?: undefined;
     }
-  | { ok: false; error: MovementError; movements?: undefined; capped?: undefined };
+  | {
+      ok: false;
+      error: MovementError;
+      movements?: undefined;
+      capped?: undefined;
+      resolvedTimeZone?: undefined;
+    };
 
 /**
  * M8E.1 — export ALL rows matching the current filters, not just the loaded
@@ -298,6 +316,11 @@ export async function exportMovementsAction(
     // covering days the operator never saw on screen.
     if (typeof resolved === "string") return { ok: false, error: resolved };
     const query = resolved.query;
+    // The AUTHORITATIVE zone this export is actually running under — from the
+    // authenticated tenant context, never the client's echo. EVERY success below
+    // reports it, so the reply describes itself and the client can verify that the
+    // file it is about to write belongs to the session on screen.
+    const resolvedTimeZone = resolved.timeZone;
     const all: InventoryMovement[] = [];
     for (
       let offset = 0;
@@ -307,11 +330,18 @@ export async function exportMovementsAction(
       const want = Math.min(MOVEMENTS_EXPORT_PAGE, MOVEMENTS_EXPORT_CAP - all.length);
       const page = await searchInventoryMovements(query, offset, want);
       all.push(...page);
-      if (page.length < want) return { ok: true, movements: all, capped: false };
+      if (page.length < want) {
+        return { ok: true, movements: all, capped: false, resolvedTimeZone };
+      }
     }
     // Filled to the cap — probe one past it to report whether more exist.
     const probe = await searchInventoryMovements(query, MOVEMENTS_EXPORT_CAP, 1);
-    return { ok: true, movements: all, capped: probe.length > 0 };
+    return {
+      ok: true,
+      movements: all,
+      capped: probe.length > 0,
+      resolvedTimeZone,
+    };
   } catch (error) {
     console.error("[madaf/actions] exportMovementsAction failed:", error);
     return { ok: false, error: "failed" };

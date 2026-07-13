@@ -341,6 +341,27 @@ session enters `failed` with a **Retry**, and it is logged (no payload, no secre
 session's zone — if one answers under a different zone it does not belong to this
 session, so the session goes stale rather than being silently re-bound.
 
+### Every successful movements reply names its own zone — including the EXPORT
+
+The export was the last reply that was not self-describing: its success carried only
+`movements` and `capped`. The server *does* refuse a mismatched `expectedTimeZone`
+before it queries, so this was never an authorization hole — but it meant the client
+had to **assume** that the file it was about to write belonged to the session on
+screen, purely because it had asked nicely. A CSV is a durable artefact handed to a
+human; it must not be built from a reply whose interpretation cannot be vouched for.
+
+`MovementExportResult`'s success now **requires** `resolvedTimeZone` alongside
+`movements` and `capped` (both the capped and uncapped return paths report the
+authoritative tenant zone; `@ts-expect-error` tests pin every omission). Search, page
+and export therefore all obey **one** timezone contract, and the client verifies the
+export reply **before reading a single row**:
+
+| Export reply | Behaviour |
+|---|---|
+| zone **matches** the session | the CSV is built, in that verified zone |
+| zone **missing or blank** | **no CSV, no download, rows never read.** A localized export error is shown; nothing falls back to the page prop, the browser or the machine. The **visible session survives** — a malformed *export* reply does not prove the rows on screen are stale, so they are not thrown away, and a later valid export just works. |
+| zone **differs** from the session | **no CSV.** The session is **stale**: rows cleared, anchors and binding voided, Export and Load-more disabled, the existing **Re-apply** offered. The returned rows are not reinterpreted under either zone. (Unreachable against a correct server — the client fails closed anyway.) |
+
 **Exactly-50-row behaviour (retained).** A final page that happens to be exactly
 `MOVEMENT_PAGE_SIZE` rows leaves `hasMore` true, costing one extra request that comes
 back empty and ends the list. Harmless, long-standing, and deliberately preserved.
@@ -564,8 +585,16 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **481** unit checks **+ 30 mounted component checks** (it runs both).
-- `npm run test:movements-table` → **30/30**, MOUNTING THE REAL `MovementsTable` in
+- `npm test` → **488** unit checks **+ 36 mounted component checks** (it runs both).
+- **Export timezone contract:** `test:movement-session` drives the **real
+  `exportMovementsAction`** — a valid export returns `resolvedTimeZone` equal to the
+  authoritative tenant zone; an `expectedTimeZone` mismatch returns `timezone_changed`
+  and an impossible date returns `invalid_date`, both with **no rows and no zone**,
+  which (because the mock ledger would otherwise have answered `ok: true` with `[]`)
+  is proof that **no export query ran**. `test:movements-table` mounts the real
+  component for the valid / missing / blank / mismatching cases, and the three
+  fail-closed ones were **verified falsifiable** by deleting the client's checks.
+- `npm run test:movements-table` → **36/36**, MOUNTING THE REAL `MovementsTable` in
   jsdom (no copy, no re-implementation) with the Server Actions supplied through the
   production injection seam and resolved by hand, so intermediate renders are
   observable. **Reducer tests alone let five integration defects through**, so these
@@ -585,7 +614,7 @@ regression here silently mis-files orders in the list, the count and the export.
   Three of these were **verified to be falsifiable** by deliberately reintroducing the
   defect (deferring the dispatch; deferring the *keystroke's* dispatch; restoring the
   `?? timeZone` fallback) and watching them fail.
-- `npm run test:movement-session` → **30/30**, driving the **production reducer** and
+- `npm run test:movement-session` → **37/37**, driving the **production reducer** and
   the **production Server Actions** (not a copy): closed Today/7d/month ranges, a
   next-day movement excluded, offsets stable across midnight, an atomic filter reset,
   a stale response ignored, Export gated and Export/list parity, later-page retry

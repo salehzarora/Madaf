@@ -53,6 +53,7 @@ import { resolveMovementAnchors, tenantDateRangeUtc } from "./tenant-day";
 import { parseOrdersQuery } from "./orders-query";
 import { listOrdersForExport, searchOrders } from "./data/orders";
 import { exportOrdersAction } from "./actions/orders";
+import { exportMovementsAction } from "./actions/inventory";
 import type { InventoryMovement } from "./types";
 
 const JLM = "Asia/Jerusalem";
@@ -543,12 +544,166 @@ test("C2 (types): ok:true REQUIRES resolvedTimeZone; error variants do not", () 
   const smuggled: MovementSearchResult = { ok: false, error: "failed", movements: [] };
   assert.ok(smuggled);
 
-  // The export result is discriminated the same way.
-  const exported: MovementExportResult = { ok: true, movements: [], capped: false };
+});
+
+test("C3 (types): an EXPORT success must name the timezone it ran under", () => {
+  // The export was the last movements reply that was not self-describing: its success
+  // carried only `movements` + `capped`, so the client had to ASSUME the file it was
+  // about to write belonged to the session on screen. A success now states its zone,
+  // exactly like a search page — and cannot compile without it.
+  const exported: MovementExportResult = {
+    ok: true,
+    movements: [],
+    capped: false,
+    resolvedTimeZone: JLM,
+  };
   assert.equal(exported.ok, true);
-  // @ts-expect-error — an export success must state whether it was capped.
-  const halfExport: MovementExportResult = { ok: true, movements: [] };
-  assert.ok(halfExport);
+  assert.equal(exported.resolvedTimeZone, JLM);
+
+  // @ts-expect-error — an export success WITHOUT resolvedTimeZone must not typecheck.
+  const noZone: MovementExportResult = { ok: true, movements: [], capped: false };
+  assert.ok(noZone);
+
+  // @ts-expect-error — an export success must still state whether it was capped.
+  const noCapped: MovementExportResult = {
+    ok: true,
+    movements: [],
+    resolvedTimeZone: JLM,
+  };
+  assert.ok(noCapped);
+
+  // @ts-expect-error — an export success must still carry its rows.
+  const noRows: MovementExportResult = {
+    ok: true,
+    capped: false,
+    resolvedTimeZone: JLM,
+  };
+  assert.ok(noRows);
+
+  // Error variants stay explicit and carry NO success payload.
+  const stale: MovementExportResult = { ok: false, error: "timezone_changed" };
+  assert.equal(stale.ok, false);
+  // @ts-expect-error — an error export cannot smuggle movements.
+  const smuggledRows: MovementExportResult = {
+    ok: false,
+    error: "failed",
+    movements: [],
+  };
+  assert.ok(smuggledRows);
+  // @ts-expect-error — …nor a resolved timezone, which is a SUCCESS field.
+  const smuggledZone: MovementExportResult = {
+    ok: false,
+    error: "failed",
+    resolvedTimeZone: JLM,
+  };
+  assert.ok(smuggledZone);
+  // @ts-expect-error — …nor the capped flag.
+  const smuggledCap: MovementExportResult = {
+    ok: false,
+    error: "failed",
+    capped: true,
+  };
+  assert.ok(smuggledCap);
+});
+
+// ══ C3 — the REAL export action, behaviourally ═══════════════════════════
+//
+// In mock mode the movements data layer returns [] for ANY query. That is what makes
+// "no query ran" provable here: if the action had reached the ledger it would have
+// returned `ok: true` with zero movements. An `ok: false` is therefore proof that it
+// refused BEFORE touching it.
+
+test("C3 (action): a valid export succeeds and NAMES the authoritative tenant zone", async () => {
+  const result = await exportMovementsAction({ preset: "all" });
+  assert.equal(result.ok, true);
+  assert.ok(result.ok); // narrow
+  assert.equal(
+    result.resolvedTimeZone,
+    "Asia/Jerusalem",
+    "the zone comes from the authenticated tenant context, not the client",
+  );
+  assert.equal(result.capped, false, "the uncapped branch still reports it");
+  assert.deepEqual(result.movements, []);
+  // The success is SELF-DESCRIBING: every field the client needs to verify it.
+  assert.deepEqual(Object.keys(result).sort(), [
+    "capped",
+    "movements",
+    "ok",
+    "resolvedTimeZone",
+  ]);
+});
+
+test("C3 (action): an expectedTimeZone MISMATCH returns timezone_changed and exports nothing", async () => {
+  const result = await exportMovementsAction({
+    preset: "all",
+    // The client claims a session resolved under UTC; the tenant is Asia/Jerusalem.
+    expectedTimeZone: "UTC",
+  });
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok);
+  assert.equal(result.error, "timezone_changed");
+  // ZERO export query ran — had it reached the ledger, mock would have answered
+  // `ok: true` with []. And no success payload leaked through the error variant.
+  assert.equal(result.movements, undefined, "no rows");
+  assert.equal(result.capped, undefined);
+  assert.equal(result.resolvedTimeZone, undefined, "an error names no zone");
+});
+
+test("C3 (action): a MATCHING expectedTimeZone is accepted (the check is not a blanket refusal)", async () => {
+  const result = await exportMovementsAction({
+    preset: "all",
+    expectedTimeZone: "Asia/Jerusalem",
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.resolvedTimeZone, "Asia/Jerusalem");
+});
+
+test("C3 (action): an IMPOSSIBLE date returns invalid_date and exports nothing", async () => {
+  const result = await exportMovementsAction({
+    preset: "custom",
+    dateFrom: "2026-02-30",
+  });
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok);
+  assert.equal(result.error, "invalid_date");
+  assert.equal(result.movements, undefined, "no rows — and no query ran");
+  assert.equal(result.resolvedTimeZone, undefined);
+});
+
+test("C3 (action): the client's expectedTimeZone can never SELECT the zone", async () => {
+  // A crafted call naming a zone the tenant is not in does not get that zone — it
+  // gets refused. The client's value is a comparison token, never an input.
+  const crafted = await exportMovementsAction({
+    preset: "all",
+    expectedTimeZone: "America/New_York",
+  });
+  assert.ok(!crafted.ok);
+  assert.equal(crafted.error, "timezone_changed");
+
+  // …and the honest call still reports the tenant's own zone.
+  const honest = await exportMovementsAction({ preset: "all" });
+  assert.ok(honest.ok);
+  assert.equal(honest.resolvedTimeZone, "Asia/Jerusalem");
+});
+
+test("C3 (action): BOTH success branches report the zone (capped and uncapped)", () => {
+  // The capped branch needs 10,000 ledger rows, which mock cannot produce — but the
+  // discriminated type makes omission UNCOMPILABLE, which is a stronger guarantee
+  // than a runtime probe. This pins that both `return { ok: true` sites carry it.
+  const src = readSrcFile("lib/actions/inventory.ts");
+  const fn = src.slice(src.indexOf("export async function exportMovementsAction"));
+  const body = fn.slice(0, fn.indexOf("\nexport interface AdjustStockResult"));
+  const successes = body.match(/return \{[\s\S]*?ok: true[\s\S]*?\}/g) ?? [];
+  assert.equal(successes.length, 2, "the capped and uncapped returns");
+  for (const s of successes) {
+    assert.match(s, /resolvedTimeZone/, `a success without its zone: ${s}`);
+  }
+  // …sourced from the authoritative resolution, never from the client's echo.
+  assert.match(body, /const resolvedTimeZone = resolved\.timeZone;/);
+  assert.doesNotMatch(body, /input\.expectedTimeZone/, "the echo is not the source");
+  // The catch path is an explicit error variant — never a partial success.
+  assert.match(body, /return \{ ok: false, error: "failed" \};/);
 });
 
 test("C2 (runtime): the guard refuses a zone TypeScript would have accepted", () => {

@@ -304,6 +304,20 @@ const ok = (
   ...over,
 });
 
+/** A well-formed EXPORT success — which must ALSO name the zone it ran under, so the
+ * client can verify the file it is about to write belongs to the session on screen. */
+type ExportOk = Extract<MovementExportResult, { ok: true }>;
+const okExport = (
+  rows: InventoryMovement[],
+  over: Partial<Omit<ExportOk, "ok">> = {},
+): MovementExportResult => ({
+  ok: true,
+  movements: rows,
+  capped: false,
+  resolvedTimeZone: JLM,
+  ...over,
+});
+
 afterEach(async () => {
   for (const h of harnesses) await h.teardown();
   harnesses = [];
@@ -485,7 +499,7 @@ describe("DEFECT 2 — rows and CSV use the RESOLVED SESSION's timezone", () => 
     await h.answerSearch(0, ok([movement("a")], { resolvedTimeZone: UTC }));
 
     click(exportButton(h)!);
-    await h.answerExport(0, { ok: true, movements: [movement("a")], capped: false });
+    await h.answerExport(0, okExport([movement("a")], { resolvedTimeZone: UTC }));
 
     assert.equal(h.csv.length, 1, "a file was produced");
     const body = h.csv[0].body;
@@ -639,7 +653,7 @@ describe("Export gating and RTL", () => {
     assert.equal(req.dateTo, "2026-07-13");
     assert.equal(req.expectedTimeZone, JLM, "…and its timezone binding");
     assert.equal(req.preset, "today");
-    await h.answerExport(0, { ok: true, movements: [movement("a")], capped: false });
+    await h.answerExport(0, okExport([movement("a")]));
   });
 
   it("Arabic renders a bidi-safe timestamp with Western digits", async () => {
@@ -871,7 +885,7 @@ describe("C2 — a SUCCESS must name the timezone it was resolved under", () => 
       assert.ok(onScreen.includes("09:57"), "the SESSION's zone, not the machine's");
 
       click(exportButton(h)!);
-      await h.answerExport(0, { ok: true, movements: [movement("a")], capped: false });
+      await h.answerExport(0, okExport([movement("a")], { resolvedTimeZone: UTC }));
       assert.ok(h.csv[0].body.includes(onScreen), "CSV cell === screen cell");
       assert.ok(!h.csv[0].body.includes("12:57"));
     } finally {
@@ -882,6 +896,133 @@ describe("C2 — a SUCCESS must name the timezone it was resolved under", () => 
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+describe("C3 — the EXPORT reply must name its zone, and the client must check it", () => {
+  /** A UTC-resolved session on a page that was bootstrapped in Asia/Jerusalem. */
+  async function utcSession() {
+    const h = mount({ initial: [], timeZone: JLM });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([movement("a")], { resolvedTimeZone: UTC }));
+    assert.ok(rowCells(h)[0].includes("09:57"), "rows are in the SESSION's zone");
+    return h;
+  }
+
+  it("a VALID export (zone matches the session) writes a CSV in that zone", async () => {
+    const h = await utcSession();
+    const onScreen = rowCells(h)[0];
+
+    click(exportButton(h)!);
+    assert.equal(h.exports[0].expectedTimeZone, UTC, "the request states its session");
+    await h.answerExport(0, okExport([movement("a")], { resolvedTimeZone: UTC }));
+
+    assert.equal(h.csv.length, 1, "a file was written");
+    assert.ok(h.csv[0].body.includes("09:57"), "the CSV uses the SESSION's UTC clock");
+    assert.ok(
+      !h.csv[0].body.includes("12:57"),
+      "the Asia/Jerusalem page prop does not reach the file",
+    );
+    assert.ok(h.csv[0].body.includes(onScreen), "CSV cell === screen cell");
+    assert.ok(!text(h).includes("Could not export"), "no error");
+  });
+
+  it("a MISSING zone fails closed: no CSV, no rows processed, no fallback", async () => {
+    const h = await utcSession();
+
+    // A runtime-malformed success. The cast is the point: this reply crossed the
+    // network, and TypeScript is not a trust boundary.
+    const malformed = {
+      ok: true,
+      movements: [movement("x")],
+      capped: false,
+    } as unknown as MovementExportResult;
+
+    click(exportButton(h)!);
+    await h.answerExport(0, malformed);
+
+    assert.equal(h.csv.length, 0, "NO file was written");
+    assert.ok(text(h).includes("Could not export"), "a safe localized export failure");
+    // The returned rows were never processed — under EITHER zone.
+    assert.ok(!text(h).includes("12:57"), "no Asia/Jerusalem page-prop fallback");
+    assert.ok(!text(h).includes("22:57"), "no browser/machine-zone fallback");
+    // The VISIBLE session is intact: a malformed export reply does not prove the
+    // session on screen is stale, so it is not thrown away.
+    assert.equal(rowCells(h).length, 1, "the visible session survives");
+    assert.ok(rowCells(h)[0].includes("09:57"));
+    assert.equal(exportButton(h)?.disabled, false, "…and remains exportable");
+    assert.equal(button(h, "Re-apply filter"), undefined, "it is not stale");
+  });
+
+  it("a BLANK zone fails closed the same way", async () => {
+    const h = await utcSession();
+    click(exportButton(h)!);
+    await h.answerExport(0, okExport([movement("x")], { resolvedTimeZone: "   " }));
+
+    assert.equal(h.csv.length, 0, "no file");
+    assert.ok(text(h).includes("Could not export"));
+    assert.equal(rowCells(h).length, 1, "the visible session survives");
+  });
+
+  it("a MISMATCHING zone stales the session — no CSV, no reinterpretation", async () => {
+    const h = await utcSession(); // session is UTC
+
+    click(exportButton(h)!);
+    // A well-formed success that belongs to a DIFFERENT zone. Impossible against a
+    // correct server (it refuses the mismatch first) — the client still fails closed.
+    await h.answerExport(0, okExport([movement("x")], { resolvedTimeZone: JLM }));
+
+    assert.equal(h.csv.length, 0, "NO file — the rows are not reinterpreted");
+    assert.deepEqual(rowCells(h), [], "the visible rows are cleared");
+    assert.equal(exportButton(h)?.disabled, true, "Export disabled");
+    assert.equal(loadMoreButton(h), undefined, "Load more disabled");
+    assert.ok(text(h).includes("business timezone changed"), "the stale explanation");
+    const reapply = button(h, "Re-apply filter");
+    assert.ok(reapply, "the existing Re-apply recovery is offered");
+
+    // …and Re-apply resolves a fresh session normally, from offset zero.
+    click(reapply!);
+    assert.equal(h.searches.length, 2);
+    assert.equal(h.searches[1].offset, 0, "offset zero");
+    assert.equal(h.searches[1].expectedTimeZone, undefined, "no stale binding reused");
+    await h.answerSearch(1, ok([movement("b")], { resolvedTimeZone: JLM }));
+    assert.equal(rowCells(h).length, 1);
+    assert.ok(rowCells(h)[0].includes("12:57"), "the NEW authoritative zone");
+    assert.equal(exportButton(h)?.disabled, false, "Export works again");
+  });
+
+  it("after a malformed export, a later VALID export still succeeds", async () => {
+    const h = await utcSession();
+
+    click(exportButton(h)!);
+    await h.answerExport(0, {
+      ok: true,
+      movements: [movement("x")],
+      capped: false,
+    } as unknown as MovementExportResult);
+    assert.equal(h.csv.length, 0);
+    assert.ok(text(h).includes("Could not export"));
+    assert.equal(rowCells(h).length, 1, "the session was not corrupted");
+
+    // Retry the export — nothing about the session changed, so it just works.
+    click(exportButton(h)!);
+    await h.answerExport(1, okExport([movement("a")], { resolvedTimeZone: UTC }));
+    assert.equal(h.csv.length, 1, "a file is written");
+    assert.ok(h.csv[0].body.includes("09:57"));
+    assert.ok(!text(h).includes("Could not export"), "the error is cleared");
+  });
+
+  it("a capped export still names its zone and still writes the file", async () => {
+    const h = await utcSession();
+    click(exportButton(h)!);
+    await h.answerExport(
+      0,
+      okExport([movement("a")], { capped: true, resolvedTimeZone: UTC }),
+    );
+    assert.equal(h.csv.length, 1, "the capped branch exports too");
+    assert.ok(h.csv[0].body.includes("09:57"));
+    assert.ok(text(h).length > 0, "the capped warning is shown");
+  });
+});
+
 describe("accessibility — keyboard recovery and RTL", () => {
   it("Retry is reachable and activatable from the keyboard", async () => {
     const h = mount({ initial: [] });
@@ -974,7 +1115,14 @@ describe("architecture (what a render cannot show)", () => {
     );
     assert.match(src, /isResolvedTimeZone\(result\.resolvedTimeZone\)/, "runtime guard");
     // The Server Actions are TYPE-ONLY imports, so no server-only module is dragged in.
-    assert.match(src, /^import type \{\n(?:.*\n)*?\} from "@\/lib\/actions\/inventory";/m);
+    // TYPE-only import (erased at compile) — a runtime one would drag the server-only
+    // Temporal module in and make the component unmountable. Line-ending agnostic:
+    // git may check this file out with CRLF.
+    assert.match(
+      src,
+      /import type \{[\s\S]*?\} from "@\/lib\/actions\/inventory";/,
+      "the Server Actions are imported for their TYPES only",
+    );
     assert.doesNotMatch(src, /^import \{[^}]*searchMovementsAction/m);
     // Rows format with the SESSION's zone, never the bootstrap prop.
     assert.match(src, /formatTenantDateTime\(m\.createdAt, locale, rowTimeZone\)/);
@@ -984,5 +1132,21 @@ describe("architecture (what a render cannot show)", () => {
       /formatTenantDateTime\(m\.createdAt, locale, timeZone\)/,
       "the page prop must not format a resolved session's rows",
     );
+
+    // The export reply is VERIFIED before a single row is read — the CSV must be
+    // built after the zone checks, never before them.
+    const exportFn = src.slice(src.indexOf("function onExport()"));
+    const guardMissing = exportFn.indexOf("isResolvedTimeZone(result.resolvedTimeZone)");
+    const guardMismatch = exportFn.indexOf("result.resolvedTimeZone !== exportTimeZone");
+    const readsRows = exportFn.indexOf("const exportRows = result.movements");
+    const buildsCsv = exportFn.indexOf("toCsv(");
+    const writesFile = exportFn.indexOf("download(");
+    assert.ok(guardMissing >= 0, "a malformed export reply is refused");
+    assert.ok(guardMismatch >= 0, "a mismatched export reply stales the session");
+    assert.ok(
+      guardMissing < readsRows && guardMismatch < readsRows,
+      "BOTH checks precede reading the returned rows",
+    );
+    assert.ok(readsRows < buildsCsv && buildsCsv < writesFile, "…and the CSV/file");
   });
 });
