@@ -1,7 +1,14 @@
 "use client";
 
 import { Download, History, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,6 +24,16 @@ import {
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { formatNumber } from "@/lib/format";
+import {
+  canExportSession,
+  canLoadMoreSession,
+  initialMovementSession,
+  movementSessionReducer,
+  nextOffset,
+  sessionRequest,
+  type MovementDirection,
+  type MovementFilters,
+} from "@/lib/movement-session";
 import { formatTenantDateTime } from "@/lib/time";
 import {
   INVENTORY_MOVEMENT_REASONS,
@@ -27,10 +44,10 @@ import {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Server page size — mirrors MOVEMENTS_PAGE in the action. */
-const PAGE_SIZE = 50;
+// The page size (MOVEMENT_PAGE_SIZE) lives with the session reducer, which is what
+// decides whether a short page means "the end".
 
-type Direction = "all" | "in" | "out" | "manual";
+type Direction = MovementDirection;
 
 function productMatches(p: Product, q: string): boolean {
   return [
@@ -80,31 +97,30 @@ export function MovementsTable({
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
-  const [rows, setRows] = useState<InventoryMovement[]>(initialMovements);
-  const [hasMore, setHasMore] = useState(initialMovements.length >= PAGE_SIZE);
+  /**
+   * THE SESSION. One resolved result set: the canonical filters, the CLOSED
+   * tenant-local range the server resolved for them, the timezone it resolved them
+   * under, the rows, and whether more exist. Every transition — filter change, page,
+   * failure, staleness — goes through the reducer in `@/lib/movement-session`, so
+   * they are ATOMIC: there is no moment when the rows on screen belong to one filter
+   * while the export would send another. The reducer is where the tests bite.
+   */
+  const [session, dispatch] = useReducer(
+    movementSessionReducer,
+    undefined,
+    () => initialMovementSession(initialMovements, timeZone),
+  );
+  const { rows } = session;
+
+  /** Export is gated on a RESOLVED session — never on a resolving/failed/stale one. */
+  const exportReady = canExportSession(session);
+  const loadMoreReady = canLoadMoreSession(session);
+
   const [loading, startLoading] = useTransition();
   // Export runs its own server round-trip over ALL filtered rows (M8E.1).
   const [exporting, startExport] = useTransition();
   const [exportNote, setExportNote] = useState<string | null>(null);
   const firstRun = useRef(true);
-  // Monotonic filter generation (M8E) — bumped on every filter change so an
-  // in-flight "load more" or superseded page-0 query is discarded instead of
-  // merging rows across different filters.
-  const loadGen = useRef(0);
-
-  /**
-   * The filter session's ANCHORED date range: the concrete tenant-local calendar
-   * dates the server resolved when this filter was applied. Null until the first
-   * page comes back (or when there is no date filter at all).
-   *
-   * This is what stops "today" from meaning a different day on page 2 than it did
-   * on page 1. Every filter change clears it, so a NEW "Today" applied after
-   * midnight correctly gets the NEW date.
-   */
-  const [anchors, setAnchors] = useState<{
-    from: string | null;
-    to: string | null;
-  } | null>(null);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -136,94 +152,87 @@ export function MovementsTable({
     productIds === undefined;
 
   /**
-   * Serialize the current filters for the server action. The date filter carries NO
-   * instant and NO clock read — the browser used to compute UTC bounds off the
-   * DEVICE clock, so "today" meant today for whoever was looking.
-   *
-   * It also carries no *drifting* range. The ledger pages by OFFSET, so a relative
-   * preset must be pinned the moment it is applied: the FIRST request sends the
-   * preset, the server resolves it against the tenant's clock and returns the
-   * concrete dates, and every request after that (load-more, retry, export) sends
-   * those exact dates back. Otherwise a session that starts at 23:59 and pages at
-   * 00:01 would apply page 2's offset to a *different* result set — skipping rows,
-   * repeating others, and exporting a range the operator never saw.
+   * A NEW SESSION whenever any filter changes. The reducer atomically drops the old
+   * rows, offset, hasMore, anchors and timezone binding and bumps the generation —
+   * so Export is disabled the instant the filter moves, and cannot pair the NEW
+   * filters with the OLD visible rows. The very first run is skipped while the
+   * filters are still default: the SSR'd page already IS that resolved session.
    */
-  function currentQuery(
-    offset: number,
-    /** The session's pinned dates, or null on the FIRST request of a new filter
-     * session (the server resolves the preset then, and hands the dates back). */
-    pinned: { from: string | null; to: string | null } | null,
-  ) {
-    // Pinned → send the concrete dates; the preset is now only the visible label.
-    // Not pinned → "custom" already HAS concrete dates (the operator typed them),
-    // so send those; a relative preset sends nothing and the server resolves it.
-    const dates = pinned
-      ? { from: pinned.from ?? undefined, to: pinned.to ?? undefined }
-      : preset === "custom"
-        ? { from: customFrom || undefined, to: customTo || undefined }
-        : { from: undefined, to: undefined };
-    return {
-      preset,
-      dateFrom: dates.from,
-      dateTo: dates.to,
-      reason: reason === "all" ? undefined : reason,
-      direction: direction === "all" ? undefined : direction,
-      productIds,
-      offset,
-    };
-  }
-
-  // Re-query page 0 whenever a filter changes. Skip the very first run when
-  // filters are still default — the SSR'd initial page already covers it.
-  // A filter change STARTS A NEW SESSION: rows, offset, hasMore and the date
-  // anchor are all reset, so a "Today" re-applied after midnight resolves afresh.
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
       if (isDefault) return;
     }
-    loadGen.current += 1;
-    const myGen = loadGen.current;
-    setAnchors(null); // never page a new filter against the old session's dates
+    const filters: MovementFilters = {
+      preset,
+      customFrom,
+      customTo,
+      reason,
+      direction,
+      productIds,
+    };
+    dispatch({ type: "filters_changed", filters });
+    // The generation `filters_changed` assigns. Responses tagged with anything else
+    // are stale by definition and the reducer drops them.
+    const myGen = session.generation + 1;
+
     startLoading(async () => {
-      // `null` → let the server resolve the preset ONCE, for this session.
-      const result = await searchMovementsAction(currentQuery(0, null));
-      if (loadGen.current !== myGen) return; // superseded by a newer filter
+      // A brand-new session: no anchors and no expected zone, so the server resolves
+      // the preset ONCE and hands back BOTH concrete dates plus the zone it used.
+      const result = await searchMovementsAction(
+        sessionRequest(
+          { ...session, generation: myGen, filters, from: null, to: null, timeZone: null },
+          0,
+        ),
+      );
       if (result.ok) {
-        setRows(result.movements ?? []);
-        setHasMore(!!result.hasMore);
-        // PIN the range. Everything else in this session pages against these.
-        setAnchors({
+        dispatch({
+          type: "resolved",
+          generation: myGen,
+          rows: result.movements ?? [],
+          hasMore: !!result.hasMore,
           from: result.resolvedFrom ?? null,
           to: result.resolvedTo ?? null,
+          timeZone: result.resolvedTimeZone ?? timeZone,
         });
+      } else if (result.error === "timezone_changed") {
+        dispatch({ type: "session_stale", generation: myGen });
       } else {
-        setRows([]);
-        setHasMore(false);
+        dispatch({ type: "resolve_failed", generation: myGen });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reason, direction, preset, customFrom, customTo, productIds]);
 
   function onLoadMore() {
-    const myGen = loadGen.current;
+    // An event handler closes over the CURRENT render's session — which is exactly
+    // the session whose rows are on screen and whose anchors must be re-sent.
+    const active = session;
+    if (!canLoadMoreSession(active)) return;
+    const myGen = active.generation;
+    dispatch({ type: "page_requested", generation: myGen });
     startLoading(async () => {
-      // The SESSION's anchored dates — never a freshly resolved preset. Applying
-      // this offset to a range that moved at midnight is exactly how rows get
-      // skipped or repeated. A retry reuses the same anchors for the same reason.
+      // The SESSION's own filters, its CLOSED anchors, and the timezone it was
+      // resolved under. Never a freshly resolved preset: applying this offset to a
+      // range that moved at midnight is exactly how rows get skipped or repeated.
+      // A retry re-sends the identical request for the identical reason.
       const result = await searchMovementsAction(
-        currentQuery(rows.length, anchors),
+        sessionRequest(active, nextOffset(active)),
       );
-      // A filter changed mid-flight → drop this page (it belongs to the old
-      // filter set) instead of merging it into the new rows.
-      if (loadGen.current !== myGen) return;
-      if (!result.ok) return; // transient — keep the button to retry
-      const page = result.movements ?? [];
-      if (page.length > 0) {
-        const seen = new Set(rows.map((m) => m.id));
-        setRows((prev) => [...prev, ...page.filter((m) => !seen.has(m.id))]);
+      if (result.ok) {
+        dispatch({
+          type: "page_loaded",
+          generation: myGen,
+          rows: result.movements ?? [],
+          hasMore: !!result.hasMore,
+        });
+      } else if (result.error === "timezone_changed") {
+        dispatch({ type: "session_stale", generation: myGen });
+      } else {
+        // Transient — the session (and its anchors) survive so a retry pages the
+        // SAME range.
+        dispatch({ type: "page_failed", generation: myGen });
       }
-      setHasMore(!!result.hasMore && page.length > 0);
     });
   }
 
@@ -232,13 +241,22 @@ export function MovementsTable({
 
   function onExport() {
     // Admin-only file over ALL rows matching the current filters (M8E.1) — a
-    // dedicated server round-trip pages the DB-side filtered query up to the
-    // cap, so the export is not limited to the loaded page.
+    // dedicated server round-trip pages the DB-side filtered query up to the cap,
+    // so the export is not limited to the loaded page.
+    const active = session;
+    // Only ever from a RESOLVED session. While one is resolving, after a failure, or
+    // once it has gone stale, the rows and the filters do not provably agree — and
+    // an export in that window produced a file that did not match the screen.
+    if (!canExportSession(active)) return;
     setExportNote(null);
     startExport(async () => {
-      // The SAME anchored dates the visible rows came from — so the file and the
-      // screen can never describe different days, even across tenant midnight.
-      const result = await exportMovementsAction(currentQuery(0, anchors));
+      // The SAME filters, anchors and timezone binding the visible rows came from —
+      // so the file and the screen cannot describe different days.
+      const result = await exportMovementsAction(sessionRequest(active, 0));
+      if (result.error === "timezone_changed") {
+        dispatch({ type: "session_stale", generation: active.generation });
+        return; // nothing was exported
+      }
       if (!result.ok || !result.movements) return;
       const exportRows = result.movements;
       const rowsCsv = exportRows.map((m) => {
@@ -360,7 +378,10 @@ export function MovementsTable({
           <button
             type="button"
             onClick={onExport}
-            disabled={rows.length === 0 || exporting}
+            /* Disabled until the session is RESOLVED. While a filter change is in
+               flight the visible rows still belong to the previous filter, so an
+               export here would produce a file that does not match the screen. */
+            disabled={!exportReady || rows.length === 0 || exporting}
             title={rows.length === 0 ? dict.common.exportEmpty : undefined}
             className="ms-auto inline-flex h-11 items-center gap-1.5 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -369,6 +390,19 @@ export function MovementsTable({
           </button>
         ) : null}
       </div>
+
+      {/* The tenant timezone changed under this session (an owner edited it in
+          another tab), so its tenant-local anchors no longer denote the window they
+          were resolved for. The rows are already gone; re-applying the filter
+          resolves a fresh session under the new zone. Nothing is reinterpreted. */}
+      {session.status === "stale" ? (
+        <p
+          role="alert"
+          className="rounded-field bg-warning-soft px-3 py-2 text-[13px] font-medium text-warning"
+        >
+          {t.timezoneChanged}
+        </p>
+      ) : null}
 
       {exportNote ? (
         <p
@@ -462,7 +496,10 @@ export function MovementsTable({
         </Card>
       )}
 
-      {hasMore ? (
+      {/* Load-more needs a RESOLVED session: it pages the session's own closed range
+          at the session's own offset. While a new filter resolves there is no
+          session to page. A failed page keeps the session, so this stays a retry. */}
+      {loadMoreReady ? (
         <Button
           type="button"
           variant="ghost"

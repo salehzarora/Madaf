@@ -125,14 +125,15 @@ export function tenantDateRangeUtc(
 /** The concrete, tenant-local calendar dates a movements filter session is pinned
  * to. Once resolved they never move — see {@link resolveMovementAnchors}. */
 export interface MovementAnchors {
-  /** Inclusive lower bound (tenant-local YYYY-MM-DD), or null = unbounded. */
+  /** INCLUSIVE lower bound (tenant-local YYYY-MM-DD). Null only for "all". */
   from: string | null;
-  /** INCLUSIVE upper bound (tenant-local YYYY-MM-DD), or null = open-ended. */
+  /** INCLUSIVE upper bound (tenant-local YYYY-MM-DD). Null only for "all". */
   to: string | null;
 }
 
 /**
- * Resolve a movements date filter to CONCRETE, STABLE tenant-local calendar dates.
+ * Resolve a movements date filter to a CONCRETE, CLOSED, STABLE tenant-local
+ * calendar range.
  *
  * ── Why anchors exist ─────────────────────────────────────────────────────
  * The ledger pages by OFFSET. If "today" were re-resolved on every request, then a
@@ -142,12 +143,30 @@ export interface MovementAnchors {
  * a question the operator never asked. The range must therefore be resolved ONCE,
  * at the moment the filter is applied, and then held still.
  *
- * So: the FIRST request for a filter session sends only the preset, and the server
- * resolves it here against the tenant's clock and hands the concrete dates back.
- * Every later request — load-more, retry, export — sends those dates, and this
- * function passes them straight through untouched (an explicit date always wins
- * over a preset). Changing the filter starts a new session and a new anchor.
- * Tenant midnight can pass mid-session; the anchored range does not care.
+ * ── Why the range must be CLOSED ──────────────────────────────────────────
+ * Pinning only the LOWER bound is not enough, and the first attempt at this made
+ * exactly that mistake. `to = null` leaves the range open at the top, so a movement
+ * recorded AFTER tenant midnight — a row that belongs to the NEXT business day —
+ * still matches the old session's query. Rows are ordered `created_at DESC`, so a
+ * new row lands at the FRONT of the result set and pushes every existing row one
+ * position later: page 2's offset then re-reads a row page 1 already showed
+ * (a duplicate, dropped by the client's de-dup, which SILENTLY SKIPS a real row)
+ * and `hasMore` stops describing the set the operator is looking at. A closed
+ * range cannot admit tomorrow's rows, so the offsets stay meaningful.
+ *
+ * Every relative preset therefore gets BOTH bounds, both concrete:
+ *   "today"  → from = tenant today,               to = tenant today
+ *   "7d"     → from = tenant today − 6 CAL. days, to = tenant today
+ *   "month"  → from = 1st of the tenant's month,  to = tenant today
+ *   "custom" → the operator's two validated dates
+ *   "all"    → genuinely unbounded (no date predicate at all)
+ *
+ * The FIRST request for a session sends only the preset; the server resolves it
+ * here against the tenant's clock and hands both dates back. Every later request —
+ * load-more, retry, export — sends those dates, and this function passes them
+ * straight through untouched (an explicit date always wins over a preset). Changing
+ * the filter starts a NEW session and a new anchor. Tenant midnight can pass
+ * mid-session; the anchored range does not care.
  *
  * `now` is injectable for tests ONLY. It is an absolute instant, never a zone —
  * the machine's timezone is not consulted here or anywhere below it.
@@ -170,7 +189,9 @@ export function resolveMovementAnchors(
 
   const zone = resolveTenantTimeZone(timeZone);
   // The tenant's TODAY — the same instant read on the tenant's clock, not the
-  // viewer's and not the server machine's.
+  // viewer's and not the server machine's. It is BOTH the upper anchor and the
+  // origin of the lower one, so the whole range is fixed to the day the operator
+  // applied the filter on.
   const today = Temporal.PlainDate.from(tenantToday(zone, now));
   const start =
     preset === "today"
@@ -179,7 +200,7 @@ export function resolveMovementAnchors(
         ? today.subtract({ days: 6 }) // last 7 days INCLUSIVE of today
         : today.with({ day: 1 }); // month-to-date
 
-  // Presets keep an OPEN upper bound (a movement cannot be recorded in the
-  // future) — unchanged behavior; only the ZONE it is measured in has changed.
-  return { from: start.toString(), to: null };
+  // CLOSED at the top: `to` is inclusive of the whole of that local day, and the
+  // query turns it into a next-day-start EXCLUSIVE instant. Tomorrow cannot enter.
+  return { from: start.toString(), to: today.toString() };
 }

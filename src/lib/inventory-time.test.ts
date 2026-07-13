@@ -230,8 +230,11 @@ test("filter: presets resolve against the TENANT's clock, not the device's", () 
   assert.equal(utcToday.gteIso, "2026-07-13T00:00:00.000Z", "a UTC tenant's 13th");
   assert.notEqual(jlmToday.gteIso, utcToday.gteIso, "the tenant zone decides 'today'");
 
-  // Presets keep an OPEN upper bound (a movement cannot be recorded in the future).
-  assert.equal(jlmToday.ltIso, null);
+  // The range is CLOSED at the top: the exclusive end is the start of the tenant's
+  // NEXT day, so a movement recorded after midnight cannot enter this session.
+  // (An open `to` let tomorrow's rows in, shifting every offset — Codex F01.)
+  assert.equal(jlmToday.ltIso, "2026-07-14T21:00:00.000Z");
+  assert.equal(utcToday.ltIso, "2026-07-14T00:00:00.000Z");
 });
 
 test("filter: 7d is seven CALENDAR days and month-to-date starts on the 1st", () => {
@@ -325,19 +328,18 @@ test("guard: the movements CLIENT computes no instant and reads no clock", () =>
   assert.doesNotMatch(src, /Date\.parse\(/, "no bare local-date parse");
   assert.doesNotMatch(src, /dateRangeBounds|@\/lib\/date-range/, "the legacy helper is gone");
 
-  // The FILTER payload is the thing that must carry no instant: the query the
-  // server receives is a preset + two date-only strings, nothing derived from a
-  // clock. (The CSV *filename* stamp is not a business boundary and is untouched.)
-  const query = src.slice(
-    src.indexOf("function currentQuery("),
-    src.indexOf("useEffect", src.indexOf("function currentQuery(")),
-  );
-  assert.doesNotMatch(query, /new Date|toISOString|Date\.now/, "no clock in the payload");
-  assert.match(query, /preset,/, "the preset travels as-is");
-  assert.match(query, /dateFrom: dates\.from/, "date-only");
-  assert.match(query, /dateTo: dates\.to/);
-  // Anchored dates win; only a brand-new session lets the server resolve a preset.
-  assert.match(query, /pinned\s*\?/, "the session anchors take precedence");
+  // The FILTER payload is the thing that must carry no instant. It is built by
+  // `sessionRequest` in the session reducer: a preset + two date-only strings +
+  // the server-issued zone, nothing derived from a clock. (The CSV *filename* stamp
+  // is not a business boundary and is untouched.)
+  const session = stripComments(readSrc("lib/movement-session.ts"));
+  const builder = session.slice(session.indexOf("export function sessionRequest("));
+  assert.doesNotMatch(builder, /new Date|toISOString|Date\.now/, "no clock in the payload");
+  assert.match(builder, /dateFrom: dates\.from/, "date-only");
+  assert.match(builder, /dateTo: dates\.to/);
+  // A RESOLVED session's concrete anchors always win over the preset.
+  assert.match(builder, /const resolved = s\.timeZone !== null/);
+  assert.match(builder, /expectedTimeZone: resolved/, "the zone binding rides along");
 
   // And it must never reach for the server-only Temporal conversion.
   assert.doesNotMatch(src, /tenant-day|tenantDateRangeUtc|tenantMovementRangeUtc/);
@@ -361,7 +363,7 @@ test("guard: the server action accepts only a preset + calendar dates (never an 
   // An impossible date fails the REQUEST; it never degrades into "no filter".
   assert.match(
     src,
-    /if \(from === null \|\| to === null\) return null/,
+    /if \(from === null \|\| to === null\) return "invalid_date"/,
     "a supplied-but-impossible date refuses the request",
   );
   // The old ISO passthrough (which trusted a client-computed instant) is gone.
@@ -388,10 +390,14 @@ test("guard: the movements query resolves its bounds server-side, in the tenant 
 
 test("guard: no full movement history is loaded into the browser", () => {
   const src = stripComments(MOVEMENTS_TABLE);
-  // Every fetch goes through the bounded, offset-paged server action.
-  assert.match(src, /searchMovementsAction\(currentQuery\(0, null\)\)/, "page 0 on filter change");
-  assert.match(src, /currentQuery\(rows\.length, anchors\)/, "load-more, anchored");
-  assert.match(src, /exportMovementsAction\(currentQuery\(0, anchors\)\)/, "export, anchored");
+  // Every fetch goes through the bounded, offset-paged server action, and every
+  // payload is built from the SESSION (so load-more and export re-send the session's
+  // own closed anchors, never a freshly resolved preset).
+  assert.match(src, /await searchMovementsAction\(/, "paged server action");
+  assert.match(src, /sessionRequest\(active, nextOffset\(active\)\)/, "load-more, anchored");
+  assert.match(src, /exportMovementsAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
+  assert.match(src, /if \(!canExportSession\(active\)\) return/, "export is GATED");
+  assert.match(src, /if \(!canLoadMoreSession\(active\)\) return/, "load-more is gated");
   assert.doesNotMatch(src, /listInventoryMovements\(/, "no unbounded list in the client");
 });
 

@@ -545,6 +545,10 @@ export interface Dictionary {
         truncatedNote: string;
         loadMore: string;
         loadingMore: string;
+        /** M8H.2 — the tenant timezone changed while this filter session was open,
+         * so its tenant-local date anchors no longer denote the same window. The
+         * session is discarded rather than silently reinterpreted. */
+        timezoneChanged: string;
         empty: string;
         emptyHint: string;
         direction: { all: string; in: string; out: string };

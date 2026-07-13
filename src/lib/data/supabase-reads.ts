@@ -1139,10 +1139,13 @@ function buildOrdersQuery(
   // local day (which is not always 00:00 — some zones spring forward AT midnight),
   // and `to` is INCLUSIVE of its whole local day via a next-day-start EXCLUSIVE
   // upper bound. One builder, shared with the mock path and every caller below.
+  // FAIL CLOSED. An `invalid` date filter must NEVER reach a query — a query built
+  // from it would carry no date predicates at all, i.e. it would list (and export)
+  // EVERY order. The builder refuses rather than silently widening.
+  if (query.dateFilter === "invalid") {
+    fail("searchOrders", "refusing to query with an invalid date filter");
+  }
   const range = tenantDateRangeUtc(query.dateFrom, query.dateTo, timeZone);
-  // FAIL CLOSED. parseOrdersQuery already rejects impossible dates strictly, so
-  // this is unreachable — but if it ever were reached, an unbounded Orders read
-  // (and export) is precisely the outcome to refuse.
   if (!range) fail("searchOrders", "invalid tenant calendar date");
   if (range.gteIso) qb = qb.gte("created_at", range.gteIso);
   if (range.ltIso) qb = qb.lt("created_at", range.ltIso);

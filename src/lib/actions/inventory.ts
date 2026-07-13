@@ -86,29 +86,54 @@ export interface MovementSearchInput {
    */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * The tenant timezone the ACTIVE session was resolved under, echoed back by the
+   * client. **Comparison only** — it never selects or authorizes anything. The
+   * server always reads the authoritative zone from the authenticated context; this
+   * only lets it notice that the two no longer agree.
+   *
+   * Why it must: `dateFrom`/`dateTo` are tenant-LOCAL, so their UTC bounds depend on
+   * the tenant's zone. If an owner changes the zone in another tab mid-session, the
+   * very same anchors would silently denote a DIFFERENT window — the visible rows
+   * and the next page would be answering different questions. So the server refuses.
+   */
+  expectedTimeZone?: string;
   reason?: string;
   direction?: "in" | "out" | "manual";
   productIds?: string[];
   offset?: number;
 }
 
+/** Why a movements request was refused. */
+export type MovementError =
+  /** An impossible calendar date (2026-02-30) — the request is refused outright. */
+  | "invalid_date"
+  /** The tenant timezone changed since this session was resolved; its anchors no
+   * longer mean what they meant. The session must be restarted, not reinterpreted. */
+  | "timezone_changed"
+  | "failed";
+
 export interface MovementSearchResult {
   ok: boolean;
   movements?: InventoryMovement[];
   /** True when a full page came back — more pages may exist WITHIN THE ANCHORS. */
   hasMore?: boolean;
-  /** Why the request was refused. "invalid_date" = an impossible calendar date. */
-  error?: "invalid_date" | "failed";
-  /** The concrete tenant-local dates this result was computed against. The client
-   * stores these and sends them back on every later request for the session. */
+  error?: MovementError;
+  /** The CLOSED concrete tenant-local range this result was computed against, and
+   * the timezone it was resolved under. The client pins all three to the session and
+   * sends them back on every later request. */
   resolvedFrom?: string | null;
   resolvedTo?: string | null;
+  resolvedTimeZone?: string;
 }
 
 /** A filter payload the server has fully validated + anchored. */
 interface ResolvedMovementFilter {
   query: MovementQuery;
   anchors: MovementAnchors;
+  /** The AUTHORITATIVE tenant zone (from the cached session context), not the
+   * client's echo. */
+  timeZone: string;
 }
 
 /**
@@ -124,16 +149,30 @@ interface ResolvedMovementFilter {
  */
 async function resolveMovementFilter(
   input: MovementSearchInput,
-): Promise<ResolvedMovementFilter | null> {
+): Promise<ResolvedMovementFilter | MovementError> {
   // Strict Gregorian validation — reject, never balance, never drop one side.
   const rawFrom = input.dateFrom;
   const rawTo = input.dateTo;
   const from = rawFrom === undefined ? undefined : parseDateOnlyStrict(rawFrom);
   const to = rawTo === undefined ? undefined : parseDateOnlyStrict(rawTo);
-  if (from === null || to === null) return null; // supplied but impossible → refuse
+  if (from === null || to === null) return "invalid_date"; // supplied but impossible
 
-  // The tenant's zone, from the cached session context (no extra query).
+  // The AUTHORITATIVE tenant zone, from the cached session context (no extra query).
+  // The client's `expectedTimeZone` is never used to convert anything.
   const timeZone = await getTenantTimeZone();
+
+  // SESSION BINDING. The anchors are tenant-LOCAL dates, so the window they denote
+  // depends on the zone they were resolved under. If the tenant's zone has changed
+  // since, the honest answer is "this session is stale" — NOT to silently
+  // re-interpret the same dates under a new zone and hand back a different result
+  // set under the same visible filter.
+  if (
+    typeof input.expectedTimeZone === "string" &&
+    input.expectedTimeZone !== timeZone
+  ) {
+    return "timezone_changed";
+  }
+
   const anchors = resolveMovementAnchors(
     isMovementPreset(input.preset) ? input.preset : undefined,
     from ?? undefined,
@@ -162,7 +201,7 @@ async function resolveMovementFilter(
       .filter(isPlausibleId)
       .slice(0, MAX_PRODUCT_IDS);
   }
-  return { query, anchors };
+  return { query, anchors, timeZone };
 }
 
 /**
@@ -179,10 +218,12 @@ export async function searchMovementsAction(
     if (offset < 0 || offset > 5_000_000) return { ok: false, error: "failed" };
 
     const resolved = await resolveMovementFilter(input);
-    // An impossible calendar date FAILS THE REQUEST. It must never fall through to
-    // an unbounded query — that is how "2026-02-30" would have returned the entire
-    // ledger instead of one day of it.
-    if (!resolved) return { ok: false, error: "invalid_date" };
+    // FAIL CLOSED, without querying:
+    //  • an impossible calendar date must never fall through to an unbounded read —
+    //    that is how "2026-02-30" would have returned the entire ledger;
+    //  • a changed tenant timezone must never be papered over by re-interpreting
+    //    the session's anchors under the new zone.
+    if (typeof resolved === "string") return { ok: false, error: resolved };
 
     const movements = await searchInventoryMovements(
       resolved.query,
@@ -193,10 +234,12 @@ export async function searchMovementsAction(
       ok: true,
       movements,
       hasMore: movements.length >= MOVEMENTS_PAGE,
-      // The concrete dates this page was computed against. The client pins them to
-      // the filter session and echoes them back, so pagination never drifts.
+      // The CLOSED range this page was computed against, and the zone it was
+      // resolved under. The client pins all three to the session and echoes them
+      // back, so pagination cannot drift and a zone change cannot go unnoticed.
       resolvedFrom: resolved.anchors.from,
       resolvedTo: resolved.anchors.to,
+      resolvedTimeZone: resolved.timeZone,
     };
   } catch (error) {
     console.error("[madaf/actions] searchMovementsAction failed:", error);
@@ -209,7 +252,7 @@ export interface MovementExportResult {
   movements?: InventoryMovement[];
   /** True when the cap was hit and MORE matching rows exist beyond it. */
   capped?: boolean;
-  error?: "invalid_date" | "failed";
+  error?: MovementError;
 }
 
 /**
@@ -225,8 +268,10 @@ export async function exportMovementsAction(
 ): Promise<MovementExportResult> {
   try {
     const resolved = await resolveMovementFilter(input);
-    // Fail closed: an impossible date must never export the whole ledger.
-    if (!resolved) return { ok: false, error: "invalid_date" };
+    // Fail closed, WITHOUT exporting a single row: an impossible date must never
+    // export the whole ledger, and a changed tenant timezone must not produce a file
+    // covering days the operator never saw on screen.
+    if (typeof resolved === "string") return { ok: false, error: resolved };
     const query = resolved.query;
     const all: InventoryMovement[] = [];
     for (

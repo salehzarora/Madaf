@@ -174,9 +174,14 @@ function filterMockOrders(query: OrdersQuery, timeZone: string): OrderListRow[] 
   // TENANT-timezone calendar-day bounds from the SAME builder the supabase query
   // uses (inclusive `from` start, next-day-start EXCLUSIVE upper) — so the two
   // data modes cannot drift, and neither can survive a DST transition wrongly.
-  const range = tenantDateRangeUtc(query.dateFrom, query.dateTo, timeZone);
-  // FAIL CLOSED, exactly like supabase: an impossible date must not silently
+  // FAIL CLOSED, exactly like supabase: an `invalid` date filter must not silently
   // become "no filter" and list every order.
+  if (query.dateFilter === "invalid") {
+    throw new Error(
+      "[madaf/data] searchOrders: refusing to query with an invalid date filter",
+    );
+  }
+  const range = tenantDateRangeUtc(query.dateFrom, query.dateTo, timeZone);
   if (!range) {
     throw new Error("[madaf/data] mock searchOrders: invalid tenant calendar date");
   }

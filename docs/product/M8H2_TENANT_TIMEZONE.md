@@ -165,8 +165,35 @@ passes), reject-never-balance — and every date boundary path goes through it:
 | `tenantDateRangeUtc` | returns **`null`** — never a partial (and therefore wider) range |
 | `nextCalendarDay` | returns **`null`** — never rolls `02-30` into March |
 | Movements Server Action | **refuses the request** (`error: "invalid_date"`); does not query, does not export |
-| Orders URL | **clears the whole date filter**, deterministically — one bad side never leaves the valid half applied alone, which would widen the request |
-| Orders / mock query | **fails closed** (unreachable — the parser already gates it) |
+| Orders URL | enters the **`invalid`** state (see below) |
+| Orders list / count / export | **refuse to run at all** |
+
+#### `none`, `valid` and `invalid` are three different states
+
+The first fix *cleared* the impossible dates — and that was still wrong, because it
+made an invalid filter indistinguishable from **no filter**. The list, the exact
+count and the export then ran as an ordinary unfiltered request: `?from=2026-02-30`
+did not error and did not return nothing. It returned **every order**, and a
+malformed *bounded* export became an **all-dates** export up to the cap.
+
+`OrdersQuery` therefore carries an explicit discriminator:
+
+| `dateFilter` | Meaning | What may query |
+|---|---|---|
+| `none` | no date params (or `?from=`, a cleared input) | everything — the legitimate unfiltered state |
+| `valid` | every supplied date is real | everything, bounded |
+| **`invalid`** | at least one supplied date is impossible | **nothing** |
+
+- **The page** redirects to the canonical URL with only the date params removed —
+  preserving search, statuses, source, customer and page size — **before any data
+  query runs**. The redirected request is then an honest, explicit no-date request.
+- **The export action** returns `{ ok: false, error: "invalid_date" }`: no query, no
+  rows, no CSV, and the cap is never approached.
+- **The query builders** (supabase *and* mock) **refuse** an `invalid` state rather
+  than emitting a query with no date predicates. That is what makes this structural
+  instead of a promise each caller has to remember.
+- One bad bound poisons the **whole** filter. Keeping the valid half would widen a
+  bounded request (`to` alone means "everything up to that day").
 
 ### Two date filters, one builder
 
@@ -189,30 +216,70 @@ ledger inherits every DST property proven below — including the 22h/26h days a
 zones where local midnight does not exist. "7 days" is seven **calendar** days
 (`PlainDate.subtract`), never `7 × 86_400_000`.
 
-### A preset is resolved ONCE per filter session, then anchored
+### The movements filter SESSION: closed, atomic, and timezone-bound
 
-The ledger pages by **offset**. If "today" were re-resolved on every request, a
-session opened at 23:59 and paged at 00:01 would apply page 2's offset to a
-*different result set* than page 1 came from — **skipping rows, repeating others**,
-and making `hasMore` and the CSV export answer a question the operator never asked.
+The ledger pages by **offset**, and its requests are async. Three separate things go
+wrong unless one filtered result set is treated as one explicit **session**. All
+three were found by review, in three successive rounds — the fix is not "pin the
+lower bound", which is what the first two attempts did.
 
-So a relative preset is pinned the moment it is applied:
+**1. The range must be CLOSED at both ends.** Pinning only `from` still leaves
+`to = null`. Rows come back `created_at DESC`, so a movement recorded *after* tenant
+midnight — a row belonging to the **next** business day — still matched the old
+session's query and landed at the **front** of the set, pushing every existing row
+one place later. Page 2's offset then re-read a row page 1 already showed: the client
+de-duplicated it, which **silently skipped a real row**, and `hasMore` stopped
+describing the set on screen. Every relative preset now resolves **both** anchors
+against the tenant's clock at the moment the filter is applied:
+
+| Preset | `from` | `to` |
+|---|---|---|
+| Today | tenant today | **tenant today** |
+| 7 days | tenant today − 6 calendar days | **tenant today** |
+| Month to date | 1st of the tenant's month | **tenant today** |
+| Custom | the operator's validated date | the operator's validated date |
+| All | *(none)* | *(none)* — the only genuinely unbounded state |
+
+`to` becomes a **next-day-start exclusive** UTC bound, so tomorrow's rows cannot
+enter. The label still says "Today"; the range underneath it does not move.
+
+**2. The session must be ATOMIC.** Clearing only the anchors on a filter change left
+the old rows, the old `hasMore`, and an offset derived from them — while **Export
+stayed enabled**, so an export fired in that window paired the *new* filters with the
+*old* result set. Every transition now goes through one reducer
+(`src/lib/movement-session.ts`), which the component renders from and the tests drive
+directly:
 
 ```
-1. filter applied   → client sends the PRESET, no dates
-2. server           → resolves it against the tenant's clock (tenantToday)
-                    → returns concrete anchors: resolvedFrom / resolvedTo
-3. client           → PINS those dates to the filter session
-4. load-more        ┐
-   retry            ├→ send the ANCHORS back; the server passes them straight
-   export           ┘  through (an explicit date always beats a preset)
-5. filter changed   → new session: rows, offset, hasMore AND anchor all reset
+filters_changed → generation++, rows [], hasMore false, anchors null, tz null
+                  → Export DISABLED, Load-more unavailable, offset implicitly 0
+resolved(gen)   → rows, hasMore, from, to, timeZone  → Export enabled
+page_loaded(gen)→ append; a short page ends the list
+page_failed(gen)→ session and anchors SURVIVE — a retry pages the SAME range
+resolve_failed  → no rows, no export (a retry resolves a NEW session from offset 0)
+session_stale   → rows dropped; the anchors are void
 ```
 
-The label still says "Today". The range underneath it does not move — tenant
-midnight can pass mid-session and the page-2 offset still means what it meant.
-Re-applying "Today" *after* midnight correctly starts a new session on the new day.
-`custom` ranges are already concrete, so they are passed through untouched.
+Every response carries the **generation** it was issued for, so a slow reply for a
+superseded filter is dropped: it cannot restore rows, anchors, `hasMore`, or
+Export-readiness. Export and load-more both re-send the session's **own** canonical
+snapshot, its closed anchors and its timezone binding — so the file and the screen
+describe the same query by construction.
+
+**3. The session is BOUND to the timezone it was resolved under.** The anchors are
+tenant-*local* dates, so their UTC window depends on the tenant's zone. If an owner
+changes the zone in another tab, the identical anchors silently denote a **different**
+window. The client therefore echoes back the server-issued `resolvedTimeZone` as an
+**expected-session value** — comparison only; the server always reads the
+authoritative zone from the cached authenticated context, and the client's value
+never selects or authorizes anything. If they differ the server **refuses**
+(`timezone_changed`) without querying or exporting, and the UI invalidates the
+session and shows a localized "re-apply the filter" message. Nothing is
+reinterpreted; no two interpretations are ever mixed.
+
+**Exactly-50-row behaviour (retained).** A final page that happens to be exactly
+`MOVEMENT_PAGE_SIZE` rows leaves `hasMore` true, costing one extra request that comes
+back empty and ends the list. Harmless, long-standing, and deliberately preserved.
 
 ### The reverse conversion is NOT offset arithmetic
 
@@ -433,7 +500,15 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **451** app checks.
+- `npm test` → **477** app checks.
+- `npm run test:movement-session` → **26/26**, driving the **production reducer** and
+  the **production Server Actions** (not a copy): closed Today/7d/month ranges, a
+  next-day movement excluded, offsets stable across midnight, an atomic filter reset,
+  a stale response ignored, Export gated and Export/list parity, later-page retry
+  reusing the same anchors, a timezone-changed session invalidated rather than
+  reinterpreted, and the real `exportOrdersAction` refusing an impossible date with
+  no rows and no CSV while the real query builder *rejects* rather than running
+  date-less.
 - `npm run test:tenant-timezone` → **48/48** (the fast subset of the matrix).
 - `npm run test:inventory-time` → **23/23**: the movements CSV carries the tenant
   wall clock (09:57Z → **12:57**, winter → 11:57, no `+00` under a localized "Date"
@@ -499,6 +574,13 @@ Two things make that safe, and both are pgTAP-asserted rather than assumed:
 
 ## Known limitations
 
+- **Deferred performance debt (pre-existing, NOT introduced and NOT fixed here):**
+  the Dashboard reads the tenant's **full order history** via `listOrders()` and
+  aggregates it in memory. M8H.2 changed only how those orders are **bucketed** (UTC
+  day → tenant day); it did not add, worsen, or remove the unbounded read. Bounding
+  it needs a server-side aggregate (an RPC, as M8F.3 did for customer stats) and is
+  out of scope for a timezone-correctness phase. Recorded here so it is not mistaken
+  for something this phase created.
 - Timezone-change auditing is deferred (see above).
 - **Two** date-range filters exist today — **Orders** and **Inventory movements** —
   and both resolve their bounds server-side through the same boundary primitive, so

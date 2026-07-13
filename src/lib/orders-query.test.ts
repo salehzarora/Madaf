@@ -37,6 +37,9 @@ const MOCK_TOTAL = mockOrders.length;
 test("parseOrdersQuery: defaults for an empty URL", () => {
   const q = parseOrdersQuery({});
   assert.deepEqual(q, {
+    // M8H.2: `none` is the legitimate unfiltered state — and it is DISTINCT from
+    // `invalid`, which must never be allowed to query (Codex F04).
+    dateFilter: "none",
     search: "",
     statuses: [],
     source: "all",
@@ -296,6 +299,7 @@ test("query state carries NO tenant/role (RLS is the boundary)", () => {
   const keys = Object.keys(parseOrdersQuery({ customer: "c02" })).sort();
   assert.deepEqual(keys, [
     "customerId",
+    "dateFilter",
     "dateFrom",
     "dateTo",
     "page",

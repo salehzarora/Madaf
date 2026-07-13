@@ -260,6 +260,9 @@ export interface ExportOrdersResult {
   rows?: OrderListRow[];
   /** True when the filtered set exceeded the cap and was truncated. */
   capped?: boolean;
+  /** "invalid_date" — an impossible calendar date was supplied. NOTHING was
+   * queried and NOTHING was exported; the request is refused, not widened. */
+  error?: "invalid_date";
 }
 
 /**
@@ -294,6 +297,12 @@ export async function exportOrdersAction(input: {
       from: input.from,
       to: input.to,
     });
+    // FAIL CLOSED, before any query runs. An impossible date used to collapse into
+    // "no date filter", so a malformed BOUNDED export quietly became an ALL-DATES
+    // export, up to the 5,000-row cap. It now exports nothing at all.
+    if (query.dateFilter === "invalid") {
+      return { ok: false, error: "invalid_date" };
+    }
     // Fetch cap+1 to DETECT truncation, then trim to the cap (matches the
     // existing "export the first CAP rows and warn" behavior).
     const rows = await listOrdersForExport(query, ORDERS_EXPORT_CAP + 1);

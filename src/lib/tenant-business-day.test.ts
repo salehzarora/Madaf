@@ -203,7 +203,7 @@ test("anchors: 'today' resolves ONCE, and the anchored range survives midnight",
   const beforeMidnight = new Date("2026-09-01T20:50:00Z");
   const first = resolveMovementAnchors("today", undefined, undefined, JLM, beforeMidnight);
   assert.equal(first.from, "2026-09-01", "resolved against the TENANT's clock");
-  assert.equal(first.to, null, "presets keep an open upper bound");
+  assert.equal(first.to, "2026-09-01", "CLOSED — tomorrow's rows cannot enter (F01)");
 
   // The tenant's midnight passes. Page 2 is requested at 00:10 local (Sept 2).
   const afterMidnight = new Date("2026-09-01T21:10:00Z");
@@ -236,11 +236,8 @@ test("anchors: the UTC BOUNDS of an anchored session are byte-identical across m
   const a = resolveMovementAnchors("today", undefined, undefined, JLM, before);
 
   const page1 = tenantDateRangeUtc(a.from, a.to, JLM);
-  const page2 = tenantDateRangeUtc(
-    resolveMovementAnchors("today", a.from ?? undefined, a.to ?? undefined, JLM, after).from,
-    null,
-    JLM,
-  );
+  const anchored = resolveMovementAnchors("today", a.from ?? undefined, a.to ?? undefined, JLM, after);
+  const page2 = tenantDateRangeUtc(anchored.from, anchored.to, JLM);
   assert.deepEqual(page2, page1, "the same UTC window → offsets remain meaningful");
   // hasMore and the CSV export are computed from these same bounds.
   assert.equal(page1?.gteIso, "2026-08-31T21:00:00.000Z");
@@ -273,16 +270,18 @@ test("anchors: 7d and month-to-date are anchored too", () => {
   const week = resolveMovementAnchors("7d", undefined, undefined, JLM, before);
   // Aug 26 … Sept 1 inclusive is seven calendar days (Sept 1 minus 6).
   assert.equal(week.from, "2026-08-26", "7 CALENDAR days inclusive of Sept 1");
+  assert.equal(week.to, "2026-09-01", "closed at the day the filter was applied");
   assert.deepEqual(
-    resolveMovementAnchors("7d", week.from ?? undefined, undefined, JLM, after),
+    resolveMovementAnchors("7d", week.from ?? undefined, week.to ?? undefined, JLM, after),
     week,
     "…and it does not slide to 08-27 after midnight",
   );
 
   const month = resolveMovementAnchors("month", undefined, undefined, JLM, before);
   assert.equal(month.from, "2026-09-01", "month-to-date starts on the 1st");
+  assert.equal(month.to, "2026-09-01", "…and is closed at today");
   assert.deepEqual(
-    resolveMovementAnchors("month", month.from ?? undefined, undefined, JLM, after),
+    resolveMovementAnchors("month", month.from ?? undefined, month.to ?? undefined, JLM, after),
     month,
   );
   // A month rollover is the harshest case: resolved fresh on Aug 31 it would be
@@ -296,7 +295,7 @@ test("anchors: 7d and month-to-date are anchored too", () => {
   );
   assert.equal(inAugust.from, "2026-08-01");
   assert.deepEqual(
-    resolveMovementAnchors("month", inAugust.from ?? undefined, undefined, JLM, after),
+    resolveMovementAnchors("month", inAugust.from ?? undefined, inAugust.to ?? undefined, JLM, after),
     inAugust,
     "an August session does not become a September one under the operator",
   );
@@ -335,34 +334,45 @@ test("anchors: 'all' stays unbounded, and a NEW filter after midnight re-resolve
   assert.equal(fresh.from, "2026-09-02", "a new session gets the new day");
 });
 
-test("guard: the client PINS the anchors and resets them on every filter change", () => {
+test("guard: the client drives the SESSION REDUCER — no ad-hoc anchor state", () => {
   const src = stripComments(readSrc("components/admin/movements-table.tsx"));
-  // The session anchor exists, is reset on filter change, and is pinned from the
-  // first response.
-  assert.match(src, /const \[anchors, setAnchors\]/, "the session anchor is state");
-  assert.match(src, /setAnchors\(null\)/, "a filter change starts a NEW session");
+  // The component owns the I/O; the reducer owns every transition. That is what
+  // makes the atomicity testable (and what the behavioural suite actually drives).
+  assert.match(src, /useReducer\(\s*movementSessionReducer/, "the production reducer");
+  assert.match(src, /initialMovementSession\(initialMovements, timeZone\)/);
+  assert.match(src, /dispatch\(\{ type: "filters_changed", filters \}\)/, "atomic reset");
   assert.match(
     src,
-    /setAnchors\(\{\s*from: result\.resolvedFrom \?\? null,\s*to: result\.resolvedTo \?\? null,\s*\}\)/,
-    "the server's resolved dates are pinned",
+    /timeZone: result\.resolvedTimeZone \?\? timeZone/,
+    "the SERVER's resolved zone binds the session",
   );
-  // Load-more and export both pass the session anchors.
-  assert.match(src, /currentQuery\(rows\.length, anchors\)/, "load-more is anchored");
-  assert.match(src, /exportMovementsAction\(currentQuery\(0, anchors\)\)/, "export is anchored");
-  // Page 0 of a NEW session deliberately passes null so the server resolves once.
-  assert.match(src, /currentQuery\(0, null\)/, "the first request resolves the preset");
+  // Load-more and export both re-send the session's own snapshot + anchors + zone.
+  assert.match(src, /sessionRequest\(active, nextOffset\(active\)\)/, "load-more, anchored");
+  assert.match(src, /exportMovementsAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
+  // …and both are GATED on a resolved session.
+  assert.match(src, /if \(!canExportSession\(active\)\) return/, "export gated");
+  assert.match(src, /if \(!canLoadMoreSession\(active\)\) return/, "load-more gated");
+  // A `timezone_changed` reply invalidates rather than reinterprets.
+  assert.match(src, /dispatch\(\{ type: "session_stale"/, "stale → invalidate");
+  // The old hand-rolled anchor state is gone.
+  assert.doesNotMatch(src, /setAnchors|const \[anchors/, "no ad-hoc anchor state");
 });
 
 test("guard: the action returns the resolved anchors and refuses impossible dates", () => {
   const src = stripComments(readSrc("lib/actions/inventory.ts"));
   assert.match(src, /resolvedFrom: resolved\.anchors\.from/, "anchors are returned");
   assert.match(src, /resolvedTo: resolved\.anchors\.to/);
+  assert.match(src, /resolvedTimeZone: resolved\.timeZone/, "…and the zone they bind to");
   assert.match(src, /parseDateOnlyStrict/, "dates are STRICTLY validated");
+  // Both refusals happen WITHOUT querying: the resolver returns an error string and
+  // the action returns it verbatim.
   assert.match(
     src,
-    /if \(!resolved\) return \{ ok: false, error: "invalid_date" \}/,
-    "an impossible date FAILS the request — it never falls through to a query",
+    /if \(typeof resolved === "string"\) return \{ ok: false, error: resolved \}/,
+    "an impossible date or a changed timezone FAILS the request — no query runs",
   );
+  assert.match(src, /return "invalid_date"/, "impossible date");
+  assert.match(src, /return "timezone_changed"/, "session bound to its zone");
   // Search AND export both go through the same resolver, so they cannot disagree.
   const uses = src.match(/await resolveMovementFilter\(input\)/g);
   assert.equal(uses?.length, 2, "search + export share one resolution");

@@ -1,11 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { OrdersTable } from "@/components/admin/orders-table";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, getTenantTimeZone, searchOrders } from "@/lib/data";
-import { parseOrdersQuery } from "@/lib/orders-query";
+import { ordersQueryToParams, parseOrdersQuery } from "@/lib/orders-query";
 
 /**
  * Admin orders list (M8F.1). The URL is the single source of truth for search /
@@ -28,6 +28,18 @@ export default async function AdminOrdersPage({
   const t = dict.admin.orders;
 
   const query = parseOrdersQuery(await searchParams);
+
+  // FAIL CLOSED, BEFORE any data query. An impossible date (`?from=2026-02-30`) used
+  // to be normalized away into "no date filter" — and the page then listed EVERY
+  // order, as if that had been asked for. Instead, redirect to the canonical URL with
+  // the invalid date params REMOVED, preserving every other filter, the search term
+  // and the page size. The redirected request is then an explicit, honest
+  // no-date-filter request. No list query, no exact-count query, runs on this pass.
+  if (query.dateFilter === "invalid") {
+    const canonical = ordersQueryToParams(query, { page: 1 }).toString();
+    redirect(`/${locale}/admin/orders${canonical ? `?${canonical}` : ""}`);
+  }
+
   const result = await searchOrders(query);
   // M8H.2 — the tenant's IANA zone, server-derived. Every time on this screen (and
   // the date presets in the client table) renders in it; the device zone is never

@@ -47,8 +47,24 @@ export function isOrderSourceFacet(v: unknown): v is OrderSourceFacet {
   return typeof v === "string" && (ORDER_SOURCE_FACETS as readonly string[]).includes(v);
 }
 
+/**
+ * The three date-filter states an Orders URL can be in. `none` and `invalid` MUST
+ * NOT look the same: collapsing an impossible date into "no dates supplied" is
+ * precisely how `?from=2026-02-30` came to list — and export — EVERY order instead
+ * of the one day the operator asked for. Invalid stays observable until the request
+ * is refused or canonically redirected.
+ */
+export type OrdersDateFilterState = "none" | "valid" | "invalid";
+
 /** Normalized Orders list query state (the parsed URL). */
 export interface OrdersQuery {
+  /**
+   * `none`    — no date params supplied (the legitimate unfiltered state).
+   * `valid`   — both supplied dates (or the one supplied date) are real.
+   * `invalid` — at least one supplied date is impossible. NOTHING may be queried:
+   *             not the list, not the exact count, not the export.
+   */
+  dateFilter: OrdersDateFilterState;
   /** Trimmed, length-capped free-text term; "" = no search. */
   search: string;
   /** Selected status group; [] = all statuses. */
@@ -90,6 +106,13 @@ function normalizeDate(value: string | undefined): string | null {
   return parseDateOnlyStrict(typeof value === "string" ? value.trim() : value);
 }
 
+/** `?from=` (a cleared date input) means ABSENT, not malformed. Anything else that
+ * was actually typed and is not a real date is `invalid` and must fail closed. */
+function emptyToUndefined(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim() === "" ? undefined : value;
+}
+
 function normalizeStatuses(value: string | undefined): OrderStatus[] {
   if (typeof value !== "string" || value.trim() === "") return [];
   const seen = new Set<OrderStatus>();
@@ -126,22 +149,33 @@ export function parseOrdersQuery(raw: RawParams): OrdersQuery {
   const rawCustomer = (first(raw.customer) ?? "").trim();
   const customerId = rawCustomer && isPlausibleId(rawCustomer) ? rawCustomer : null;
 
-  // An IMPOSSIBLE date clears the WHOLE date filter, deterministically — it is
-  // never preserved as if it were active, and one bad side never survives alone.
-  // Dropping only the bad half would WIDEN a bounded request (a broken `from` with
-  // a valid `to` would silently mean "everything up to that day"), which is the
-  // outcome to avoid; falling back to "no date filter" is the visible default the
-  // operator can see in the URL and the filter chips.
-  const rawFrom = first(raw.from);
-  const rawTo = first(raw.to);
-  let dateFrom = normalizeDate(rawFrom);
-  let dateTo = normalizeDate(rawTo);
-  const fromWasSuppliedButInvalid = rawFrom !== undefined && dateFrom === null;
-  const toWasSuppliedButInvalid = rawTo !== undefined && dateTo === null;
-  if (fromWasSuppliedButInvalid || toWasSuppliedButInvalid) {
-    dateFrom = null;
-    dateTo = null;
-  }
+  // ── The date filter: none / valid / INVALID ──────────────────────────────
+  // An impossible date makes the WHOLE supplied date filter invalid — one bad side
+  // never leaves the valid half applied alone (a broken `from` beside a valid `to`
+  // would silently mean "everything up to that day", WIDENING a bounded request).
+  //
+  // Crucially, invalid is NOT collapsed into "no dates". They are different states
+  // and the callers must treat them differently: `none` queries happily; `invalid`
+  // queries NOTHING. An empty string is treated as absent — the shape `?from=` is
+  // how a cleared date input serializes, and it means "no filter", not "malformed".
+  const rawFrom = emptyToUndefined(first(raw.from));
+  const rawTo = emptyToUndefined(first(raw.to));
+  const parsedFrom = normalizeDate(rawFrom);
+  const parsedTo = normalizeDate(rawTo);
+  const suppliedButBad =
+    (rawFrom !== undefined && parsedFrom === null) ||
+    (rawTo !== undefined && parsedTo === null);
+
+  const dateFilter: OrdersDateFilterState = suppliedButBad
+    ? "invalid"
+    : rawFrom === undefined && rawTo === undefined
+      ? "none"
+      : "valid";
+  // The bounds are carried ONLY in the `valid` state; in `invalid` they are null so
+  // that any caller which ignores `dateFilter` still cannot build a half-range —
+  // but it is `dateFilter` that must stop it querying at all.
+  const dateFrom = dateFilter === "valid" ? parsedFrom : null;
+  const dateTo = dateFilter === "valid" ? parsedTo : null;
 
   const page = clampInt(first(raw.page), 1, 1, ORDERS_MAX_PAGE);
   const pageSize = clampInt(
@@ -151,7 +185,17 @@ export function parseOrdersQuery(raw: RawParams): OrdersQuery {
     ORDERS_MAX_PAGE_SIZE,
   );
 
-  return { search, statuses, source, customerId, dateFrom, dateTo, page, pageSize };
+  return {
+    dateFilter,
+    search,
+    statuses,
+    source,
+    customerId,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize,
+  };
 }
 
 /** True when any filter (not pagination) narrows the list. */
