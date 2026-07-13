@@ -13,7 +13,9 @@ import { revalidatePath } from "next/cache";
 import { adjustInventoryStock, searchInventoryMovements } from "@/lib/data";
 import {
   INVENTORY_MOVEMENT_REASONS,
+  MOVEMENT_DATE_PRESETS,
   type InventoryMovement,
+  type MovementDatePreset,
   type MovementQuery,
 } from "@/lib/types";
 
@@ -50,18 +52,29 @@ function isPlausibleId(value: unknown): value is string {
   );
 }
 
-/** ISO-ish date-time string (from Date.toISOString or a <input type=date>). */
-function isIsoish(v: unknown): v is string {
+/**
+ * A tenant-local CALENDAR DATE (YYYY-MM-DD) — what an `<input type="date">`
+ * yields. Deliberately NOT an instant: the client must not be able to hand the
+ * ledger a UTC bound it computed off its own clock (M8H.2). The server turns
+ * these into UTC bounds in the TENANT's timezone.
+ */
+function isCalendarDate(v: unknown): v is string {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
+function isMovementPreset(v: unknown): v is MovementDatePreset {
   return (
     typeof v === "string" &&
-    v.length <= 40 &&
-    !Number.isNaN(Date.parse(v))
+    (MOVEMENT_DATE_PRESETS as readonly string[]).includes(v)
   );
 }
 
 export interface MovementSearchInput {
-  from?: string;
-  to?: string;
+  /** Which range to show — resolved against the TENANT's clock, server-side. */
+  preset?: MovementDatePreset;
+  /** "custom" only: tenant-local calendar dates (YYYY-MM-DD), never instants. */
+  dateFrom?: string;
+  dateTo?: string;
   reason?: string;
   direction?: "in" | "out" | "manual";
   productIds?: string[];
@@ -78,13 +91,16 @@ export interface MovementSearchResult {
 /**
  * Re-validate + normalize the filter payload from the client into a
  * MovementQuery the data layer trusts. Shared by search + export so both
- * apply the SAME server-side filters. `productIds` keeps its "matched
- * nothing" signal ([] → zero rows); `undefined` means no product filter.
+ * apply the SAME server-side filters — and, since M8H.2, the same TENANT-local
+ * date bounds (the data layer resolves them; nothing here trusts a client
+ * instant). `productIds` keeps its "matched nothing" signal ([] → zero rows);
+ * `undefined` means no product filter.
  */
 function normalizeMovementQuery(input: MovementSearchInput): MovementQuery {
   const query: MovementQuery = {};
-  if (isIsoish(input.from)) query.from = input.from;
-  if (isIsoish(input.to)) query.to = input.to;
+  if (isMovementPreset(input.preset)) query.preset = input.preset;
+  if (isCalendarDate(input.dateFrom)) query.dateFrom = input.dateFrom;
+  if (isCalendarDate(input.dateTo)) query.dateTo = input.dateTo;
   if (
     typeof input.reason === "string" &&
     (INVENTORY_MOVEMENT_REASONS as readonly string[]).includes(input.reason)

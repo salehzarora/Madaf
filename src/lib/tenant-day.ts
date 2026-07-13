@@ -46,7 +46,8 @@
  */
 import "server-only";
 import { Temporal } from "@js-temporal/polyfill";
-import { nextCalendarDay, resolveTenantTimeZone } from "@/lib/time";
+import { nextCalendarDay, resolveTenantTimeZone, tenantToday } from "@/lib/time";
+import type { MovementDatePreset } from "@/lib/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -101,4 +102,58 @@ export function tenantDateRangeUtc(
       ? tenantDayStartUtcIso(nextCalendarDay(dateTo), timeZone)
       : null,
   };
+}
+
+/**
+ * Resolve a movements date PRESET (or a custom range) to UTC bounds — entirely in
+ * the TENANT's timezone, entirely on the server (M8H.2).
+ *
+ * The ledger's filter used to be computed in the BROWSER from the device clock
+ * (`new Date(y, m, d)` for local midnight, `+ 86_400_000` for "a day",
+ * `Date.parse(\`${d}T00:00:00\`)` for a typed date). That made "today" mean today
+ * *for whoever is looking* — an admin travelling abroad got a different business
+ * day, and a DST day was silently mis-bounded by an hour. Worse, the screen was
+ * migrated to tenant-local display in M8H.2 while the filter was not, so one page
+ * could DISPLAY a movement on one date and FILTER it onto another.
+ *
+ * Now the client sends only the preset and (for "custom") date-only strings; every
+ * boundary is resolved here, against the tenant's clock:
+ *   • "today"  — the tenant's current calendar day (tenantToday), not the device's
+ *   • "7d"     — the last 7 CALENDAR days inclusive (PlainDate arithmetic; never
+ *                a 7 × 86_400_000 subtraction, which is wrong across a DST change)
+ *   • "month"  — the 1st of the tenant's current month, to date
+ *   • "custom" — the operator's two tenant-local calendar dates
+ * Presets keep an OPEN upper bound (a movement cannot be recorded in the future),
+ * exactly as before; "custom" is inclusive of its whole final local day.
+ *
+ * `now` is injectable for tests ONLY; it is an absolute instant, never a zone.
+ */
+export function tenantMovementRangeUtc(
+  preset: MovementDatePreset | undefined,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  timeZone: string,
+  now: Date = new Date(),
+): TenantDateRangeUtc {
+  const zone = resolveTenantTimeZone(timeZone);
+
+  if (preset === "custom") {
+    return tenantDateRangeUtc(dateFrom ?? null, dateTo ?? null, zone);
+  }
+  if (preset !== "today" && preset !== "7d" && preset !== "month") {
+    return { gteIso: null, ltIso: null }; // "all" / absent → unbounded
+  }
+
+  // The tenant's TODAY — the same instant read on the tenant's clock, not the
+  // viewer's and not the server machine's.
+  const today = Temporal.PlainDate.from(tenantToday(zone, now));
+  const start =
+    preset === "today"
+      ? today
+      : preset === "7d"
+        ? today.subtract({ days: 6 }) // last 7 days INCLUSIVE of today
+        : today.with({ day: 1 }); // month-to-date
+
+  // Open upper bound (unchanged behavior): everything from that local day onward.
+  return tenantDateRangeUtc(start.toString(), null, zone);
 }

@@ -16,12 +16,12 @@ import {
 } from "@/lib/actions/inventory";
 import { productName } from "@/lib/catalog-helpers";
 import { downloadCsv, toCsv } from "@/lib/csv";
-import { dateRangeBounds, type DateRangePreset } from "@/lib/date-range";
 import { formatNumber } from "@/lib/format";
 import { formatTenantDateTime } from "@/lib/time";
 import {
   INVENTORY_MOVEMENT_REASONS,
   type InventoryMovement,
+  type MovementDatePreset,
   type Order,
   type Product,
 } from "@/lib/types";
@@ -76,7 +76,7 @@ export function MovementsTable({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [reason, setReason] = useState<string>("all");
   const [direction, setDirection] = useState<Direction>("all");
-  const [preset, setPreset] = useState<DateRangePreset>("all");
+  const [preset, setPreset] = useState<MovementDatePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
@@ -121,13 +121,20 @@ export function MovementsTable({
     preset === "all" &&
     productIds === undefined;
 
-  /** Serialize the current filters for the server action. `new Date()` here
-   * (effect/handler) is fine — it never runs during render. */
+  /**
+   * Serialize the current filters for the server action. The date filter travels
+   * as a PRESET plus (for "custom") the two date-only `<input type="date">`
+   * values — it carries NO instant. The browser used to convert the preset to
+   * UTC bounds itself, off the DEVICE clock, so "today" meant today for whoever
+   * was looking and a DST day was an hour wrong; the server now resolves every
+   * boundary in the TENANT's timezone (tenantMovementRangeUtc), which is also
+   * the zone the rows below are rendered in. Nothing here reads a clock.
+   */
   function currentQuery(offset: number) {
-    const bounds = dateRangeBounds(preset, customFrom, customTo);
     return {
-      from: bounds.from !== undefined ? new Date(bounds.from).toISOString() : undefined,
-      to: bounds.to !== undefined ? new Date(bounds.to).toISOString() : undefined,
+      preset,
+      dateFrom: preset === "custom" && customFrom ? customFrom : undefined,
+      dateTo: preset === "custom" && customTo ? customTo : undefined,
       reason: reason === "all" ? undefined : reason,
       direction: direction === "all" ? undefined : direction,
       productIds,
@@ -188,7 +195,11 @@ export function MovementsTable({
         const product = m.productId ? productById.get(m.productId) : undefined;
         const order = m.orderId ? orderById.get(m.orderId) : undefined;
         return [
-          m.createdAt,
+          // The operator's CSV is a HUMAN report under a localized "Date"
+          // header, so it carries the SAME tenant wall clock the screen shows —
+          // not the raw UTC instant (which read 09:57 for a movement the tenant
+          // recorded at 12:57, and leaked a +00:00 offset into a business file).
+          formatTenantDateTime(m.createdAt, locale, timeZone),
           product ? productName(product, locale) : "",
           product?.sku ?? "",
           m.quantityDelta,
@@ -263,7 +274,7 @@ export function MovementsTable({
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={preset}
-          onChange={(e) => setPreset(e.target.value as DateRangePreset)}
+          onChange={(e) => setPreset(e.target.value as MovementDatePreset)}
           aria-label={dict.admin.orders.dateFilter.label}
           className="w-44"
         >

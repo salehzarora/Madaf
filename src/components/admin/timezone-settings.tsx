@@ -10,17 +10,35 @@
  * admin from another country. Fixed offsets (+03:00) are not offered at all —
  * they cannot express daylight saving.
  */
-import { useMemo, useState, useTransition } from "react";
+import {
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { Check, Globe, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { interpolate } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { updateTenantTimeZoneAction } from "@/lib/actions/tenant-timezone";
 import { cn } from "@/lib/utils";
 
 type Status = "idle" | "saved" | "invalid" | "forbidden" | "failed";
+
+/** The device zone never changes while the page is open — nothing to subscribe to. */
+const subscribeNever = () => () => {};
+
+/** The browser's own zone, or null if the runtime cannot resolve one (it then
+ * simply shows no hint — never a broken UI, and never a guess). Stable across
+ * calls, as useSyncExternalStore requires. */
+function readDeviceZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function TimezoneSettings({
   locale,
@@ -45,14 +63,25 @@ export function TimezoneSettings({
   const [status, setStatus] = useState<Status>("idle");
   const [saving, startSaving] = useTransition();
 
-  // A purely informational hint. It is NEVER auto-applied.
-  const deviceZone = useMemo(() => {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-      return null;
-    }
-  }, []);
+  /**
+   * The BROWSER's timezone — a purely informational hint, NEVER applied.
+   *
+   * Read only in the browser, never during the server render. A client component
+   * is still server-rendered, so resolving this in render would resolve it on the
+   * SERVER: the prerendered HTML would announce the server machine's zone as
+   * "your device" — false, the exact server-zone leak this phase exists to
+   * remove — and then change on hydration, a mismatch.
+   *
+   * The server snapshot is therefore `null` (no hint), the client snapshot is the
+   * real device zone, and React swaps them only AFTER hydration. Server and first
+   * client render are byte-identical by construction, so no suppressHydrationWarning
+   * is needed — the logic is right, not the warning silenced.
+   */
+  const deviceZone = useSyncExternalStore(
+    subscribeNever,
+    readDeviceZone, // browser
+    () => null, // server + hydration
+  );
 
   // The tenant's CURRENT zone is always offered, even if this runtime's catalog
   // doesn't list that exact spelling. PostgreSQL accepts IANA's full set including
@@ -178,9 +207,22 @@ export function TimezoneSettings({
         )}
       </div>
 
+      {/* Browser-only, post-mount, and non-authoritative: it never changes the
+          selection. The identifier is bidi-ISOLATED rather than interpolated into
+          the sentence — an LTR zone name ("Asia/Jerusalem") dropped raw into an
+          Arabic/Hebrew sentence reorders around the slash. */}
       {deviceZone && deviceZone !== current ? (
         <p className="text-xs text-ink-muted">
-          {interpolate(t.deviceHint, { zone: deviceZone })}
+          {t.deviceHint.split("{zone}").flatMap((part, i) =>
+            i === 0
+              ? [part]
+              : [
+                  <bdi key={i} dir="ltr" className="font-mono">
+                    {deviceZone}
+                  </bdi>,
+                  part,
+                ],
+          )}
         </p>
       ) : null}
 

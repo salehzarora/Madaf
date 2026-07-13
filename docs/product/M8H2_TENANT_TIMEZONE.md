@@ -62,9 +62,16 @@ columns are deliberately **excluded** (see below).
 | Showcase links (expiry) | `catalog_showcase_links.expires_at` | implicit | `formatTenantDateTime` | client (prop) | — |
 | Signup links + requests | `customer_signup_*` | implicit | `formatTenantDateTime` | client (prop) | — |
 | Team members + invites | `tenant_users`, `tenant_invitations` | implicit | `formatTenantDate` / `DateTime` | client (prop) | — |
-| Inventory movements | `order_inventory_movements.created_at` | implicit | `formatTenantDateTime` | client (prop) | — |
+| Inventory movements | `order_inventory_movements.created_at` | implicit | `formatTenantDateTime` | client (prop) | **yes** |
+| Inventory movements CSV | `order_inventory_movements.created_at` | **raw UTC ISO** under a localized "Date" header | tenant wall clock (matches the screen) | client | yes |
 | Dashboard recent orders | `orders.created_at` | implicit | `formatTenantDateTime` | server | — |
 | **Inventory expiry** | `inventory_items.expiry_date` (**`date`**) | `formatDate` | **`formatDateOnly` — NO timezone** | client | — |
+
+> **The movements ledger was caught half-migrated.** The first pass converted its
+> *screen* to tenant-local time but left the CSV emitting a raw UTC instant and left
+> the date *filter* on the browser's clock — so the same page could **display** a
+> movement on one date and **filter** it onto another. Both are fixed here; see
+> *Two date filters* below.
 
 ### Date-only fields are NOT timezone-converted
 
@@ -89,6 +96,27 @@ Both bounds come from **one builder**, `tenantDateRangeUtc(from, to, tz)`
 count, the page and the CSV export** physically cannot disagree about where a day
 begins. The mock path calls the same function. Date presets ("today", last 7 days)
 use `tenantToday(tz)` — *today for the business*, not for the viewer's device.
+
+### Two date filters, one builder
+
+There are **two** date-range filters in the product, and both are tenant-local:
+
+| Filter | Where bounds are resolved | Preset source |
+|---|---|---|
+| **Orders** list / count / CSV | server (`buildOrdersQuery` → `tenantDateRangeUtc`) | `tenantToday(tz)` |
+| **Inventory movements** list / load-more / CSV | server (`sbSearchInventoryMovements` → `tenantMovementRangeUtc`) | `tenantToday(tz)`, **server-side** |
+
+The movements filter used to be computed **in the browser** by a legacy M8C helper
+(`src/lib/date-range.ts`) that took `new Date(y, m, d)` for "local midnight", added
+`86_400_000` for "a day", and did `Date.parse(\`${d}T00:00:00\`)` for a typed date.
+Every one of those reads the **device** clock, so "today" meant today *for whoever
+was looking*, and a DST day was bounded an hour wrong. That helper is **deleted**;
+the client now sends only a **preset plus date-only strings** and cannot express an
+instant at all. `tenantMovementRangeUtc` resolves the preset against the tenant's
+clock and delegates the boundary maths to the same `tenantDateRangeUtc`, so the
+ledger inherits every DST property proven below — including the 22h/26h days and the
+zones where local midnight does not exist. "7 days" is seven **calendar** days
+(`PlainDate.subtract`), never `7 × 86_400_000`.
 
 ### The reverse conversion is NOT offset arithmetic
 
@@ -216,8 +244,28 @@ On the existing **Business settings** route, which is already **owner/admin only
 owner/admin server-side regardless. Searchable list, the current IANA identifier,
 an **explicit Save** with loading / success / error states, `role="radiogroup"` +
 `aria-checked` + a labelled search input, bidi-isolated (`dir="ltr"`) zone
-identifiers, logical CSS only (RTL/LTR safe), ar/he/en. The browser's zone is
-shown **only as a hint** and is never auto-applied. Fixed offsets are not offered.
+identifiers, logical CSS only (RTL/LTR safe), ar/he/en. Fixed offsets are not offered.
+
+### The device hint is browser-only, post-hydration, and non-authoritative
+
+The control shows the viewer's own zone as a hint when it differs from the tenant's.
+It is read through `useSyncExternalStore` whose **server snapshot is `null`**, so:
+
+- the **server render inspects nothing** — no `resolvedOptions()` on the server;
+- the server HTML and the first client render are **identical by construction**, so
+  there is no hydration mismatch and **no `suppressHydrationWarning`** anywhere;
+- the hint appears only **after hydration**, in the browser, where "your device"
+  actually means something;
+- if the runtime cannot resolve a zone, it stays `null` and **no hint renders** —
+  never a broken node, never a guess;
+- it **never** auto-selects and **never** auto-saves. The tenant's stored zone
+  remains the authoritative selection, changed only by an explicit Save.
+
+Computing it during render (the first attempt) would have resolved it on the
+**server**, announcing the *server machine's* timezone as "your device" — the exact
+server-zone leak this phase exists to remove. The identifier is wrapped in
+`<bdi dir="ltr">` rather than interpolated raw, so it does not reorder inside an
+Arabic/Hebrew sentence.
 
 ## Changing the timezone
 
@@ -278,8 +326,15 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **390** app checks (incl. **48** `test:tenant-timezone`, the fast
-  representative subset of the matrix).
+- `npm test` → **413** app checks (incl. **48** `test:tenant-timezone`, the fast
+  representative subset of the matrix, and **23** `test:inventory-time`).
+- `npm run test:inventory-time` → **23/23**: the movements CSV carries the tenant
+  wall clock (09:57Z → **12:57**, winter → 11:57, no `+00` under a localized "Date"
+  header); the movements filter resolves every bound **server-side in the tenant
+  zone** (23h/25h days, a date whose local midnight does not exist, start-inclusive
+  / next-day-exclusive, immune to `process.env.TZ`, the device zone and the locale);
+  the client sends **no instant** and reads **no clock**; the device hint has a
+  **null server snapshot**, never auto-applies, and uses no `suppressHydrationWarning`.
 - `npm run check:timezone-catalog` → **418/418** offered zones accepted by the
   database validator.
 - `supabase test db` → **351** pgTAP (incl. **45** new: column + NOT NULL +
@@ -324,8 +379,9 @@ Two things make that safe, and both are pgTAP-asserted rather than assumed:
 ## Known limitations
 
 - Timezone-change auditing is deferred (see above).
-- Only the **Orders** list exposes a date-range filter today; the boundary
-  primitive is shared, so any future filter inherits the correct semantics.
+- **Two** date-range filters exist today — **Orders** and **Inventory movements** —
+  and both resolve their bounds server-side through the same boundary primitive, so
+  any future filter inherits the correct semantics by using it.
 - The option list follows the runtime's ICU data; a zone added to IANA after the
   Node build would not be *offered* until the runtime updates (the database would
   still accept it, and `check:timezone-catalog` would still pass — the gate protects

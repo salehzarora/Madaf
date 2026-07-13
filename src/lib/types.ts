@@ -210,13 +210,35 @@ export const INVENTORY_MOVEMENT_REASONS = [
 export type InventoryMovementReason =
   (typeof INVENTORY_MOVEMENT_REASONS)[number];
 
-/** Server-side movement-search filters (M8D). All optional; omitted = no
- * filter. `productIds` is resolved from the search term client-side. */
+/** Date-range presets for the movements ledger (M8C → tenant-local in M8H.2). */
+export const MOVEMENT_DATE_PRESETS = [
+  "all",
+  "today",
+  "7d",
+  "month",
+  "custom",
+] as const;
+export type MovementDatePreset = (typeof MOVEMENT_DATE_PRESETS)[number];
+
+/**
+ * Server-side movement-search filters (M8D; tenant-local dates in M8H.2). All
+ * optional; omitted = no filter. `productIds` is resolved from the search term
+ * client-side.
+ *
+ * The date filter is expressed as a PRESET plus (for "custom") tenant-local
+ * CALENDAR DATES — never as UTC instants. The browser used to compute the
+ * instants itself off its own clock, which made "today" mean today *for the
+ * viewer's device*; the server now resolves both the preset and the calendar
+ * dates in the TENANT's timezone. The client cannot supply an instant at all.
+ */
 export interface MovementQuery {
-  /** Inclusive ISO lower bound. */
-  from?: string;
-  /** Exclusive ISO upper bound. */
-  to?: string;
+  /** Which range to resolve, in the TENANT's timezone. Omitted/"all" = no bound. */
+  preset?: MovementDatePreset;
+  /** "custom" only — inclusive lower bound as a tenant-local YYYY-MM-DD. */
+  dateFrom?: string;
+  /** "custom" only — INCLUSIVE upper bound as a tenant-local YYYY-MM-DD (the
+   * whole local day is covered via a next-day-start exclusive instant). */
+  dateTo?: string;
   reason?: string;
   direction?: "in" | "out" | "manual";
   /** undefined = no product filter; [] = matched nothing → zero rows. */

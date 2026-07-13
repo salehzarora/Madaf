@@ -45,7 +45,7 @@ import {
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
-import { tenantDateRangeUtc } from "@/lib/tenant-day";
+import { tenantDateRangeUtc, tenantMovementRangeUtc } from "@/lib/tenant-day";
 import {
   PRODUCTS_MAX_PAGE_SIZE,
   type ProductExportRow,
@@ -960,13 +960,25 @@ export async function sbSearchInventoryMovements(
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
 
+  // M8H.2 — the date bounds are resolved HERE, in the TENANT's timezone, from a
+  // preset + date-only input. The browser no longer computes instants off its own
+  // clock, so the ledger filters on the same calendar day it displays. One tz read
+  // per call, from the React-cached session context (no extra query, no N+1).
+  const timeZone = await getTenantTimeZone();
+  const { gteIso, ltIso } = tenantMovementRangeUtc(
+    q.preset,
+    q.dateFrom,
+    q.dateTo,
+    timeZone,
+  );
+
   let query = client
     .from("order_inventory_movements")
     .select("id, product_id, order_id, quantity_delta, reason, note, created_at")
     .eq("tenant_id", tenantId);
 
-  if (q.from) query = query.gte("created_at", q.from);
-  if (q.to) query = query.lt("created_at", q.to);
+  if (gteIso) query = query.gte("created_at", gteIso);
+  if (ltIso) query = query.lt("created_at", ltIso);
   if (q.reason) query = query.eq("reason", q.reason);
   if (q.direction === "in") query = query.gt("quantity_delta", 0);
   else if (q.direction === "out") query = query.lt("quantity_delta", 0);
