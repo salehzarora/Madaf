@@ -45,7 +45,7 @@ import {
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
-import { tenantDateRangeUtc, tenantMovementRangeUtc } from "@/lib/tenant-day";
+import { tenantDateRangeUtc } from "@/lib/tenant-day";
 import {
   PRODUCTS_MAX_PAGE_SIZE,
   type ProductExportRow,
@@ -960,17 +960,16 @@ export async function sbSearchInventoryMovements(
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
 
-  // M8H.2 — the date bounds are resolved HERE, in the TENANT's timezone, from a
-  // preset + date-only input. The browser no longer computes instants off its own
-  // clock, so the ledger filters on the same calendar day it displays. One tz read
-  // per call, from the React-cached session context (no extra query, no N+1).
+  // M8H.2 — the query receives CONCRETE tenant-local calendar dates (the Server
+  // Action anchored them once for the whole filter session), and converts them to
+  // UTC bounds in the TENANT's zone. One tz read per call, from the React-cached
+  // session context (no extra query, no N+1).
   const timeZone = await getTenantTimeZone();
-  const { gteIso, ltIso } = tenantMovementRangeUtc(
-    q.preset,
-    q.dateFrom,
-    q.dateTo,
-    timeZone,
-  );
+  const range = tenantDateRangeUtc(q.dateFrom ?? null, q.dateTo ?? null, timeZone);
+  // FAIL CLOSED: an impossible calendar date yields null, and an unbounded ledger
+  // read is exactly the wrong way to recover from it.
+  if (!range) fail("searchInventoryMovements", "invalid tenant calendar date");
+  const { gteIso, ltIso } = range;
 
   let query = client
     .from("order_inventory_movements")
@@ -1140,13 +1139,13 @@ function buildOrdersQuery(
   // local day (which is not always 00:00 — some zones spring forward AT midnight),
   // and `to` is INCLUSIVE of its whole local day via a next-day-start EXCLUSIVE
   // upper bound. One builder, shared with the mock path and every caller below.
-  const { gteIso, ltIso } = tenantDateRangeUtc(
-    query.dateFrom,
-    query.dateTo,
-    timeZone,
-  );
-  if (gteIso) qb = qb.gte("created_at", gteIso);
-  if (ltIso) qb = qb.lt("created_at", ltIso);
+  const range = tenantDateRangeUtc(query.dateFrom, query.dateTo, timeZone);
+  // FAIL CLOSED. parseOrdersQuery already rejects impossible dates strictly, so
+  // this is unreachable — but if it ever were reached, an unbounded Orders read
+  // (and export) is precisely the outcome to refuse.
+  if (!range) fail("searchOrders", "invalid tenant calendar date");
+  if (range.gteIso) qb = qb.gte("created_at", range.gteIso);
+  if (range.ltIso) qb = qb.lt("created_at", range.ltIso);
 
   // Free-text: sanitize or-grammar metacharacters (mirrors sbSearchCustomers),
   // then union order_number / public_ref / recorded buyer name+phone.

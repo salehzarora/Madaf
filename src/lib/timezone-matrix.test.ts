@@ -30,7 +30,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { tenantDayStartUtcIso, tenantDateRangeUtc } from "@/lib/tenant-day";
-import { nextCalendarDay, TIME_ZONE_OPTIONS } from "@/lib/time";
+import { nextCalendarDay } from "@/lib/time";
+import { TIME_ZONE_OPTIONS } from "@/lib/time-catalog";
 
 /** The window under test — four full years, so every zone crosses each of its DST
  * transitions ~4 times (and any zone that only transitions in some years is hit). */
@@ -104,13 +105,13 @@ for (const zone of TIME_ZONE_OPTIONS) {
     // (1) a valid UTC instant, always.
     if (startIso === null) {
       failures.push(`${zone} ${date}: conversion returned null`);
-      date = nextCalendarDay(date);
+      date = nextCalendarDay(date)!;
       continue;
     }
     const startMs = Date.parse(startIso);
     if (!Number.isFinite(startMs)) {
       failures.push(`${zone} ${date}: not a valid instant (${startIso})`);
-      date = nextCalendarDay(date);
+      date = nextCalendarDay(date)!;
       continue;
     }
 
@@ -146,7 +147,7 @@ for (const zone of TIME_ZONE_OPTIONS) {
       }
       // (4)+(5) the PREVIOUS day's exclusive end IS this day's start → exact tiling,
       // and it comes from the SAME builder the Orders query/count/export use.
-      const { ltIso } = tenantDateRangeUtc(null, prevDate, zone);
+      const ltIso = tenantDateRangeUtc(null, prevDate, zone)?.ltIso ?? null;
       if (ltIso === null || Date.parse(ltIso) !== startMs) {
         failures.push(
           `${zone} ${prevDate}: exclusive end ${ltIso} ≠ next day's start ${startIso} (gap/overlap)`,
@@ -174,7 +175,8 @@ for (const zone of TIME_ZONE_OPTIONS) {
 
     prevStartMs = startMs;
     prevDate = date;
-    date = nextCalendarDay(date);
+    // Every date in this sweep is real, so nextCalendarDay never refuses one.
+    date = nextCalendarDay(date)!;
   }
 }
 

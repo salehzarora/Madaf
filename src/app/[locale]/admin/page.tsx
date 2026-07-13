@@ -35,7 +35,7 @@ import {
 } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { formatTenantDateTime } from "@/lib/time";
+import { formatTenantDateTime, tenantDateKey, tenantToday } from "@/lib/time";
 import type { Locale } from "@/lib/types";
 
 const STATUS_COLOR = {
@@ -91,13 +91,19 @@ export default async function AdminDashboardPage({
   const open = orders.filter((o) =>
     ["new", "confirmed", "preparing"].includes(o.status),
   );
-  // Mock data lives in July 2026; supabase mode uses the real current month
-  // (the KPI was hardcoded to "2026-07" and went stale — M8A).
+  // Mock data lives in July 2026; supabase mode uses the real current month IN THE
+  // TENANT'S TIMEZONE (the KPI was hardcoded to "2026-07" and went stale — M8A;
+  // M8H.2 makes the rollover happen on the tenant's midnight, not UTC's).
   const monthPrefix =
     getDataMode() === "mock"
       ? "2026-07"
-      : new Date().toISOString().slice(0, 7);
-  const monthOrders = live.filter((o) => o.createdAt.startsWith(monthPrefix));
+      : tenantToday(timeZone).slice(0, 7);
+  // The BUCKET must be tenant-local too — `createdAt.startsWith("2026-09")` on a raw
+  // UTC string files 2026-08-31T21:30Z under August, though the tenant (and the
+  // timestamp shown beside it) says September 1.
+  const monthOrders = live.filter(
+    (o) => tenantDateKey(o.createdAt, timeZone).startsWith(monthPrefix),
+  );
   const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
   // Low stock excludes DEACTIVATED products (M8D) — no point flagging stock
   // for a product no longer sold. productById includes inactive rows.
@@ -123,10 +129,14 @@ export default async function AdminDashboardPage({
     ? (await listSignupRequests()).filter((r) => r.status === "pending").length
     : 0;
 
-  // At-a-glance counts. "Today" is the real current day; in supabase mode the
-  // dashboard renders per-request (authenticated), so it stays accurate.
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayOrders = live.filter((o) => o.createdAt.slice(0, 10) === todayStr);
+  // At-a-glance counts. "Today" is the TENANT's current day — not UTC's. The old
+  // `new Date().toISOString().slice(0, 10)` asked the question in UTC, so for the
+  // three hours before a Jerusalem midnight the dashboard's "today" was yesterday
+  // while the order timestamps next to it already read tomorrow.
+  const todayStr = tenantToday(timeZone);
+  const todayOrders = live.filter(
+    (o) => tenantDateKey(o.createdAt, timeZone) === todayStr,
+  );
   const todayOrdersCount = todayOrders.length;
   // M8C: today's order value (non-cancelled, ex-VAT) for the ops strip.
   const todayTotal = todayOrders.reduce((s, o) => s + orderSubtotal(o), 0);
@@ -142,10 +152,12 @@ export default async function AdminDashboardPage({
     preparing: open.filter((o) => o.status === "preparing").length,
   };
 
-  // Daily totals (non-cancelled), last 14 days present in the data.
+  // Daily totals (non-cancelled), last 14 days present in the data. The bucket key
+  // is the TENANT's calendar day — `createdAt.slice(0, 10)` is the UTC prefix, which
+  // puts an evening order in the previous day's bar for any zone ahead of UTC.
   const byDay = new Map<string, number>();
   for (const o of live) {
-    const day = o.createdAt.slice(0, 10);
+    const day = tenantDateKey(o.createdAt, timeZone);
     byDay.set(day, (byDay.get(day) ?? 0) + orderSubtotal(o));
   }
   const dayKeys = [...byDay.keys()].sort().slice(-14);

@@ -29,8 +29,28 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { formatTenantDateTime } from "./time";
-import { tenantDateRangeUtc, tenantMovementRangeUtc } from "./tenant-day";
+import { resolveMovementAnchors, tenantDateRangeUtc } from "./tenant-day";
 import { MOVEMENT_DATE_PRESETS } from "./types";
+
+/**
+ * The EXACT composition production performs: the Server Action anchors the filter
+ * (resolveMovementAnchors), and the data layer converts those concrete tenant-local
+ * dates to UTC bounds (tenantDateRangeUtc). Tests drive the real pair, not a copy.
+ */
+function movementRange(
+  preset: Parameters<typeof resolveMovementAnchors>[0],
+  from: string | undefined,
+  to: string | undefined,
+  timeZone: string,
+  now?: Date,
+) {
+  const anchors = resolveMovementAnchors(preset, from, to, timeZone, now);
+  const range = tenantDateRangeUtc(anchors.from, anchors.to, timeZone);
+  // Every date these tests pass is real; an impossible one FAILS CLOSED (null) and
+  // is covered by the strict-date suite, which asserts the request is refused.
+  assert.ok(range, "a real calendar date must produce a range");
+  return range;
+}
 
 const JLM = "Asia/Jerusalem";
 const NYC = "America/New_York";
@@ -106,7 +126,7 @@ test("guard: the movements CSV builder uses the tenant formatter, not the raw fi
 test("filter: bounds are derived from the TENANT timezone, not UTC and not the device", () => {
   // A custom range over the local 5th of July: the local day begins at 21:00Z on
   // the 4th (+03), NOT at 00:00Z on the 5th.
-  const { gteIso, ltIso } = tenantMovementRangeUtc(
+  const { gteIso, ltIso } = movementRange(
     "custom",
     "2026-07-05",
     "2026-07-05",
@@ -115,13 +135,13 @@ test("filter: bounds are derived from the TENANT timezone, not UTC and not the d
   assert.equal(gteIso, "2026-07-04T21:00:00.000Z");
   assert.equal(ltIso, "2026-07-05T21:00:00.000Z");
   // A different tenant zone yields different instants for the same calendar date.
-  const nyc = tenantMovementRangeUtc("custom", "2026-07-05", "2026-07-05", NYC);
+  const nyc = movementRange("custom", "2026-07-05", "2026-07-05", NYC);
   assert.equal(nyc.gteIso, "2026-07-05T04:00:00.000Z");
   assert.notEqual(nyc.gteIso, gteIso);
 });
 
 test("filter: start is INCLUSIVE and the next day's start is EXCLUSIVE", () => {
-  const { gteIso, ltIso } = tenantMovementRangeUtc(
+  const { gteIso, ltIso } = movementRange(
     "custom",
     "2026-07-05",
     "2026-07-05",
@@ -141,7 +161,7 @@ test("filter: start is INCLUSIVE and the next day's start is EXCLUSIVE", () => {
 });
 
 test("filter: a movement outside the tenant-local date is excluded (no UTC off-by-one)", () => {
-  const { gteIso, ltIso } = tenantMovementRangeUtc(
+  const { gteIso, ltIso } = movementRange(
     "custom",
     "2026-07-05",
     "2026-07-05",
@@ -159,27 +179,27 @@ test("filter: a movement outside the tenant-local date is excluded (no UTC off-b
 });
 
 test("filter: a 23-hour (spring) and a 25-hour (autumn) tenant day both filter correctly", () => {
-  const spring = tenantMovementRangeUtc("custom", "2026-03-27", "2026-03-27", JLM);
+  const spring = movementRange("custom", "2026-03-27", "2026-03-27", JLM);
   assert.equal(
     (Date.parse(spring.ltIso!) - Date.parse(spring.gteIso!)) / 3_600_000,
     23,
     "the spring-forward day is 23h — never a fixed 24",
   );
-  const autumn = tenantMovementRangeUtc("custom", "2026-10-25", "2026-10-25", JLM);
+  const autumn = movementRange("custom", "2026-10-25", "2026-10-25", JLM);
   assert.equal(
     (Date.parse(autumn.ltIso!) - Date.parse(autumn.gteIso!)) / 3_600_000,
     25,
     "the fall-back day is 25h",
   );
   // …and consecutive local days TILE: no movement is dropped or double-counted.
-  const prev = tenantMovementRangeUtc("custom", "2026-03-26", "2026-03-26", JLM);
+  const prev = movementRange("custom", "2026-03-26", "2026-03-26", JLM);
   assert.equal(prev.ltIso, spring.gteIso, "days tile exactly — no gap, no overlap");
 });
 
 test("filter: a date whose local midnight DOES NOT EXIST still filters correctly", () => {
   // America/Santiago springs forward AT midnight on 2025-09-07: 00:00 never
   // happens, and the day genuinely begins at 01:00 local.
-  const r = tenantMovementRangeUtc(
+  const r = movementRange(
     "custom",
     "2025-09-07",
     "2025-09-07",
@@ -202,11 +222,11 @@ test("filter: presets resolve against the TENANT's clock, not the device's", () 
   // 21:30Z on the 13th is still the 13th in UTC but already the 14th in Jerusalem.
   const now = new Date("2026-07-13T21:30:00Z");
 
-  const jlmToday = tenantMovementRangeUtc("today", undefined, undefined, JLM, now);
+  const jlmToday = movementRange("today", undefined, undefined, JLM, now);
   // The tenant's "today" is the 14th → its start is 21:00Z on the 13th.
   assert.equal(jlmToday.gteIso, "2026-07-13T21:00:00.000Z");
 
-  const utcToday = tenantMovementRangeUtc("today", undefined, undefined, "UTC", now);
+  const utcToday = movementRange("today", undefined, undefined, "UTC", now);
   assert.equal(utcToday.gteIso, "2026-07-13T00:00:00.000Z", "a UTC tenant's 13th");
   assert.notEqual(jlmToday.gteIso, utcToday.gteIso, "the tenant zone decides 'today'");
 
@@ -216,40 +236,40 @@ test("filter: presets resolve against the TENANT's clock, not the device's", () 
 
 test("filter: 7d is seven CALENDAR days and month-to-date starts on the 1st", () => {
   const now = new Date("2026-07-13T09:00:00Z"); // tenant date: 2026-07-13
-  const week = tenantMovementRangeUtc("7d", undefined, undefined, JLM, now);
+  const week = movementRange("7d", undefined, undefined, JLM, now);
   // Last 7 days INCLUSIVE of today → the 7th … the 13th, so it starts on the 7th
   // (13 − 6). This is the same span the old device-clock code produced; only the
   // ZONE it is measured in has changed.
-  assert.equal(week.gteIso, tenantDateRangeUtc("2026-07-07", null, JLM).gteIso);
+  assert.equal(week.gteIso, tenantDateRangeUtc("2026-07-07", null, JLM)!.gteIso);
 
-  const month = tenantMovementRangeUtc("month", undefined, undefined, JLM, now);
-  assert.equal(month.gteIso, tenantDateRangeUtc("2026-07-01", null, JLM).gteIso);
+  const month = movementRange("month", undefined, undefined, JLM, now);
+  assert.equal(month.gteIso, tenantDateRangeUtc("2026-07-01", null, JLM)!.gteIso);
 
   // Across a DST transition, "7 days ago" is a CALENDAR day, not 7×86_400_000.
   // 2026-03-30 minus 6 calendar days = 2026-03-24, spanning the 03-27 transition.
   const dstNow = new Date("2026-03-30T09:00:00Z");
-  const dstWeek = tenantMovementRangeUtc("7d", undefined, undefined, JLM, dstNow);
-  assert.equal(dstWeek.gteIso, tenantDateRangeUtc("2026-03-24", null, JLM).gteIso);
+  const dstWeek = movementRange("7d", undefined, undefined, JLM, dstNow);
+  assert.equal(dstWeek.gteIso, tenantDateRangeUtc("2026-03-24", null, JLM)!.gteIso);
   // A naive 6×86_400_000 subtraction from the local day start would land an hour
   // off (the span contains a 23-hour day) — assert we did NOT do that.
   const naive = new Date(
-    Date.parse(tenantDateRangeUtc("2026-03-30", null, JLM).gteIso!) -
+    Date.parse(tenantDateRangeUtc("2026-03-30", null, JLM)!.gteIso!) -
       6 * 86_400_000,
   ).toISOString();
   assert.notEqual(dstWeek.gteIso, naive, "not a fixed-millisecond day subtraction");
 });
 
 test("filter: 'all' / unknown preset produces NO bound (unchanged behavior)", () => {
-  assert.deepEqual(tenantMovementRangeUtc("all", undefined, undefined, JLM), {
+  assert.deepEqual(movementRange("all", undefined, undefined, JLM), {
     gteIso: null,
     ltIso: null,
   });
-  assert.deepEqual(tenantMovementRangeUtc(undefined, undefined, undefined, JLM), {
+  assert.deepEqual(movementRange(undefined, undefined, undefined, JLM), {
     gteIso: null,
     ltIso: null,
   });
   // A custom range with nothing typed yet is also unbounded (not "epoch..now").
-  assert.deepEqual(tenantMovementRangeUtc("custom", undefined, undefined, JLM), {
+  assert.deepEqual(movementRange("custom", undefined, undefined, JLM), {
     gteIso: null,
     ltIso: null,
   });
@@ -259,8 +279,8 @@ test("filter: 'all' / unknown preset produces NO bound (unchanged behavior)", ()
 
 test("filter: neither the machine timezone nor the locale can move a boundary", () => {
   const now = new Date("2026-07-13T21:30:00Z");
-  const baseline = tenantMovementRangeUtc("today", undefined, undefined, JLM, now);
-  const custom = tenantMovementRangeUtc("custom", "2026-03-27", "2026-03-27", JLM);
+  const baseline = movementRange("today", undefined, undefined, JLM, now);
+  const custom = movementRange("custom", "2026-03-27", "2026-03-27", JLM);
 
   const originalTz = process.env.TZ;
   const originalLang = process.env.LANG;
@@ -268,19 +288,19 @@ test("filter: neither the machine timezone nor the locale can move a boundary", 
     for (const machineZone of ["UTC", "Pacific/Kiritimati", "America/Anchorage"]) {
       process.env.TZ = machineZone;
       assert.deepEqual(
-        tenantMovementRangeUtc("today", undefined, undefined, JLM, now),
+        movementRange("today", undefined, undefined, JLM, now),
         baseline,
         `machine zone ${machineZone} must not move the boundary`,
       );
       assert.deepEqual(
-        tenantMovementRangeUtc("custom", "2026-03-27", "2026-03-27", JLM),
+        movementRange("custom", "2026-03-27", "2026-03-27", JLM),
         custom,
       );
     }
     for (const lang of ["ar_SA.UTF-8", "he_IL.UTF-8", "en_US.UTF-8"]) {
       process.env.LANG = lang;
       assert.deepEqual(
-        tenantMovementRangeUtc("custom", "2026-03-27", "2026-03-27", JLM),
+        movementRange("custom", "2026-03-27", "2026-03-27", JLM),
         custom,
         `locale ${lang} must not move the boundary`,
       );
@@ -292,7 +312,7 @@ test("filter: neither the machine timezone nor the locale can move a boundary", 
     else process.env.LANG = originalLang;
   }
   // The resolver takes no locale at all — pinned so nobody adds one.
-  assert.equal(tenantMovementRangeUtc.length, 4, "(preset, from, to, timeZone[, now])");
+  assert.equal(resolveMovementAnchors.length, 4, "(preset, from, to, timeZone[, now])");
 });
 
 // ══ Architecture guards (what a unit test cannot express) ═════════════════
@@ -314,8 +334,10 @@ test("guard: the movements CLIENT computes no instant and reads no clock", () =>
   );
   assert.doesNotMatch(query, /new Date|toISOString|Date\.now/, "no clock in the payload");
   assert.match(query, /preset,/, "the preset travels as-is");
-  assert.match(query, /dateFrom: preset === "custom"/, "date-only, custom-scoped");
-  assert.match(query, /dateTo: preset === "custom"/);
+  assert.match(query, /dateFrom: dates\.from/, "date-only");
+  assert.match(query, /dateTo: dates\.to/);
+  // Anchored dates win; only a brand-new session lets the server resolve a preset.
+  assert.match(query, /pinned\s*\?/, "the session anchors take precedence");
 
   // And it must never reach for the server-only Temporal conversion.
   assert.doesNotMatch(src, /tenant-day|tenantDateRangeUtc|tenantMovementRangeUtc/);
@@ -332,15 +354,18 @@ test("guard: the legacy device-clock date-range helper no longer exists", () => 
 
 test("guard: the server action accepts only a preset + calendar dates (never an instant)", () => {
   const src = stripComments(INVENTORY_ACTION);
-  assert.match(src, /isCalendarDate/, "date-only validation");
+  // STRICT date-only validation — the ONE parser, which rejects 2026-02-30 rather
+  // than letting a shape check pass it and a bounded query become unbounded.
+  assert.match(src, /parseDateOnlyStrict/, "the strict parser gates both dates");
+  assert.match(src, /isMovementPreset/, "the preset is allowlisted");
+  // An impossible date fails the REQUEST; it never degrades into "no filter".
   assert.match(
     src,
-    /\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\//,
-    "a strict YYYY-MM-DD shape",
+    /if \(from === null \|\| to === null\) return null/,
+    "a supplied-but-impossible date refuses the request",
   );
-  assert.match(src, /isMovementPreset/, "the preset is allowlisted");
   // The old ISO passthrough (which trusted a client-computed instant) is gone.
-  assert.doesNotMatch(src, /isIsoish/, "no client instant is accepted any more");
+  assert.doesNotMatch(src, /isIsoish|isCalendarDate/, "no loose date check remains");
   assert.doesNotMatch(src, /query\.from\s*=|query\.to\s*=/, "no instant reaches the query");
 });
 
@@ -349,7 +374,8 @@ test("guard: the movements query resolves its bounds server-side, in the tenant 
   const fn = src.slice(src.indexOf("export async function sbSearchInventoryMovements"));
   const body = fn.slice(0, fn.indexOf("\n}"));
   assert.match(body, /await getTenantTimeZone\(\)/, "the tenant zone is server-derived");
-  assert.match(body, /tenantMovementRangeUtc\(/, "bounds come from the shared resolver");
+  assert.match(body, /tenantDateRangeUtc\(/, "bounds come from the shared builder");
+  assert.match(body, /if \(!range\) fail\(/, "an impossible date FAILS CLOSED — never unbounded");
   assert.match(body, /\.gte\("created_at", gteIso\)/, "start-INCLUSIVE");
   assert.match(body, /\.lt\("created_at", ltIso\)/, "next-day-start EXCLUSIVE");
   // Still exactly one bounded, ordered page — no unbounded fetch was introduced.
@@ -357,15 +383,15 @@ test("guard: the movements query resolves its bounds server-side, in the tenant 
   assert.match(body, /\.eq\("tenant_id", tenantId\)/, "tenant isolation preserved");
   assert.match(body, /isTenantless\(tenantId\)/, "authorization preserved");
   // The old client-supplied instants are no longer consulted.
-  assert.doesNotMatch(body, /q\.from|q\.to/, "no client instant is used");
+  assert.doesNotMatch(body, /q\.from|q\.to/, "no client instant is used");
 });
 
 test("guard: no full movement history is loaded into the browser", () => {
   const src = stripComments(MOVEMENTS_TABLE);
   // Every fetch goes through the bounded, offset-paged server action.
-  assert.match(src, /searchMovementsAction\(currentQuery\(0\)\)/, "page 0 on filter change");
-  assert.match(src, /searchMovementsAction\(currentQuery\(rows\.length\)\)/, "load-more");
-  assert.match(src, /exportMovementsAction\(currentQuery\(0\)\)/, "export re-queries server-side");
+  assert.match(src, /searchMovementsAction\(currentQuery\(0, null\)\)/, "page 0 on filter change");
+  assert.match(src, /currentQuery\(rows\.length, anchors\)/, "load-more, anchored");
+  assert.match(src, /exportMovementsAction\(currentQuery\(0, anchors\)\)/, "export, anchored");
   assert.doesNotMatch(src, /listInventoryMovements\(/, "no unbounded list in the client");
 });
 

@@ -232,12 +232,12 @@ export type MovementDatePreset = (typeof MOVEMENT_DATE_PRESETS)[number];
  * dates in the TENANT's timezone. The client cannot supply an instant at all.
  */
 export interface MovementQuery {
-  /** Which range to resolve, in the TENANT's timezone. Omitted/"all" = no bound. */
-  preset?: MovementDatePreset;
-  /** "custom" only — inclusive lower bound as a tenant-local YYYY-MM-DD. */
+  /** Inclusive lower bound — a CONCRETE tenant-local calendar date (YYYY-MM-DD),
+   * already resolved and anchored by the Server Action. Never a preset, never an
+   * instant, so the same range can be re-queried for page 2 and for the export. */
   dateFrom?: string;
-  /** "custom" only — INCLUSIVE upper bound as a tenant-local YYYY-MM-DD (the
-   * whole local day is covered via a next-day-start exclusive instant). */
+  /** INCLUSIVE upper bound as a tenant-local YYYY-MM-DD (the whole local day is
+   * covered via a next-day-start EXCLUSIVE instant). */
   dateTo?: string;
   reason?: string;
   direction?: "in" | "out" | "manual";

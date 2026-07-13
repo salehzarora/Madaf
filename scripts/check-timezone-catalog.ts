@@ -23,7 +23,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { basename } from "node:path";
-import { TIME_ZONE_OPTIONS } from "../src/lib/time";
+import { TIME_ZONE_OPTIONS } from "../src/lib/time-catalog";
 
 /** The local dev database only — never a hosted project. */
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";

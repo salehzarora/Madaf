@@ -6,7 +6,13 @@ import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, listInventory, listProducts } from "@/lib/data";
+import {
+  getDataMode,
+  getTenantTimeZone,
+  listInventory,
+  listProducts,
+} from "@/lib/data";
+import { tenantToday } from "@/lib/time";
 
 export default async function AdminInventoryPage({
   params,
@@ -25,14 +31,20 @@ export default async function AdminInventoryPage({
   // products — their rows must render, not crash (M8A). The shared shop-data
   // context stays active-only for the storefront, so this page passes its
   // own product list.
-  const [inventory, products] = await Promise.all([
+  const [inventory, products, timeZone] = await Promise.all([
     listInventory(),
     listProducts({ includeInactive: true }),
+    getTenantTimeZone(),
   ]);
   const isSupabase = getDataMode() === "supabase";
-  // Mock keeps the demo timeline; supabase mode uses the real current day
-  // for the "expiring soon" horizon (M8A — was frozen at the demo date).
-  const today = isSupabase ? new Date().toISOString().slice(0, 10) : undefined;
+  // Mock keeps the demo timeline; supabase mode uses the real current day for the
+  // "expiring soon" horizon (M8A — was frozen at the demo date).
+  //
+  // M8H.2: that day is the TENANT's, not UTC's. `expiry_date` is a SQL `date` and
+  // stays date-only (converting it would shift the day) — only the ANCHOR it is
+  // compared against changes. With a UTC anchor, a batch expiring on the tenant's
+  // "today" could be classified against yesterday for the hours around midnight.
+  const today = isSupabase ? tenantToday(timeZone) : undefined;
   // Manual adjustments (M8B.2) are a Supabase-only owner/admin write — the
   // RPC re-enforces this; here we only hide the affordance (a sales_rep
   // would just get a failing button, and mock has no write path).

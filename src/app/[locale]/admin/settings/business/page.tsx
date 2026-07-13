@@ -6,7 +6,7 @@ import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, getSupplier } from "@/lib/data";
-import { TIME_ZONE_OPTIONS } from "@/lib/time";
+import { TIME_ZONE_OPTIONS } from "@/lib/time-catalog";
 
 /**
  * Business profile settings — owner/admin only (Supabase mode); a demo form in

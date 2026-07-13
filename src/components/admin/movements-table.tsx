@@ -92,6 +92,20 @@ export function MovementsTable({
   // merging rows across different filters.
   const loadGen = useRef(0);
 
+  /**
+   * The filter session's ANCHORED date range: the concrete tenant-local calendar
+   * dates the server resolved when this filter was applied. Null until the first
+   * page comes back (or when there is no date filter at all).
+   *
+   * This is what stops "today" from meaning a different day on page 2 than it did
+   * on page 1. Every filter change clears it, so a NEW "Today" applied after
+   * midnight correctly gets the NEW date.
+   */
+  const [anchors, setAnchors] = useState<{
+    from: string | null;
+    to: string | null;
+  } | null>(null);
+
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
@@ -122,19 +136,36 @@ export function MovementsTable({
     productIds === undefined;
 
   /**
-   * Serialize the current filters for the server action. The date filter travels
-   * as a PRESET plus (for "custom") the two date-only `<input type="date">`
-   * values — it carries NO instant. The browser used to convert the preset to
-   * UTC bounds itself, off the DEVICE clock, so "today" meant today for whoever
-   * was looking and a DST day was an hour wrong; the server now resolves every
-   * boundary in the TENANT's timezone (tenantMovementRangeUtc), which is also
-   * the zone the rows below are rendered in. Nothing here reads a clock.
+   * Serialize the current filters for the server action. The date filter carries NO
+   * instant and NO clock read — the browser used to compute UTC bounds off the
+   * DEVICE clock, so "today" meant today for whoever was looking.
+   *
+   * It also carries no *drifting* range. The ledger pages by OFFSET, so a relative
+   * preset must be pinned the moment it is applied: the FIRST request sends the
+   * preset, the server resolves it against the tenant's clock and returns the
+   * concrete dates, and every request after that (load-more, retry, export) sends
+   * those exact dates back. Otherwise a session that starts at 23:59 and pages at
+   * 00:01 would apply page 2's offset to a *different* result set — skipping rows,
+   * repeating others, and exporting a range the operator never saw.
    */
-  function currentQuery(offset: number) {
+  function currentQuery(
+    offset: number,
+    /** The session's pinned dates, or null on the FIRST request of a new filter
+     * session (the server resolves the preset then, and hands the dates back). */
+    pinned: { from: string | null; to: string | null } | null,
+  ) {
+    // Pinned → send the concrete dates; the preset is now only the visible label.
+    // Not pinned → "custom" already HAS concrete dates (the operator typed them),
+    // so send those; a relative preset sends nothing and the server resolves it.
+    const dates = pinned
+      ? { from: pinned.from ?? undefined, to: pinned.to ?? undefined }
+      : preset === "custom"
+        ? { from: customFrom || undefined, to: customTo || undefined }
+        : { from: undefined, to: undefined };
     return {
       preset,
-      dateFrom: preset === "custom" && customFrom ? customFrom : undefined,
-      dateTo: preset === "custom" && customTo ? customTo : undefined,
+      dateFrom: dates.from,
+      dateTo: dates.to,
       reason: reason === "all" ? undefined : reason,
       direction: direction === "all" ? undefined : direction,
       productIds,
@@ -144,6 +175,8 @@ export function MovementsTable({
 
   // Re-query page 0 whenever a filter changes. Skip the very first run when
   // filters are still default — the SSR'd initial page already covers it.
+  // A filter change STARTS A NEW SESSION: rows, offset, hasMore and the date
+  // anchor are all reset, so a "Today" re-applied after midnight resolves afresh.
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
@@ -151,12 +184,22 @@ export function MovementsTable({
     }
     loadGen.current += 1;
     const myGen = loadGen.current;
+    setAnchors(null); // never page a new filter against the old session's dates
     startLoading(async () => {
-      const result = await searchMovementsAction(currentQuery(0));
+      // `null` → let the server resolve the preset ONCE, for this session.
+      const result = await searchMovementsAction(currentQuery(0, null));
       if (loadGen.current !== myGen) return; // superseded by a newer filter
       if (result.ok) {
         setRows(result.movements ?? []);
         setHasMore(!!result.hasMore);
+        // PIN the range. Everything else in this session pages against these.
+        setAnchors({
+          from: result.resolvedFrom ?? null,
+          to: result.resolvedTo ?? null,
+        });
+      } else {
+        setRows([]);
+        setHasMore(false);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,7 +208,12 @@ export function MovementsTable({
   function onLoadMore() {
     const myGen = loadGen.current;
     startLoading(async () => {
-      const result = await searchMovementsAction(currentQuery(rows.length));
+      // The SESSION's anchored dates — never a freshly resolved preset. Applying
+      // this offset to a range that moved at midnight is exactly how rows get
+      // skipped or repeated. A retry reuses the same anchors for the same reason.
+      const result = await searchMovementsAction(
+        currentQuery(rows.length, anchors),
+      );
       // A filter changed mid-flight → drop this page (it belongs to the old
       // filter set) instead of merging it into the new rows.
       if (loadGen.current !== myGen) return;
@@ -188,7 +236,9 @@ export function MovementsTable({
     // cap, so the export is not limited to the loaded page.
     setExportNote(null);
     startExport(async () => {
-      const result = await exportMovementsAction(currentQuery(0));
+      // The SAME anchored dates the visible rows came from — so the file and the
+      // screen can never describe different days, even across tenant midnight.
+      const result = await exportMovementsAction(currentQuery(0, anchors));
       if (!result.ok || !result.movements) return;
       const exportRows = result.movements;
       const rowsCsv = exportRows.map((m) => {

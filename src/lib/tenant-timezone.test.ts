@@ -18,7 +18,6 @@ import { test } from "node:test";
 import {
   DEFAULT_TENANT_TIME_ZONE,
   FALLBACK_TIME_ZONE,
-  TIME_ZONE_OPTIONS,
   formatDateOnly,
   formatTenantDate,
   formatTenantDateLong,
@@ -29,6 +28,7 @@ import {
   resolveTenantTimeZone,
   tenantToday,
 } from "./time";
+import { TIME_ZONE_OPTIONS } from "./time-catalog";
 import { tenantDateRangeUtc, tenantDayStartUtcIso } from "./tenant-day";
 import { getTenantTimeZone } from "./data/supplier";
 import { getDictionary } from "../i18n/dictionaries";
@@ -147,19 +147,19 @@ test("DST: no business day is SKIPPED or DUPLICATED across a transition", () => 
   // never 24h blindly, and the ranges must tile without gap or overlap.
   const springStart = Date.parse(tenantDayStartUtcIso("2026-03-27", JLM)!);
   const springEnd = Date.parse(
-    tenantDayStartUtcIso(nextCalendarDay("2026-03-27"), JLM)!,
+    tenantDayStartUtcIso(nextCalendarDay("2026-03-27")!, JLM)!,
   );
   assert.equal((springEnd - springStart) / 3_600_000, 23, "spring-forward day is 23h");
 
   const autumnStart = Date.parse(tenantDayStartUtcIso("2026-10-25", JLM)!);
   const autumnEnd = Date.parse(
-    tenantDayStartUtcIso(nextCalendarDay("2026-10-25"), JLM)!,
+    tenantDayStartUtcIso(nextCalendarDay("2026-10-25")!, JLM)!,
   );
   assert.equal((autumnEnd - autumnStart) / 3_600_000, 25, "fall-back day is 25h");
 
   // Tiling: the previous day's exclusive end == this day's inclusive start.
   const prevEnd = Date.parse(
-    tenantDayStartUtcIso(nextCalendarDay("2026-03-26"), JLM)!,
+    tenantDayStartUtcIso(nextCalendarDay("2026-03-26")!, JLM)!,
   );
   assert.equal(prevEnd, springStart, "days tile exactly — no gap, no overlap");
 });
@@ -199,7 +199,7 @@ test("tenant local midnight converts to the correct UTC instant", () => {
 });
 test("a local-day range is start-INCLUSIVE and next-day-start EXCLUSIVE", () => {
   const start = Date.parse(tenantDayStartUtcIso("2026-07-05", JLM)!);
-  const end = Date.parse(tenantDayStartUtcIso(nextCalendarDay("2026-07-05"), JLM)!);
+  const end = Date.parse(tenantDayStartUtcIso(nextCalendarDay("2026-07-05")!, JLM)!);
 
   const firstMoment = Date.parse("2026-07-05T00:00:00+03:00");
   const lastMoment = Date.parse("2026-07-05T23:59:59+03:00");
@@ -508,7 +508,7 @@ test("non-hour offsets: Kathmandu (+05:45), Chatham (+12:45/+13:45), Lord Howe (
 });
 test("a local day is not always 23/24/25 hours (Antarctica/Troll moves TWO hours)", () => {
   const dayHours = (date: string, zone: string) =>
-    (Date.parse(tenantDayStartUtcIso(nextCalendarDay(date), zone)!) -
+    (Date.parse(tenantDayStartUtcIso(nextCalendarDay(date)!, zone)!) -
       Date.parse(tenantDayStartUtcIso(date, zone)!)) /
     3_600_000;
   assert.equal(dayHours("2025-03-30", "Antarctica/Troll"), 22, "a 22-hour day");
@@ -520,16 +520,26 @@ test("a local day is not always 23/24/25 hours (Antarctica/Troll moves TWO hours
 test("the ONE range builder is start-inclusive / next-day-start-exclusive", () => {
   // tenantDateRangeUtc is what the Orders page, its exact count, the CSV export and
   // the mock filter all call — so this is the property they all inherit.
-  const { gteIso, ltIso } = tenantDateRangeUtc("2026-07-05", "2026-07-05", JLM);
-  assert.equal(gteIso, "2026-07-04T21:00:00.000Z", "the local 5th begins here");
-  assert.equal(ltIso, "2026-07-05T21:00:00.000Z", "…and the local 6th begins here");
-  assert.equal(ltIso, tenantDayStartUtcIso("2026-07-06", JLM), "end == next day's start");
+  const day = tenantDateRangeUtc("2026-07-05", "2026-07-05", JLM)!;
+  assert.equal(day.gteIso, "2026-07-04T21:00:00.000Z", "the local 5th begins here");
+  assert.equal(day.ltIso, "2026-07-05T21:00:00.000Z", "…and the local 6th begins here");
+  assert.equal(
+    day.ltIso,
+    tenantDayStartUtcIso("2026-07-06", JLM),
+    "end == next day's start",
+  );
   // An open-ended range keeps the missing side null (no accidental bound).
   assert.deepEqual(tenantDateRangeUtc(null, null, JLM), { gteIso: null, ltIso: null });
-  assert.equal(tenantDateRangeUtc("2026-07-05", null, JLM).ltIso, null);
-  assert.equal(tenantDateRangeUtc(null, "2026-07-05", JLM).gteIso, null);
+  assert.equal(tenantDateRangeUtc("2026-07-05", null, JLM)!.ltIso, null);
+  assert.equal(tenantDateRangeUtc(null, "2026-07-05", JLM)!.gteIso, null);
+  // An IMPOSSIBLE date FAILS THE WHOLE RANGE — it never degrades into a partial
+  // (and therefore wider) one. This is the difference between "one day of orders"
+  // and "every order ever", exported.
+  assert.equal(tenantDateRangeUtc("2026-02-30", null, JLM), null, "impossible from");
+  assert.equal(tenantDateRangeUtc(null, "2026-02-30", JLM), null, "impossible to");
+  assert.equal(tenantDateRangeUtc("2026-04-31", "2026-07-05", JLM), null);
   // A whole DST-transition day is still covered end to end, at 23h not 24h.
-  const spring = tenantDateRangeUtc("2026-03-27", "2026-03-27", JLM);
+  const spring = tenantDateRangeUtc("2026-03-27", "2026-03-27", JLM)!;
   assert.equal(
     (Date.parse(spring.ltIso!) - Date.parse(spring.gteIso!)) / 3_600_000,
     23,
@@ -560,8 +570,21 @@ test("guard: the migration stores an IANA name and validates it at the TABLE", (
   assert.ok(/before insert or update of timezone on public\.tenants/i.test(MIGRATION),
     "a TRIGGER guards the column — a direct table UPDATE cannot bypass it");
   assert.ok(/errcode = '22023'/.test(MIGRATION));
-  // Fixed offsets are refused in the DB too.
-  assert.ok(/p_timezone !~ '\^\[\+-\]'/.test(MIGRATION));
+  // The stored contract is stated POSITIVELY (UTC or Region/City), not as a
+  // blocklist — a blocklist leaks, and pg_timezone_names MEMBERSHIP alone accepts
+  // Etc/GMT+3 and EST, which cannot express DST.
+  assert.ok(
+    /p_timezone = 'UTC'/.test(MIGRATION),
+    "UTC is explicitly allowed",
+  );
+  assert.ok(
+    /\^\[A-Za-z\]\[A-Za-z0-9_-\]\*\(\/\[A-Za-z0-9_-\]\+\)\+\$/.test(MIGRATION),
+    "…and otherwise an Area/Location shape is REQUIRED",
+  );
+  assert.ok(
+    /posix\|right\|Etc\|SystemV/.test(MIGRATION),
+    "the fixed-offset / alias namespaces are excluded",
+  );
 });
 test("guard: the write RPC is owner/admin-only and never self-authorizes", () => {
   assert.ok(/create function public\.update_tenant_timezone\(/.test(MIGRATION));

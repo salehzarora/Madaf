@@ -1,7 +1,9 @@
 # M8H.2 — Tenant Timezone Foundation & Site-Wide Time Rendering
 
-**Status:** implemented on `feature/m8h2-tenant-timezone` (NOT merged, NOT
-deployed, migration NOT applied to hosted staging). Local-stack verified.
+**Status:** implemented on `feature/m8h2-tenant-timezone` — **NOT merged, NOT
+deployed, NOT staged; the migration has NOT been applied to hosted staging.**
+Local-stack verified only. Corrected twice after review (a pre-merge review, then an
+independent Codex review); both rounds are documented below rather than smoothed over.
 
 ## The problem was never the stored data
 
@@ -22,14 +24,36 @@ M8H.2 makes the timezone **explicit, per-tenant, and authoritative**.
 | | Rule |
 |---|---|
 | **Storage** | absolute instants, `timestamptz` (UTC). **Never rewritten.** |
-| **Tenant timezone** | an **IANA name** (`Asia/Jerusalem`), stored on `public.tenants.timezone` |
-| **Fixed offsets** | **prohibited** — `+03:00` cannot express DST. Jerusalem is **+02:00 in winter and +03:00 in summer**; a stored offset would be silently wrong for half the year. `+03:00`, `UTC+2` and `-0500` are rejected by the DB *and* the app. |
+| **Tenant timezone** | **`UTC`, or a Region/City IANA name** (`Asia/Jerusalem`), on `public.tenants.timezone` |
+| **Fixed offsets & aliases** | **prohibited** — see below. `+03:00`, `UTC+2`, `-0500`, **`Etc/GMT±N`**, **`EST`/`HST`/`MST`**, `Factory`, `posix/*`, `right/*` are all rejected by the DB *and* the app. |
 | **Locale** | independent of the timezone. Arabic UI + `Asia/Jerusalem` is normal. |
 | **DST** | handled by the platform's IANA data. No offset table is hand-rolled. |
 | **Browser timezone** | **never authoritative.** Shown only as a non-applied hint in Settings. |
 | **Server machine timezone** | never used. |
 | **Fallback** | a corrupt stored zone → **UTC**, logged (never the machine/device zone). |
 | **Formatting** | one centralized, tested contract: `src/lib/time.ts`. |
+
+## The stored-timezone contract: `UTC` or Region/City
+
+Stated **positively**, not as a blocklist — a blocklist leaks, and *membership in
+`pg_timezone_names` is not enough*. PostgreSQL recognizes every one of these:
+
+| Recognized by PostgreSQL | Why it is still refused |
+|---|---|
+| `+03:00`, `UTC+2`, `-0500` | a bare offset cannot express DST at all |
+| **`Etc/GMT+3`**, `Etc/GMT-2` | fixed-offset zones — **and POSIX-signed**: `Etc/GMT+3` is really **UTC−3**, so a tenant reaching for "+3" would run **six hours off**, permanently |
+| **`EST`**, `HST`, `MST` | legacy abbreviations pinned to one offset — an `EST` tenant never observes DST |
+| `Factory`, `posix/*`, `right/*` | internal / leap-second aliases; not places |
+
+So the rule is: **`UTC`**, or **`Area/Location`** (multi-segment zones such as
+`America/Argentina/La_Rioja` and hyphenated ones such as `America/Port-au-Prince`
+included) that PostgreSQL knows. One predicate, three places — the picker filter,
+the Server Action, and the database trigger — so the UI can never offer, and a
+crafted call can never persist, a value the others would reject.
+
+A real Region/City zone is **never** rejected merely for having no DST today
+(`Africa/Abidjan` is fine): if its rules change, the IANA database carries the
+change and we inherit it. That is the entire point of storing a *place*.
 
 ## The 09:57 → 12:57 example
 
@@ -65,13 +89,37 @@ columns are deliberately **excluded** (see below).
 | Inventory movements | `order_inventory_movements.created_at` | implicit | `formatTenantDateTime` | client (prop) | **yes** |
 | Inventory movements CSV | `order_inventory_movements.created_at` | **raw UTC ISO** under a localized "Date" header | tenant wall clock (matches the screen) | client | yes |
 | Dashboard recent orders | `orders.created_at` | implicit | `formatTenantDateTime` | server | — |
-| **Inventory expiry** | `inventory_items.expiry_date` (**`date`**) | `formatDate` | **`formatDateOnly` — NO timezone** | client | — |
+| **Dashboard today / month / trend** | `orders.created_at` | **UTC** (`toISOString().slice`, `createdAt.slice`) | `tenantToday` + `tenantDateKey` | server | n/a (grouping) |
+| **Inventory expiry** (display) | `inventory_items.expiry_date` (**`date`**) | `formatDate` | **`formatDateOnly` — NO timezone** | client | — |
+| **Inventory expiry** (anchor) | `expiry_date` vs "today" | **UTC** today | `tenantToday` — date-only, unshifted | server prop | — |
 
-> **The movements ledger was caught half-migrated.** The first pass converted its
-> *screen* to tenant-local time but left the CSV emitting a raw UTC instant and left
-> the date *filter* on the browser's clock — so the same page could **display** a
-> movement on one date and **filter** it onto another. Both are fixed here; see
-> *Two date filters* below.
+> **Two rounds of review found this phase half-done, twice.** The first pass migrated
+> the movements *screen* but left its CSV on a raw UTC instant and its date *filter*
+> on the browser's clock. The second (Codex) found that the filter re-resolved
+> "today" on every paged request, that fixed-offset aliases (`Etc/GMT+3`, `EST`) were
+> still storable, that impossible dates (`2026-02-30`) could turn a bounded query
+> unbounded, and that the Dashboard and expiry horizon still grouped by **UTC** days.
+> All are fixed here. The lesson is recorded rather than smoothed over: rendering a
+> timestamp in the tenant's zone is not the same as *reasoning* in it.
+
+## The tenant BUSINESS DAY (Dashboard + expiry)
+
+Rendering a timestamp in the tenant's zone is only half the job. **Grouping** by day
+or month is the other half, and the Dashboard was still asking in UTC:
+`new Date().toISOString().slice(0, 10)` for "today", `.slice(0, 7)` for the month,
+and `createdAt.slice(0, 10)` for the trend buckets.
+
+Take **`2026-08-31T21:30:00Z`**. In `Asia/Jerusalem` that is **`2026-09-01`** — a
+different day, a different **month**, and a different trend bar. So for the hours
+between the tenant's midnight and UTC's, the KPI cards disagreed with the timestamps
+printed immediately beside them: an order stamped *1 September, 00:30* was counted
+under *31 August*, in *August's* month-to-date, in *yesterday's* bar.
+
+`tenantDateKey(instant, zone)` (and `tenantMonthKey`) is the one business-day key.
+It now backs **today's order count, today's value, month-to-date, the trend/sparkline
+buckets** and the **inventory expiry anchor** — the last of which changed *only* its
+anchor: `expiry_date` is a SQL `date` and stays date-only, compared as a calendar
+ordinal, **never timezone-shifted** (that would move the day itself).
 
 ### Date-only fields are NOT timezone-converted
 
@@ -97,6 +145,29 @@ count, the page and the CSV export** physically cannot disagree about where a da
 begins. The mock path calls the same function. Date presets ("today", last 7 days)
 use `tenantToday(tz)` — *today for the business*, not for the viewer's device.
 
+### Impossible dates fail CLOSED
+
+`2026-02-30` is shaped exactly like a date and is not one — and every permissive
+parser in the language *moves* it rather than refusing it (`Date.parse` accepts it;
+`Date.UTC` balances it into March 2).
+
+That was not cosmetic. The Orders parser used shape + `Date.parse`, so `?from=2026-02-30`
+survived as an **active filter**; the converter then rejected the date and returned
+`null` for that bound — and a **bounded** query silently became an **unbounded** one.
+It did not return an error. It returned *every order ever*, and exported them.
+
+So there is now **one** strict parser, `parseDateOnlyStrict` — exact `YYYY-MM-DD`,
+a real Gregorian date, round-trip verified (so `2026-02-29` fails and `2028-02-29`
+passes), reject-never-balance — and every date boundary path goes through it:
+
+| Path | Behaviour on an impossible date |
+|---|---|
+| `tenantDateRangeUtc` | returns **`null`** — never a partial (and therefore wider) range |
+| `nextCalendarDay` | returns **`null`** — never rolls `02-30` into March |
+| Movements Server Action | **refuses the request** (`error: "invalid_date"`); does not query, does not export |
+| Orders URL | **clears the whole date filter**, deterministically — one bad side never leaves the valid half applied alone, which would widen the request |
+| Orders / mock query | **fails closed** (unreachable — the parser already gates it) |
+
 ### Two date filters, one builder
 
 There are **two** date-range filters in the product, and both are tenant-local:
@@ -112,11 +183,36 @@ The movements filter used to be computed **in the browser** by a legacy M8C help
 Every one of those reads the **device** clock, so "today" meant today *for whoever
 was looking*, and a DST day was bounded an hour wrong. That helper is **deleted**;
 the client now sends only a **preset plus date-only strings** and cannot express an
-instant at all. `tenantMovementRangeUtc` resolves the preset against the tenant's
+instant at all. `resolveMovementAnchors` resolves the preset against the tenant's
 clock and delegates the boundary maths to the same `tenantDateRangeUtc`, so the
 ledger inherits every DST property proven below — including the 22h/26h days and the
 zones where local midnight does not exist. "7 days" is seven **calendar** days
 (`PlainDate.subtract`), never `7 × 86_400_000`.
+
+### A preset is resolved ONCE per filter session, then anchored
+
+The ledger pages by **offset**. If "today" were re-resolved on every request, a
+session opened at 23:59 and paged at 00:01 would apply page 2's offset to a
+*different result set* than page 1 came from — **skipping rows, repeating others**,
+and making `hasMore` and the CSV export answer a question the operator never asked.
+
+So a relative preset is pinned the moment it is applied:
+
+```
+1. filter applied   → client sends the PRESET, no dates
+2. server           → resolves it against the tenant's clock (tenantToday)
+                    → returns concrete anchors: resolvedFrom / resolvedTo
+3. client           → PINS those dates to the filter session
+4. load-more        ┐
+   retry            ├→ send the ANCHORS back; the server passes them straight
+   export           ┘  through (an explicit date always beats a preset)
+5. filter changed   → new session: rows, offset, hasMore AND anchor all reset
+```
+
+The label still says "Today". The range underneath it does not move — tenant
+midnight can pass mid-session and the page-2 offset still means what it meant.
+Re-applying "Today" *after* midnight correctly starts a new session on the new day.
+`custom` ranges are already concrete, so they are passed through untouched.
 
 ### The reverse conversion is NOT offset arithmetic
 
@@ -206,12 +302,23 @@ historical backfill beyond populating the new column.
 
 ## Timezone options, and the ICU ⇄ PostgreSQL catalog difference
 
-`TIME_ZONE_OPTIONS` = `['UTC', ...Intl.supportedValuesOf('timeZone')]` — **418**
-canonical Region/City zones, computed **once per process on the server** and passed
-to the control as a prop (no DB query, no browser API dependency, no secret).
+`TIME_ZONE_OPTIONS` = `UTC` + every canonical zone the runtime knows that satisfies
+the stored contract — **418** — computed **once per process on the server** and
+passed to the control as a prop (no DB query, no browser API dependency, no secret).
+
+**It lives in `src/lib/time-catalog.ts`, which is `server-only`.** It used to sit in
+`time.ts` beside the formatters — and the formatters are imported by a dozen client
+components, so the catalog's `Intl.supportedValuesOf("timeZone")` IIFE was being
+evaluated in **eight client chunks**, rebuilding a 418-entry array in every visitor's
+browser to produce a list that exactly one server-rendered page ever needs, and only
+as a prop. Splitting the module removed it from the bundle entirely (scanned: zero
+occurrences of `supportedValuesOf` in client chunks) while the formatters stay
+client-safe. The picker's filter is the **same predicate** the Server Action and the
+database trigger apply, so it cannot offer a value the write path would reject.
 
 Deliberately **not** `pg_timezone_names`: that has **1196** rows including **598
-`posix/*` aliases** and `Factory` — an unusable picker.
+`posix/*` aliases**, `Factory`, `Etc/GMT±N` and the legacy abbreviations — an
+unusable picker, and half of it is unstorable anyway.
 
 But the picker's catalog (Node/**ICU**) and the validator's catalog
 (PostgreSQL/**IANA**) are *two different timezone databases on two different release
@@ -326,32 +433,46 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **413** app checks (incl. **48** `test:tenant-timezone`, the fast
-  representative subset of the matrix, and **23** `test:inventory-time`).
+- `npm test` → **451** app checks.
+- `npm run test:tenant-timezone` → **48/48** (the fast subset of the matrix).
 - `npm run test:inventory-time` → **23/23**: the movements CSV carries the tenant
   wall clock (09:57Z → **12:57**, winter → 11:57, no `+00` under a localized "Date"
-  header); the movements filter resolves every bound **server-side in the tenant
-  zone** (23h/25h days, a date whose local midnight does not exist, start-inclusive
-  / next-day-exclusive, immune to `process.env.TZ`, the device zone and the locale);
-  the client sends **no instant** and reads **no clock**; the device hint has a
-  **null server snapshot**, never auto-applies, and uses no `suppressHydrationWarning`.
+  header); the filter resolves every bound **server-side in the tenant zone**; the
+  client sends **no instant** and reads **no clock**.
+- `npm run test:strict-date` → **15/15**: `2026-02-30`, `2026-04-31`, `2026-02-29`
+  and friends are **rejected**, `2028-02-29` is accepted; an impossible lower bound
+  never becomes unbounded; an impossible upper bound never rolls; the Orders URL
+  clears the whole date filter rather than half-applying it.
+- `npm run test:tenant-business-day` → **23/23**: `2026-08-31T21:30Z` is
+  **2026-09-01** for the tenant — Dashboard today, month-to-date, trend bucket and
+  the expiry anchor all agree with it, and a UTC tenant still sees August 31;
+  a movements session **anchored** before midnight pages and exports against the
+  **same** range after it; fixed-offset aliases are unstorable; the catalog is
+  server-only; the device hint has a **null server snapshot** and no
+  `suppressHydrationWarning`.
 - `npm run check:timezone-catalog` → **418/418** offered zones accepted by the
-  database validator.
-- `supabase test db` → **351** pgTAP (incl. **45** new: column + NOT NULL +
-  backfill; table-level validation of valid/invalid/empty/NULL/fixed-offset;
-  **private-helper privilege matrix**; RPC catalog + privileges; owner/admin
-  allowed; sales_rep + non-member + cross-tenant refused; **the trigger still
-  fires for a caller who cannot execute the validator**; ICU⇄pg catalog pins;
-  **timestamps and origin unchanged**; `list_memberships` shape; no audit/RLS/
-  producer regression; no row lost).
+  database validator — verified again **after** the rule was tightened, so no
+  legitimate option was lost.
+- `supabase test db` → **368** pgTAP (incl. **62** for this phase: column + NOT NULL
+  + backfill; table-level validation of valid/invalid/empty/NULL; **`Etc/GMT+3`,
+  `Etc/GMT-2`, `EST`, `HST`, `MST`, `Factory`, `posix/*`, `right/*` and bare offsets
+  all refused `22023` on BOTH the RPC and the direct-table path**, while
+  multi-segment, hyphenated and no-DST Region/City zones still pass; **private-helper
+  privilege matrix**; RPC catalog + privileges; owner/admin allowed; sales_rep +
+  non-member + cross-tenant refused; **the trigger still fires for a caller who
+  cannot execute the validator**; ICU⇄pg catalog pins; **timestamps and origin
+  unchanged**; `list_memberships` shape; no audit/RLS/producer regression; no row
+  lost).
 - `npm run lint`, `npx tsc --noEmit`, `npm run build` → clean; build ends
   `[check-dynamic-routes] OK`. `npm audit --omit=dev` → 0 vulnerabilities.
 - `supabase db lint --schema public` → no schema errors.
 - Generated types: `tenants.timezone`, `_is_valid_timezone`,
   `update_tenant_timezone`, and `list_memberships.timezone` — nothing else.
 - Bundle scan → **0** for secrets, service-role, private helpers, tokens, snapshots
-  — **and 0 for `Temporal` / `js-temporal` / `tenantDayStartUtcIso`**, proving the
-  server-only boundary holds.
+  — **and 0 for `Temporal` / `js-temporal` / `tenantDayStartUtcIso` /
+  `tenantDateRangeUtc` / `resolveMovementAnchors` / `supportedValuesOf` /
+  `TIME_ZONE_OPTIONS`**, proving both server-only boundaries hold (the Temporal
+  conversion and the timezone catalog).
 
 ## Private database functions
 

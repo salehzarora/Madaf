@@ -20,7 +20,7 @@
 -- Disposable tenants C + B in THIS transaction; everything rolls back.
 -- ═══════════════════════════════════════════════════════════════════════
 begin;
-select plan(45);
+select plan(62);
 
 set local request.jwt.claims = '{"role":"service_role"}';
 
@@ -90,6 +90,60 @@ select throws_ok(
 select throws_ok(
   $$ update public.tenants set timezone = null where id='33333333-3333-4333-8333-333333333333' $$,
   '22023', NULL, 'a NULL timezone is rejected');
+
+-- ── FIXED-OFFSET ALIASES + LEGACY ABBREVIATIONS (Codex M8H2-02) ───────────
+-- PostgreSQL RECOGNIZES every one of these — they are all in pg_timezone_names —
+-- and every one of them breaks the DST contract. The picker never showed them, but
+-- a crafted Server Action call or a permitted owner/admin table UPDATE could have
+-- persisted them. The stored contract is now POSITIVE (UTC or Region/City), so the
+-- TRIGGER refuses them on the direct table path too.
+select throws_ok(
+  $$ update public.tenants set timezone = 'Etc/GMT+3' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL,
+  'Etc/GMT+3 is rejected — a fixed offset, and POSIX-signed (it is really UTC-3)');
+select throws_ok(
+  $$ update public.tenants set timezone = 'Etc/GMT-2' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'Etc/GMT-2 is rejected');
+select throws_ok(
+  $$ update public.tenants set timezone = 'EST' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'EST is rejected — a legacy abbreviation pinned to one offset');
+select throws_ok(
+  $$ update public.tenants set timezone = 'HST' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'HST is rejected');
+select throws_ok(
+  $$ update public.tenants set timezone = 'MST' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'MST is rejected');
+select throws_ok(
+  $$ update public.tenants set timezone = 'Factory' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'Factory is rejected — an internal alias, not a place');
+select throws_ok(
+  $$ update public.tenants set timezone = 'posix/America/New_York' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'posix/* is rejected');
+select throws_ok(
+  $$ update public.tenants set timezone = 'right/UTC' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'right/* (leap-second) is rejected');
+select throws_ok(
+  $$ update public.tenants set timezone = '-0500' where id='33333333-3333-4333-8333-333333333333' $$,
+  '22023', NULL, 'a bare negative offset is rejected');
+-- …and PostgreSQL really does recognize them, which is exactly why the positive
+-- Region/City rule (not a pg_timezone_names membership test) is what saves us.
+select ok(
+  exists (select 1 from pg_catalog.pg_timezone_names where name = 'Etc/GMT+3')
+  and exists (select 1 from pg_catalog.pg_timezone_names where name = 'EST'),
+  'PostgreSQL DOES recognize Etc/GMT+3 and EST — membership alone is not enough');
+-- The legitimate multi-segment Region/City zones must still pass.
+select lives_ok(
+  $$ update public.tenants set timezone = 'America/Argentina/La_Rioja' where id='33333333-3333-4333-8333-333333333333' $$,
+  'a multi-segment Region/City zone is still accepted');
+select lives_ok(
+  $$ update public.tenants set timezone = 'America/Port-au-Prince' where id='33333333-3333-4333-8333-333333333333' $$,
+  'a hyphenated Region/City zone is still accepted');
+select lives_ok(
+  $$ update public.tenants set timezone = 'Africa/Abidjan' where id='33333333-3333-4333-8333-333333333333' $$,
+  'a real Region/City zone with NO DST is not rejected for that reason');
+select lives_ok(
+  $$ update public.tenants set timezone = 'UTC' where id='33333333-3333-4333-8333-333333333333' $$,
+  'UTC remains storable');
 
 -- ── 13–14. Validation really uses PostgreSQL's own timezone data ──────────
 select ok(public._is_valid_timezone('Asia/Jerusalem'), 'validator accepts a pg-recognized name');
@@ -188,6 +242,17 @@ select is(
 select throws_ok(
   $$ select public.update_tenant_timezone('33333333-3333-4333-8333-333333333333', '+03:00') $$,
   '22023', NULL, 'the RPC rejects a fixed offset');
+-- The RPC path must refuse the recognized-but-unstorable aliases too: this is the
+-- endpoint a crafted Server Action call would reach.
+select throws_ok(
+  $$ select public.update_tenant_timezone('33333333-3333-4333-8333-333333333333', 'Etc/GMT+3') $$,
+  '22023', NULL, 'the RPC rejects Etc/GMT+3');
+select throws_ok(
+  $$ select public.update_tenant_timezone('33333333-3333-4333-8333-333333333333', 'EST') $$,
+  '22023', NULL, 'the RPC rejects EST');
+select throws_ok(
+  $$ select public.update_tenant_timezone('33333333-3333-4333-8333-333333333333', 'Factory') $$,
+  '22023', NULL, 'the RPC rejects Factory');
 select is(
   (select timezone from public.tenants where id='33333333-3333-4333-8333-333333333333'),
   'Europe/London', 'a rejected update left the previous value intact');

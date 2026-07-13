@@ -45,7 +45,27 @@ comment on column public.tenants.timezone is
   'offset cannot express DST. Stored timestamps remain absolute UTC instants; '
   'changing this value changes only how they are DISPLAYED.';
 
--- ── 2. Validation: IANA names only, enforced at the TABLE ──────────────────
+-- ── 2. Validation: the STORED-TIMEZONE CONTRACT, enforced at the TABLE ─────
+--
+-- A tenant timezone is 'UTC', or a Region/City IANA identifier. Nothing else.
+--
+-- Stated POSITIVELY, because the things that must be refused are open-ended and a
+-- blocklist would leak. PostgreSQL RECOGNIZES all of the following — every one of
+-- them is in pg_timezone_names, and every one of them breaks the DST contract:
+--
+--   '+03:00', 'UTC+2', '-0500'   bare offsets — cannot express DST at all
+--   'Etc/GMT+3', 'Etc/GMT-2'     fixed-offset zones. Worse, they are POSIX-SIGNED:
+--                                'Etc/GMT+3' is actually UTC MINUS 3 — a tenant
+--                                picking it would silently run 6 hours off.
+--   'EST', 'HST', 'MST'          legacy abbreviations pinned to one offset, so a
+--                                US tenant on 'EST' never observes DST.
+--   'Factory', 'posix/*', 'right/*'  internal/leap-second aliases, not places.
+--
+-- The rule below therefore requires an Area/Location shape (multi-segment zones
+-- such as 'America/Argentina/La_Rioja' included) and excludes the fixed-offset and
+-- alias namespaces. A REAL Region/City zone is never rejected merely for having no
+-- DST today — if its rules change, the IANA database carries the change and we
+-- inherit it, which is the entire point of storing a place instead of an offset.
 create function public._is_valid_timezone(p_timezone text)
 returns boolean
 language sql
@@ -54,17 +74,30 @@ set search_path = ''
 as $$
   select p_timezone is not null
      and p_timezone <> ''
-     -- A bare UTC offset ('+03:00', '-0500', 'UTC+2') can never express DST.
-     and p_timezone !~ '^[+-]'
-     and p_timezone !~* '^(utc|gmt)\s*[+-]'
+     and (
+       p_timezone = 'UTC'
+       or (
+         -- Area/Location, one or more segments: letters, digits, '_' and '-' only.
+         -- No '/' at all ⇒ a legacy abbreviation (EST/HST/MST/Factory/GMT). A '+'
+         -- can only occur in a fixed-offset name (Etc/GMT+3); no city has one.
+         p_timezone ~ '^[A-Za-z][A-Za-z0-9_-]*(/[A-Za-z0-9_-]+)+$'
+         -- …and the fixed-offset / alias namespaces are not places.
+         and p_timezone !~* '^(posix|right|Etc|SystemV|US|Brazil|Canada|Chile|Mexico)/'
+       )
+     )
+     -- Final authority: PostgreSQL's own timezone database must know it.
      and exists (
        select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone
      );
 $$;
 
 comment on function public._is_valid_timezone(text) is
-  'M8H.2 — true only for an IANA timezone name PostgreSQL recognizes '
-  '(pg_timezone_names). Empty strings and bare UTC offsets are rejected.';
+  'M8H.2 — the STORED-TIMEZONE CONTRACT: true only for ''UTC'' or a Region/City '
+  'IANA name PostgreSQL recognizes. Bare offsets (+03:00), fixed-offset zones '
+  '(Etc/GMT+3 — POSIX-signed, so it is really UTC-3), legacy abbreviations '
+  '(EST/HST/MST), Factory and posix/right aliases are all REJECTED: none of them '
+  'can express daylight saving. A real Region/City zone is never rejected merely '
+  'for having no DST today.';
 
 -- SECURITY DEFINER so the nested _is_valid_timezone call runs as the function
 -- OWNER. That is what lets both helpers be fully private (see the revokes below):

@@ -10,7 +10,16 @@
  */
 import { revalidatePath } from "next/cache";
 
-import { adjustInventoryStock, searchInventoryMovements } from "@/lib/data";
+import {
+  adjustInventoryStock,
+  getTenantTimeZone,
+  searchInventoryMovements,
+} from "@/lib/data";
+import {
+  resolveMovementAnchors,
+  type MovementAnchors,
+} from "@/lib/tenant-day";
+import { parseDateOnlyStrict } from "@/lib/time";
 import {
   INVENTORY_MOVEMENT_REASONS,
   MOVEMENT_DATE_PRESETS,
@@ -58,10 +67,6 @@ function isPlausibleId(value: unknown): value is string {
  * ledger a UTC bound it computed off its own clock (M8H.2). The server turns
  * these into UTC bounds in the TENANT's timezone.
  */
-function isCalendarDate(v: unknown): v is string {
-  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-}
-
 function isMovementPreset(v: unknown): v is MovementDatePreset {
   return (
     typeof v === "string" &&
@@ -70,9 +75,15 @@ function isMovementPreset(v: unknown): v is MovementDatePreset {
 }
 
 export interface MovementSearchInput {
-  /** Which range to show — resolved against the TENANT's clock, server-side. */
+  /** Which range to show. Resolved ONCE, server-side, against the TENANT's clock —
+   * and only when no concrete anchor is supplied below. */
   preset?: MovementDatePreset;
-  /** "custom" only: tenant-local calendar dates (YYYY-MM-DD), never instants. */
+  /**
+   * The filter session's CONCRETE tenant-local calendar dates (YYYY-MM-DD), never
+   * instants. The client echoes back whatever `resolvedFrom`/`resolvedTo` the first
+   * request returned, so load-more / retry / export all page against the SAME range
+   * the first page came from — even if the tenant's midnight passes mid-session.
+   */
   dateFrom?: string;
   dateTo?: string;
   reason?: string;
@@ -84,23 +95,55 @@ export interface MovementSearchInput {
 export interface MovementSearchResult {
   ok: boolean;
   movements?: InventoryMovement[];
-  /** True when a full page came back — more pages may exist. */
+  /** True when a full page came back — more pages may exist WITHIN THE ANCHORS. */
   hasMore?: boolean;
+  /** Why the request was refused. "invalid_date" = an impossible calendar date. */
+  error?: "invalid_date" | "failed";
+  /** The concrete tenant-local dates this result was computed against. The client
+   * stores these and sends them back on every later request for the session. */
+  resolvedFrom?: string | null;
+  resolvedTo?: string | null;
+}
+
+/** A filter payload the server has fully validated + anchored. */
+interface ResolvedMovementFilter {
+  query: MovementQuery;
+  anchors: MovementAnchors;
 }
 
 /**
- * Re-validate + normalize the filter payload from the client into a
- * MovementQuery the data layer trusts. Shared by search + export so both
- * apply the SAME server-side filters — and, since M8H.2, the same TENANT-local
- * date bounds (the data layer resolves them; nothing here trusts a client
- * instant). `productIds` keeps its "matched nothing" signal ([] → zero rows);
- * `undefined` means no product filter.
+ * Re-validate the client payload, then ANCHOR its date range to concrete
+ * tenant-local calendar dates. Shared by search + export, so a CSV can never cover
+ * a different range than the rows on screen.
+ *
+ * Dates are parsed STRICTLY. `2026-02-30` is shaped like a date but is not one; a
+ * shape-only check would let it through, the converter would then reject it and
+ * hand back `null`, and a BOUNDED filter would quietly become an UNBOUNDED export
+ * of the whole ledger. So an impossible date fails the request outright — it never
+ * degrades into "no filter".
  */
-function normalizeMovementQuery(input: MovementSearchInput): MovementQuery {
+async function resolveMovementFilter(
+  input: MovementSearchInput,
+): Promise<ResolvedMovementFilter | null> {
+  // Strict Gregorian validation — reject, never balance, never drop one side.
+  const rawFrom = input.dateFrom;
+  const rawTo = input.dateTo;
+  const from = rawFrom === undefined ? undefined : parseDateOnlyStrict(rawFrom);
+  const to = rawTo === undefined ? undefined : parseDateOnlyStrict(rawTo);
+  if (from === null || to === null) return null; // supplied but impossible → refuse
+
+  // The tenant's zone, from the cached session context (no extra query).
+  const timeZone = await getTenantTimeZone();
+  const anchors = resolveMovementAnchors(
+    isMovementPreset(input.preset) ? input.preset : undefined,
+    from ?? undefined,
+    to ?? undefined,
+    timeZone,
+  );
+
   const query: MovementQuery = {};
-  if (isMovementPreset(input.preset)) query.preset = input.preset;
-  if (isCalendarDate(input.dateFrom)) query.dateFrom = input.dateFrom;
-  if (isCalendarDate(input.dateTo)) query.dateTo = input.dateTo;
+  if (anchors.from) query.dateFrom = anchors.from;
+  if (anchors.to) query.dateTo = anchors.to;
   if (
     typeof input.reason === "string" &&
     (INVENTORY_MOVEMENT_REASONS as readonly string[]).includes(input.reason)
@@ -119,7 +162,7 @@ function normalizeMovementQuery(input: MovementSearchInput): MovementQuery {
       .filter(isPlausibleId)
       .slice(0, MAX_PRODUCT_IDS);
   }
-  return query;
+  return { query, anchors };
 }
 
 /**
@@ -133,17 +176,31 @@ export async function searchMovementsAction(
 ): Promise<MovementSearchResult> {
   try {
     const offset = Number.isInteger(input.offset) ? (input.offset as number) : 0;
-    if (offset < 0 || offset > 5_000_000) return { ok: false };
+    if (offset < 0 || offset > 5_000_000) return { ok: false, error: "failed" };
+
+    const resolved = await resolveMovementFilter(input);
+    // An impossible calendar date FAILS THE REQUEST. It must never fall through to
+    // an unbounded query — that is how "2026-02-30" would have returned the entire
+    // ledger instead of one day of it.
+    if (!resolved) return { ok: false, error: "invalid_date" };
 
     const movements = await searchInventoryMovements(
-      normalizeMovementQuery(input),
+      resolved.query,
       offset,
       MOVEMENTS_PAGE,
     );
-    return { ok: true, movements, hasMore: movements.length >= MOVEMENTS_PAGE };
+    return {
+      ok: true,
+      movements,
+      hasMore: movements.length >= MOVEMENTS_PAGE,
+      // The concrete dates this page was computed against. The client pins them to
+      // the filter session and echoes them back, so pagination never drifts.
+      resolvedFrom: resolved.anchors.from,
+      resolvedTo: resolved.anchors.to,
+    };
   } catch (error) {
     console.error("[madaf/actions] searchMovementsAction failed:", error);
-    return { ok: false };
+    return { ok: false, error: "failed" };
   }
 }
 
@@ -152,6 +209,7 @@ export interface MovementExportResult {
   movements?: InventoryMovement[];
   /** True when the cap was hit and MORE matching rows exist beyond it. */
   capped?: boolean;
+  error?: "invalid_date" | "failed";
 }
 
 /**
@@ -166,7 +224,10 @@ export async function exportMovementsAction(
   input: MovementSearchInput,
 ): Promise<MovementExportResult> {
   try {
-    const query = normalizeMovementQuery(input);
+    const resolved = await resolveMovementFilter(input);
+    // Fail closed: an impossible date must never export the whole ledger.
+    if (!resolved) return { ok: false, error: "invalid_date" };
+    const query = resolved.query;
     const all: InventoryMovement[] = [];
     for (
       let offset = 0;

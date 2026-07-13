@@ -18,6 +18,7 @@
  *   from,to  inclusive calendar-date range (YYYY-MM-DD) on created_at.
  *   page     1-based page number.
  */
+import { parseDateOnlyStrict } from "@/lib/time";
 import {
   ORDER_STATUSES,
   type OrderCustomerSnapshot,
@@ -77,13 +78,16 @@ function isPlausibleId(value: string): boolean {
   return value.length > 0 && value.length <= 64 && /^[A-Za-z0-9-]+$/.test(value);
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * A date param, or null. STRICT: `2026-02-30` is shaped like a date but is not one.
+ *
+ * The previous check was shape + `Date.parse(\`${v}T00:00:00\`)`, and `Date.parse`
+ * accepts impossible days — so an URL carrying `from=2026-02-30` survived parsing
+ * as if it were a real active filter, and the downstream converter then returned
+ * null for it, quietly turning a bounded query into an unbounded one.
+ */
 function normalizeDate(value: string | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const v = value.trim();
-  if (!DATE_RE.test(v)) return null;
-  // Reject impossible calendar dates (e.g. 2026-13-40) — Date.parse would NaN.
-  return Number.isNaN(Date.parse(`${v}T00:00:00`)) ? null : v;
+  return parseDateOnlyStrict(typeof value === "string" ? value.trim() : value);
 }
 
 function normalizeStatuses(value: string | undefined): OrderStatus[] {
@@ -122,8 +126,22 @@ export function parseOrdersQuery(raw: RawParams): OrdersQuery {
   const rawCustomer = (first(raw.customer) ?? "").trim();
   const customerId = rawCustomer && isPlausibleId(rawCustomer) ? rawCustomer : null;
 
-  const dateFrom = normalizeDate(first(raw.from));
-  const dateTo = normalizeDate(first(raw.to));
+  // An IMPOSSIBLE date clears the WHOLE date filter, deterministically — it is
+  // never preserved as if it were active, and one bad side never survives alone.
+  // Dropping only the bad half would WIDEN a bounded request (a broken `from` with
+  // a valid `to` would silently mean "everything up to that day"), which is the
+  // outcome to avoid; falling back to "no date filter" is the visible default the
+  // operator can see in the URL and the filter chips.
+  const rawFrom = first(raw.from);
+  const rawTo = first(raw.to);
+  let dateFrom = normalizeDate(rawFrom);
+  let dateTo = normalizeDate(rawTo);
+  const fromWasSuppliedButInvalid = rawFrom !== undefined && dateFrom === null;
+  const toWasSuppliedButInvalid = rawTo !== undefined && dateTo === null;
+  if (fromWasSuppliedButInvalid || toWasSuppliedButInvalid) {
+    dateFrom = null;
+    dateTo = null;
+  }
 
   const page = clampInt(first(raw.page), 1, 1, ORDERS_MAX_PAGE);
   const pageSize = clampInt(
@@ -302,4 +320,4 @@ export function orderMatchesSearch(
 // math. M8F.1's single-pass offset arithmetic was an hour off on DST-transition
 // days; a two-pass version was still wrong for zones that spring forward AT
 // midnight. Both are gone.
-export { nextCalendarDay, tenantToday } from "@/lib/time";
+export { nextCalendarDay, parseDateOnlyStrict, tenantToday } from "@/lib/time";
