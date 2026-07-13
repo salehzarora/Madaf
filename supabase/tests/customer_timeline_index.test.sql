@@ -84,10 +84,13 @@ select has_index('public', 'audit_events', 'audit_events_actor_idx',
 select is(
   (select relrowsecurity from pg_class where oid = 'public.audit_events'::regclass),
   true, 'row-level security is still enabled on audit_events');
+-- M8H.1 renamed the policy when it AND-ed on an Order clause. What must remain
+-- true is the CUSTOMER scoping — assert the clause itself, not just the name.
 select isnt_empty(
   $$ select 1 from pg_policies where tablename='audit_events'
-     and policyname='audit_events: members read; customer rows rep-scoped' $$,
-  'the M8G.2 customer-scoped SELECT policy is still present (unchanged)');
+     and cmd = 'SELECT'
+     and qual like '%can_access_customer(tenant_id, entity_id)%' $$,
+  'the customer-scoped audit SELECT rule is still present (M8G.2 preserved)');
 
 -- ── 8–9. audit_events stays append-only for clients (grants untouched) ─────
 select ok(not has_table_privilege('authenticated', 'public.audit_events', 'INSERT'),

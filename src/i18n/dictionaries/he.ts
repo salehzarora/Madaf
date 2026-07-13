@@ -1138,6 +1138,39 @@ const he: Dictionary = {
       actorUnknown: "משתמש לא ידוע",
       by: "על ידי {actor}",
     },
+    order: {
+      category: "הזמנה",
+      events: {
+        "order.created": "הזמנה נוצרה",
+        "order.updated": "הזמנה עודכנה",
+        "order.status_changed": "הסטטוס שונה",
+        "order.customer_linked": "שויכה ללקוח",
+      },
+      initiator: {
+        authenticated_user: "חבר צוות",
+        customer_link: "קישור פרטי של חנות",
+        showcase_guest: "אורח דרך התצוגה",
+      },
+      fields: {
+        items: "פריטים",
+        notes: "הערות",
+      },
+      inventoryEffect: {
+        none: "ללא שינוי במלאי",
+        reserved: "מלאי שוריין",
+        restored: "מלאי הוחזר",
+      },
+      details: {
+        createdVia: "נוצרה על ידי {channel}",
+        lineCount: "{count} שורות",
+        changed: "שונה: {fields}",
+        lineCountChange: "{before} ← {after} שורות",
+        statusChange: "{from} ← {to}",
+        inventory: "{effect}",
+        linkedExisting: "שויכה לחנות קיימת",
+        linkedGuestConversion: "חנות אורח הומרה ללקוח",
+      },
+    },
   },
 };
 

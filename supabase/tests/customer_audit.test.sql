@@ -215,10 +215,13 @@ select ok((select count(*) from public.audit_events where entity_type='customer'
 
 -- ── 47. All customer events use the closed vocabulary (no "Other") ─────────
 reset role;
+-- Scoped to CUSTOMER-entity rows: since M8H.1, audit_events also carries
+-- order-entity rows (their own closed vocabulary is asserted in order_audit).
 select is((select count(*) from public.audit_events where tenant_id='33333333-3333-4333-8333-333333333333'
+  and entity_type = 'customer'
   and event_type not in ('customer.created','customer.updated','customer.activated','customer.deactivated',
     'customer.access_link.created','customer.access_link.rotated','customer.access_link.revoked','customer.order_linked')),
-  0::bigint, 'every emitted event uses the closed customer vocabulary (no "Other")');
+  0::bigint, 'every emitted customer event uses the closed customer vocabulary (no "Other")');
 
 -- ── 48. created_at is DB-generated (not null, recent) ──────────────────────
 select ok((select bool_and(created_at is not null) from public.audit_events where tenant_id='33333333-3333-4333-8333-333333333333'), 'created_at is database-generated on every event');

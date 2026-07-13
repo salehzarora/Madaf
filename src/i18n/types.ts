@@ -1195,5 +1195,46 @@ export interface Dictionary {
       /** "by {actor}" attribution. */
       by: string;
     };
+    /** M8H.1 — Order lifecycle audit. (The Order Timeline itself is M8H.2.) */
+    order: {
+      /** Order audit category label. */
+      category: string;
+      /** Closed Order event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "order.created": string;
+        "order.updated": string;
+        "order.status_changed": string;
+        "order.customer_linked": string;
+      };
+      /** WHO started it. A null actor is NEVER silently "System" — the channel
+       * is recorded explicitly, so anonymous orders stay honest. */
+      initiator: {
+        authenticated_user: string;
+        customer_link: string;
+        showcase_guest: string;
+      };
+      /** Changed-field labels for order.updated (the VALUES are never shown). */
+      fields: {
+        items: string;
+        notes: string;
+      };
+      /** Safe, high-level stock effect (exact quantities stay in the ledger). */
+      inventoryEffect: {
+        none: string;
+        reserved: string;
+        restored: string;
+      };
+      /** Safe detail templates (interpolated; never expose PII/tokens/prices). */
+      details: {
+        createdVia: string;
+        lineCount: string;
+        changed: string;
+        lineCountChange: string;
+        statusChange: string;
+        inventory: string;
+        linkedExisting: string;
+        linkedGuestConversion: string;
+      };
+    };
   };
 }

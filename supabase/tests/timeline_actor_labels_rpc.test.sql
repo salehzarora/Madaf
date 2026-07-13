@@ -186,10 +186,13 @@ select throws_ok(
 -- ═══ Regression: M8G.2 + Timeline index intact; no mutation ════════════════
 reset role;
 -- ── 26–27. audit_events RLS policy unchanged ───────────────────────────────
+-- M8H.1 renamed the policy when it AND-ed on an Order clause; the CUSTOMER
+-- scoping rule itself must survive verbatim, so assert the clause, not the name.
 select isnt_empty(
   $$ select 1 from pg_policies where tablename='audit_events'
-     and policyname='audit_events: members read; customer rows rep-scoped' $$,
-  'M8G.2 customer-scoped audit SELECT policy is intact');
+     and cmd = 'SELECT'
+     and qual like '%can_access_customer(tenant_id, entity_id)%' $$,
+  'the M8G.2 customer-scoped audit SELECT rule is intact');
 select is((select relrowsecurity from pg_class where oid='public.audit_events'::regclass),
   true, 'RLS remains enabled on audit_events');
 

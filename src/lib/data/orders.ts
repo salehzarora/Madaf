@@ -38,10 +38,50 @@ import {
   type OrderDocument,
   type OrderStatus,
 } from "@/lib/types";
+import {
+  deriveOrderCreatedEvent,
+  deriveOrderStatusEvent,
+  trackedInventoryEffect,
+  type DerivedOrderEvent,
+} from "@/lib/order-audit";
 
 import { getDataMode } from "./mode";
 
 export type OrderSource = "sales_visit" | "remote_customer" | "admin";
+
+// ── Mock-mode Order audit log (M8H.1) ─────────────────────────────────────
+// Mock persists no orders, but it must obey the SAME audit contract as Supabase:
+// exactly ONE event per EFFECTIVE mutation and NONE for a no-op, a rejected, or
+// an unsupported one. The pure derivation model in @/lib/order-audit is the
+// single source of truth for both modes — Supabase records into audit_events
+// (transactionally, inside the RPC), mock records here so the contract stays
+// observable and testable. No PII/tokens/prices/line items are ever recorded.
+
+export interface MockOrderAuditEntry {
+  orderId: string;
+  eventType: string;
+  metadata: Record<string, unknown>;
+}
+
+const mockOrderAuditLog: MockOrderAuditEntry[] = [];
+
+function recordMockOrderAudit(orderId: string, event: DerivedOrderEvent): void {
+  mockOrderAuditLog.push({
+    orderId,
+    eventType: event.eventType,
+    metadata: event.metadata,
+  });
+}
+
+/** Mock-mode audit rows recorded so far (read-only; tests assert against this). */
+export function readMockOrderAuditLog(): readonly MockOrderAuditEntry[] {
+  return mockOrderAuditLog;
+}
+
+/** Clear the mock audit log (test isolation). */
+export function resetMockOrderAuditLog(): void {
+  mockOrderAuditLog.length = 0;
+}
 
 export interface CreateOrderInput {
   customerId: string | null;
@@ -213,8 +253,21 @@ export async function createOrderRequest(
     return (await import("./supabase-writes")).sbCreateOrderRequest(input);
   }
   const demoNumber = `MDF-${1048 + Math.floor(Math.random() * 40)}`;
+  const orderId = "demo-order";
+  // M8H.1: ONE order.created, exactly like the RPC. This is the authenticated
+  // path (the token/showcase channels are Supabase-only and do not run in mock),
+  // so the initiator is honest. Safe channel facts only — never items or notes.
+  recordMockOrderAudit(
+    orderId,
+    deriveOrderCreatedEvent({
+      source: input.source,
+      initiatorKind: "authenticated_user",
+      customerKind: input.customerId ? "existing" : "none",
+      itemCount: new Set(input.items.map((i) => i.productId)).size,
+    }),
+  );
   return {
-    orderId: "demo-order",
+    orderId,
     orderNumber: demoNumber,
     publicRef: demoNumber,
   };
@@ -241,10 +294,19 @@ export async function updateOrderStatus(
     nextStatus !== order.status &&
     !ORDER_STATUS_TRANSITIONS[order.status].includes(nextStatus)
   ) {
+    // Invalid transition → the mutation is rejected, so NO audit event.
     throw new Error(
       `[madaf/data] invalid transition ${order.status} -> ${nextStatus}`,
     );
   }
+  // M8H.1: ONE order.status_changed per REAL transition. Requesting the current
+  // status derives null (an effective no-op) → no event, mirroring the RPC.
+  const event = deriveOrderStatusEvent(
+    order.status,
+    nextStatus,
+    trackedInventoryEffect(order.status, nextStatus),
+  );
+  if (event) recordMockOrderAudit(orderId, event);
   return { orderId, oldStatus: order.status, newStatus: nextStatus };
 }
 

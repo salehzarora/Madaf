@@ -1147,6 +1147,39 @@ const en: Dictionary = {
       actorUnknown: "Unknown user",
       by: "by {actor}",
     },
+    order: {
+      category: "Order",
+      events: {
+        "order.created": "Order created",
+        "order.updated": "Order updated",
+        "order.status_changed": "Status changed",
+        "order.customer_linked": "Linked to a customer",
+      },
+      initiator: {
+        authenticated_user: "a team member",
+        customer_link: "a store's private link",
+        showcase_guest: "a guest via the showcase",
+      },
+      fields: {
+        items: "Items",
+        notes: "Notes",
+      },
+      inventoryEffect: {
+        none: "No stock change",
+        reserved: "Stock reserved",
+        restored: "Stock restored",
+      },
+      details: {
+        createdVia: "Created by {channel}",
+        lineCount: "{count} line(s)",
+        changed: "Changed: {fields}",
+        lineCountChange: "{before} → {after} line(s)",
+        statusChange: "{from} → {to}",
+        inventory: "{effect}",
+        linkedExisting: "Linked to an existing store",
+        linkedGuestConversion: "Guest store promoted to a customer",
+      },
+    },
   },
 };
 

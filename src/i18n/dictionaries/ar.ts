@@ -1137,6 +1137,39 @@ const ar: Dictionary = {
       actorUnknown: "مستخدم غير معروف",
       by: "بواسطة {actor}",
     },
+    order: {
+      category: "طلب",
+      events: {
+        "order.created": "تم إنشاء الطلب",
+        "order.updated": "تم تحديث الطلب",
+        "order.status_changed": "تغيّرت الحالة",
+        "order.customer_linked": "تم ربطه بعميل",
+      },
+      initiator: {
+        authenticated_user: "عضو في الفريق",
+        customer_link: "رابط خاص لمتجر",
+        showcase_guest: "زائر عبر العرض",
+      },
+      fields: {
+        items: "الأصناف",
+        notes: "الملاحظات",
+      },
+      inventoryEffect: {
+        none: "لا تغيير في المخزون",
+        reserved: "تم حجز المخزون",
+        restored: "تمت إعادة المخزون",
+      },
+      details: {
+        createdVia: "أُنشئ بواسطة {channel}",
+        lineCount: "{count} سطر",
+        changed: "تغيّر: {fields}",
+        lineCountChange: "{before} ← {after} سطر",
+        statusChange: "{from} ← {to}",
+        inventory: "{effect}",
+        linkedExisting: "تم ربطه بمتجر قائم",
+        linkedGuestConversion: "تمت ترقية متجر الزائر إلى عميل",
+      },
+    },
   },
 };
 
