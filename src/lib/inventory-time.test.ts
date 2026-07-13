@@ -401,8 +401,16 @@ test("guard: no full movement history is loaded into the browser", () => {
   // payload is built from the SESSION (so load-more and export re-send the session's
   // own closed anchors, never a freshly resolved preset).
   assert.match(src, /await searchAction\(request\)/, "paged server action (injected)");
-  assert.match(src, /sessionRequest\(active, nextOffset\(active\)\)/, "load-more, anchored");
-  assert.match(src, /exportAction\(sessionRequest\(active, 0\)\)/, "export, anchored");
+  assert.match(
+    src,
+    /sessionRequest\(active, nextOffset\(active\), productIds\)/,
+    "load-more, anchored",
+  );
+  assert.match(
+    src,
+    /exportAction\(sessionRequest\(active, 0, productIds\)\)/,
+    "export, anchored",
+  );
   assert.match(src, /if \(!canExportSession\(active\)\) return/, "export is GATED");
   assert.match(src, /if \(!canLoadMoreSession\(active\)\) return/, "load-more is gated");
   assert.doesNotMatch(src, /listInventoryMovements\(/, "no unbounded list in the client");
@@ -477,7 +485,7 @@ test("guard: filtering emits no audit event and mutates nothing", () => {
   const action = stripComments(INVENTORY_ACTION);
   const searchFn = action.slice(
     action.indexOf("export async function searchMovementsAction"),
-    action.indexOf("export interface MovementExportResult"),
+    action.indexOf("export type MovementExportResult"),
   );
   assert.doesNotMatch(searchFn, /audit|revalidatePath|insert|update|delete/i);
   const reads = stripComments(SUPABASE_READS);

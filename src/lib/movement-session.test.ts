@@ -37,12 +37,18 @@ import {
   canExportSession,
   canLoadMoreSession,
   initialMovementSession,
+  isDebouncing,
+  isResolvedTimeZone,
   movementSessionReducer,
   nextOffset,
   sessionRequest,
   type MovementFilters,
   type MovementSession,
 } from "./movement-session";
+import type {
+  MovementExportResult,
+  MovementSearchResult,
+} from "./actions/inventory";
 import { resolveMovementAnchors, tenantDateRangeUtc } from "./tenant-day";
 import { parseOrdersQuery } from "./orders-query";
 import { listOrdersForExport, searchOrders } from "./data/orders";
@@ -68,9 +74,6 @@ const filters = (over: Partial<MovementFilters> = {}): MovementFilters => ({
   ...over,
 });
 
-/** The generation the component would assign next (it owns the counter, so that the
- * reducer and the in-flight request can never disagree about which session is which). */
-const nextGen = (s: MovementSession): number => s.generation + 1;
 
 /** Drive the reducer through a filter change + its first resolved page. */
 function resolvedSession(
@@ -78,7 +81,7 @@ function resolvedSession(
   resolved: { from: string | null; to: string | null; timeZone: string; rows: InventoryMovement[]; hasMore?: boolean },
 ): MovementSession {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters(over) });
+  s = movementSessionReducer(s, { type: "filters_changed", patch: filters(over) });
   return movementSessionReducer(s, {
     type: "resolved",
     generation: s.generation,
@@ -167,7 +170,6 @@ test("F02: a filter change atomically clears rows, hasMore, anchors and the tz b
 
   const next = movementSessionReducer(active, {
     type: "filters_changed",
-    generation: nextGen(active),
     patch: { reason: "manual_correction" },
   });
 
@@ -191,7 +193,6 @@ test("F02: Export and Load more are BOTH unavailable the instant a filter change
 
   const resolving = movementSessionReducer(active, {
     type: "filters_changed",
-    generation: nextGen(active),
     patch: { preset: "7d" },
   });
   // THE bug: Export stayed enabled here, and would have paired the NEW filters with
@@ -202,7 +203,7 @@ test("F02: Export and Load more are BOTH unavailable the instant a filter change
 
 test("F02: a resolved session re-enables Export for THAT generation only", () => {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", patch: filters({ preset: "today" }) });
   const gen = s.generation;
   assert.equal(canExportSession(s), false);
 
@@ -223,10 +224,10 @@ test("F02: a resolved session re-enables Export for THAT generation only", () =>
 
 test("F02: a STALE response cannot replace rows, anchors, hasMore or Export-readiness", () => {
   let s = initialMovementSession([], JLM);
-  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", patch: filters({ preset: "today" }) });
   const oldGen = s.generation;
   // The operator changes the filter again before the first reply lands.
-  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "7d" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", patch: filters({ preset: "7d" }) });
   const newGen = s.generation;
   assert.notEqual(oldGen, newGen);
 
@@ -279,7 +280,7 @@ test("F02: a later-page FAILURE preserves the session, its anchors and Export", 
 
   // The retry request is byte-identical to the failed one: same filters, same closed
   // range, same timezone binding, same offset. It never re-resolves "today".
-  assert.deepEqual(sessionRequest(failed, nextOffset(failed)), sessionRequest(active, nextOffset(active)));
+  assert.deepEqual(sessionRequest(failed, nextOffset(failed), undefined), sessionRequest(active, nextOffset(active), undefined));
 });
 
 test("F02: an INITIAL failure exposes no stale rows and cannot export", () => {
@@ -289,7 +290,6 @@ test("F02: an INITIAL failure exposes no stale rows and cannot export", () => {
   );
   let s = movementSessionReducer(active, {
     type: "filters_changed",
-    generation: nextGen(active),
     patch: { preset: "month" },
   });
   s = movementSessionReducer(s, { type: "resolve_failed", generation: s.generation });
@@ -308,8 +308,8 @@ test("F02: Export re-sends the SAME snapshot, anchors and timezone as the visibl
     { preset: "today", reason: "manual_correction", direction: "out" },
     { from: "2026-07-13", to: "2026-07-13", timeZone: JLM, rows: [row("a", "2026-07-13T09:00:00Z")], hasMore: true },
   );
-  const exportReq = sessionRequest(active, 0);
-  const pageReq = sessionRequest(active, nextOffset(active));
+  const exportReq = sessionRequest(active, 0, undefined);
+  const pageReq = sessionRequest(active, nextOffset(active), undefined);
 
   // The list and the file describe the same query — only the offset differs.
   assert.equal(exportReq.dateFrom, "2026-07-13");
@@ -386,18 +386,17 @@ test("F03: the request carries the SERVER-issued timezone as a comparison value"
     { preset: "today" },
     { from: "2026-07-13", to: "2026-07-13", timeZone: JLM, rows: [row("a", "2026-07-13T09:00:00Z")], hasMore: true },
   );
-  const req = sessionRequest(active, nextOffset(active));
+  const req = sessionRequest(active, nextOffset(active), undefined);
   assert.equal(req.expectedTimeZone, JLM, "echoed back so the server can compare");
 
   // A BRAND-NEW session sends none: that request is what asks the server to resolve.
   let fresh = initialMovementSession([], JLM);
   fresh = movementSessionReducer(fresh, {
     type: "filters_changed",
-    generation: nextGen(fresh),
     patch: { preset: "today" },
   });
-  assert.equal(sessionRequest(fresh, 0).expectedTimeZone, undefined);
-  assert.equal(sessionRequest(fresh, 0).dateFrom, undefined, "…and no anchors yet");
+  assert.equal(sessionRequest(fresh, 0, undefined).expectedTimeZone, undefined);
+  assert.equal(sessionRequest(fresh, 0, undefined).dateFrom, undefined, "…and no anchors yet");
 });
 
 test("F03: a timezone change INVALIDATES the session — it is never reinterpreted", () => {
@@ -434,9 +433,13 @@ test("F03: a restarted session resolves FRESH anchors under the new zone, from o
     generation: active.generation,
   });
   // Re-applying the filter starts a NEW generation…
-  s = movementSessionReducer(s, { type: "filters_changed", generation: nextGen(s), patch: filters({ preset: "today" }) });
+  s = movementSessionReducer(s, { type: "filters_changed", patch: filters({ preset: "today" }) });
   assert.equal(nextOffset(s), 0, "no offset from the previous session is reused");
-  assert.equal(sessionRequest(s, 0).expectedTimeZone, undefined, "no stale binding");
+  assert.equal(
+    sessionRequest(s, 0, undefined).expectedTimeZone,
+    undefined,
+    "no stale binding",
+  );
 
   // …and the server resolves it under the NEW authoritative zone.
   const now = new Date("2026-07-13T21:30:00Z"); // 2026-07-13 in UTC, 07-14 in JLM
@@ -462,7 +465,6 @@ test("F03: a stale reply for an OLD generation cannot kill the CURRENT session",
   );
   const next = movementSessionReducer(active, {
     type: "filters_changed",
-    generation: nextGen(active),
     patch: { preset: "7d" },
   });
   const resolved = movementSessionReducer(next, {
@@ -503,6 +505,123 @@ test("F03: the client's timezone is COMPARISON-ONLY — it never selects the zon
     src,
     /getTenantTimeZone\(\)\s*\|\|\s*input|input\.expectedTimeZone\s*\?\?\s*/,
     "…and never fall back to it",
+  );
+});
+
+// ══ C2 — a SUCCESS cannot omit the timezone it was resolved under ════════
+
+test("C2 (types): ok:true REQUIRES resolvedTimeZone; error variants do not", () => {
+  // These are COMPILE-TIME assertions — `npx tsc --noEmit` is what enforces them.
+  // A success must carry every session field, including the zone:
+  const good: MovementSearchResult = {
+    ok: true,
+    movements: [],
+    hasMore: false,
+    resolvedFrom: "2026-07-13",
+    resolvedTo: "2026-07-13",
+    resolvedTimeZone: JLM,
+  };
+  assert.equal(good.ok, true);
+
+  // @ts-expect-error — a success WITHOUT resolvedTimeZone must not typecheck. This is
+  // the whole C2 contract: the old optional-everything shape allowed exactly this, and
+  // the client then borrowed the page's zone for a session the server resolved in UTC.
+  const bad: MovementSearchResult = {
+    ok: true,
+    movements: [],
+    hasMore: false,
+    resolvedFrom: null,
+    resolvedTo: null,
+  };
+  assert.ok(bad);
+
+  // An ERROR variant needs no session fields at all…
+  const failed: MovementSearchResult = { ok: false, error: "timezone_changed" };
+  assert.equal(failed.ok, false);
+  // …and cannot smuggle rows in.
+  // @ts-expect-error — an error result has no movements.
+  const smuggled: MovementSearchResult = { ok: false, error: "failed", movements: [] };
+  assert.ok(smuggled);
+
+  // The export result is discriminated the same way.
+  const exported: MovementExportResult = { ok: true, movements: [], capped: false };
+  assert.equal(exported.ok, true);
+  // @ts-expect-error — an export success must state whether it was capped.
+  const halfExport: MovementExportResult = { ok: true, movements: [] };
+  assert.ok(halfExport);
+});
+
+test("C2 (runtime): the guard refuses a zone TypeScript would have accepted", () => {
+  // Types are not a trust boundary — the reply crossed the network. The component
+  // calls THIS before binding a session, and a blank/absent zone fails closed.
+  assert.equal(isResolvedTimeZone("Asia/Jerusalem"), true);
+  assert.equal(isResolvedTimeZone("UTC"), true);
+  assert.equal(isResolvedTimeZone(undefined), false, "missing → refused");
+  assert.equal(isResolvedTimeZone(""), false, "empty → refused");
+  assert.equal(isResolvedTimeZone("   "), false, "blank → refused");
+  assert.equal(isResolvedTimeZone(null), false);
+  assert.equal(isResolvedTimeZone(42), false);
+});
+
+// ══ The reducer allocates generations — a no-op burns none ═══════════════
+
+test("generation: a NO-OP patch returns the SAME state and allocates nothing", () => {
+  const active = resolvedSession(
+    { query: "Widget" },
+    { from: null, to: null, timeZone: JLM, rows: [row("a", "2026-07-13T09:00:00Z")] },
+  );
+  const gen = active.generation;
+
+  // Retyping the same applied term (trailing space) changes no applied filter.
+  const same = movementSessionReducer(active, {
+    type: "filters_changed",
+    patch: { query: "Widget " },
+  });
+  assert.equal(same, active, "the SAME object — nothing changed, nothing rebuilt");
+  assert.equal(same.generation, gen, "no generation was burned");
+  assert.equal(canExportSession(same), true, "a healthy session is not torn down");
+
+  // A REAL change does allocate — exactly one.
+  const changed = movementSessionReducer(active, {
+    type: "filters_changed",
+    patch: { query: "Gadget" },
+  });
+  assert.equal(changed.generation, gen + 1);
+  assert.equal(changed.status, "resolving");
+  assert.deepEqual(changed.rows, []);
+});
+
+test("generation: `defer` invalidates NOW and only postpones the request", () => {
+  const active = resolvedSession(
+    { preset: "today" },
+    { from: "2026-07-13", to: "2026-07-13", timeZone: JLM, rows: [row("a", "2026-07-13T09:00:00Z")], hasMore: true },
+  );
+  const typed = movementSessionReducer(active, {
+    type: "filters_changed",
+    patch: { query: "Widget" },
+    defer: true,
+  });
+  // The session is ALREADY dead — the debounce only delays the network call.
+  assert.equal(typed.status, "debouncing");
+  assert.deepEqual(typed.rows, [], "rows gone immediately");
+  assert.equal(typed.hasMore, false);
+  assert.equal(typed.from, null, "anchors gone");
+  assert.equal(typed.timeZone, null, "timezone binding gone");
+  assert.equal(canExportSession(typed), false, "Export disabled immediately");
+  assert.equal(canLoadMoreSession(typed), false);
+  assert.equal(isDebouncing(typed), true, "…and a pending state is observable");
+
+  // When the debounce elapses, only the STATUS moves.
+  const dialling = movementSessionReducer(typed, {
+    type: "request_started",
+    generation: typed.generation,
+  });
+  assert.equal(dialling.status, "resolving");
+  assert.equal(dialling.generation, typed.generation, "same session");
+  // A superseded `request_started` is ignored.
+  assert.equal(
+    movementSessionReducer(dialling, { type: "request_started", generation: 0 }),
+    dialling,
   );
 });
 

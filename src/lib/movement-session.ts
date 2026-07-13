@@ -46,26 +46,44 @@ export interface MovementFilters {
   customTo: string;
   reason: string;
   direction: MovementDirection;
-  /** undefined = no product filter; [] = the search matched nothing → zero rows. */
-  productIds: string[] | undefined;
+  /**
+   * The product-search TEXT. It lives here — not in a separate `useState` — because
+   * it is a filter like any other: typing must invalidate the active session in the
+   * SAME transition that changes the visible input. Only the *request* is debounced.
+   *
+   * The matching product ids are DERIVED from this text against the loaded catalog
+   * at request time (the reducer is pure and does not know the catalog), so a
+   * request can never be built from a query the session no longer has.
+   */
+  query: string;
 }
 
 export type MovementSessionStatus =
   /** Nothing filtered yet — the SSR'd first page. */
   | "ready"
+  /** A filter changed and the session is dead, but the request is still waiting out
+   * the search debounce. Nothing to page, nothing to export — but nothing in flight
+   * yet either. Invalidation is NEVER debounced; only the network call is. */
+  | "debouncing"
   /** A filter was applied; its first page is in flight. Nothing may be exported. */
   | "resolving"
   /** A later page is in flight for the active session. */
   | "paging"
-  /** The initial resolution failed. No rows, nothing to export. */
+  /** The initial resolution failed (or came back malformed). No rows, no export. */
   | "failed"
   /** The tenant timezone changed under us: the anchors no longer mean what they did. */
   | "stale";
 
 export interface MovementSession {
   status: MovementSessionStatus;
-  /** Monotonic. Every filter change bumps it; responses carrying an older one are
-   * dropped. This is what makes a slow reply harmless instead of corrupting. */
+  /**
+   * Monotonic, and allocated ONLY HERE — by the reducer, and only when a transition
+   * is actually accepted. A no-op patch (typing that does not change the applied
+   * filters) returns the existing state untouched and does NOT burn a generation, so
+   * the number the component sends with a request is always the number the reducer is
+   * on. Responses carrying an older one are dropped, which is what makes a slow reply
+   * harmless instead of corrupting.
+   */
   generation: number;
   /** The filters these rows came from — re-sent verbatim by load-more and export. */
   filters: MovementFilters;
@@ -87,7 +105,7 @@ export const DEFAULT_MOVEMENT_FILTERS: MovementFilters = {
   customTo: "",
   reason: "all",
   direction: "all",
-  productIds: undefined,
+  query: "",
 };
 
 /**
@@ -115,21 +133,26 @@ export function initialMovementSession(
 
 export type MovementSessionAction =
   /**
-   * A filter control changed → SYNCHRONOUSLY invalidate everything and start
-   * resolving a new session. The `patch` is merged into the reducer's OWN current
-   * filters (never into a snapshot captured by a stale closure — the debounced
-   * product search fires 300ms later, by which time `reason` may have changed too).
-   * `generation` is supplied by the caller so the component and the reducer can
-   * never disagree about which request belongs to which session.
+   * A filter control changed → SYNCHRONOUSLY invalidate everything. The `patch` is
+   * merged into the reducer's OWN current filters, and the reducer allocates the new
+   * generation itself — so a no-op patch can neither burn a generation nor make the
+   * component's idea of "which session am I requesting for" drift from the reducer's.
+   *
+   * `defer` means "the request waits out the search debounce" — the INVALIDATION
+   * still happens right now. Debouncing the invalidation is the bug this closes: the
+   * input showed the new text while the old rows, the old `hasMore` and an ENABLED
+   * Export sat underneath it for 300ms.
    */
   | {
       type: "filters_changed";
-      generation: number;
       patch: Partial<MovementFilters>;
+      defer?: boolean;
     }
+  /** The debounce elapsed for `generation` — its request is now in flight. */
+  | { type: "request_started"; generation: number }
   /** Retry a failed resolution / re-apply a stale one. Same filters, NEW session:
    * offset zero, no rows, no anchors, no timezone binding carried over. */
-  | { type: "retry"; generation: number }
+  | { type: "retry" }
   /** The first page of `generation` arrived. */
   | {
       type: "resolved";
@@ -161,23 +184,16 @@ function isCurrent(state: MovementSession, generation: number): boolean {
   return generation === state.generation;
 }
 
-function sameProductIds(
-  a: string[] | undefined,
-  b: string[] | undefined,
-): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/** Two filter snapshots that would produce the identical query. */
-function sameFilters(a: MovementFilters, b: MovementFilters): boolean {
+/** Two filter snapshots that would produce the identical query. The search text is
+ * compared as the operator applied it (trimmed) — retyping the same term is a no-op. */
+export function sameFilters(a: MovementFilters, b: MovementFilters): boolean {
   return (
     a.preset === b.preset &&
     a.customFrom === b.customFrom &&
     a.customTo === b.customTo &&
     a.reason === b.reason &&
     a.direction === b.direction &&
-    sameProductIds(a.productIds, b.productIds)
+    a.query.trim() === b.query.trim()
   );
 }
 
@@ -188,9 +204,11 @@ export function movementSessionReducer(
   switch (action.type) {
     case "filters_changed": {
       const next = { ...state.filters, ...action.patch };
-      // A patch that changes nothing must not destroy a healthy session — typing in
-      // the search box that does not alter the matched product set is a no-op, and
-      // tearing the session down for it would refetch page 1 for no reason.
+      // A patch that changes NOTHING is a genuine no-op: it returns the existing state
+      // (so a healthy session is not torn down and refetched), and — crucially — it
+      // does NOT allocate a generation. Retyping the same text, or a keystroke that
+      // leaves the applied filters identical, therefore cannot make the component's
+      // request generation drift from the reducer's session generation.
       if (sameFilters(next, state.filters)) return state;
       // ATOMIC INVALIDATION, in the SAME transition that changes the control. The
       // new filter value and the death of the old session are one state update, so
@@ -199,8 +217,8 @@ export function movementSessionReducer(
       // Export for a result set that no longer matches what is selected.
       // Offset is implicitly zero because `rows` is empty.
       return {
-        status: "resolving",
-        generation: action.generation,
+        status: action.defer ? "debouncing" : "resolving",
+        generation: state.generation + 1,
         filters: next,
         from: null,
         to: null,
@@ -211,13 +229,22 @@ export function movementSessionReducer(
       };
     }
 
+    case "request_started":
+      // The debounce elapsed. Nothing about the session changes — it was already
+      // invalidated the moment the operator typed; this only records that its request
+      // is now on the wire.
+      if (!isCurrent(state, action.generation) || state.status !== "debouncing") {
+        return state;
+      }
+      return { ...state, status: "resolving" };
+
     case "retry":
       // The SAME selected filters, a brand-new session. Nothing from the failed or
       // stale one is carried over: no rows, no anchors, no timezone binding, and the
       // offset is zero. This is what makes Retry and Re-apply safe to press twice.
       return {
         status: "resolving",
-        generation: action.generation,
+        generation: state.generation + 1,
         filters: state.filters,
         from: null,
         to: null,
@@ -323,6 +350,12 @@ export function canLoadMoreSession(s: MovementSession): boolean {
   return s.hasMore && (s.status === "ready" || s.status === "paging");
 }
 
+/** A request for this session is waiting out the search debounce — invalidated
+ * already, but not yet on the wire. */
+export function isDebouncing(s: MovementSession): boolean {
+  return s.status === "debouncing";
+}
+
 /**
  * The timezone a session's rows MUST be rendered and exported in — the one the
  * server resolved them under, never the page's bootstrap prop.
@@ -358,6 +391,10 @@ export function nextOffset(s: MovementSession): number {
 export function sessionRequest(
   s: MovementSession,
   offset: number,
+  /** The product ids matching THIS session's `filters.query`, resolved against the
+   * loaded catalog by the caller (the reducer is pure and has no catalog).
+   * undefined = no product filter; [] = the search matched nothing → zero rows. */
+  productIds: string[] | undefined,
 ): {
   preset: MovementDatePreset;
   dateFrom?: string;
@@ -389,7 +426,21 @@ export function sessionRequest(
     expectedTimeZone: resolved ? (s.timeZone ?? undefined) : undefined,
     reason: f.reason === "all" ? undefined : f.reason,
     direction: f.direction === "all" ? undefined : f.direction,
-    productIds: f.productIds,
+    productIds,
     offset,
   };
+}
+
+/**
+ * A SUCCESSFUL first-page response, validated at RUNTIME.
+ *
+ * TypeScript is a compile-time contract, not a trust boundary: a Server Action's
+ * reply crosses the network. A malformed `ok: true` that omitted `resolvedTimeZone`
+ * used to fall back to the page's bootstrap zone — so a session the server had
+ * resolved under UTC rendered in Asia/Jerusalem. There is no fallback any more, and
+ * a reply that cannot name the zone it was resolved under is REFUSED: the rows are
+ * not shown, nothing is exported, and the session fails closed with a Retry.
+ */
+export function isResolvedTimeZone(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }

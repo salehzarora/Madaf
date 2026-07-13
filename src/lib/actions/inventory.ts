@@ -113,19 +113,38 @@ export type MovementError =
   | "timezone_changed"
   | "failed";
 
-export interface MovementSearchResult {
-  ok: boolean;
-  movements?: InventoryMovement[];
-  /** True when a full page came back — more pages may exist WITHIN THE ANCHORS. */
-  hasMore?: boolean;
-  error?: MovementError;
-  /** The CLOSED concrete tenant-local range this result was computed against, and
-   * the timezone it was resolved under. The client pins all three to the session and
-   * sends them back on every later request. */
-  resolvedFrom?: string | null;
-  resolvedTo?: string | null;
-  resolvedTimeZone?: string;
-}
+/**
+ * A movements page. DISCRIMINATED, so a SUCCESS cannot omit the timezone it was
+ * resolved under.
+ *
+ * It used to be one optional-everything shape, which let a type-valid `ok: true`
+ * arrive with no `resolvedTimeZone` — and the client then fell back to the page's
+ * bootstrap zone, printing a UTC-resolved session in Asia/Jerusalem. There is now no
+ * shape in which a success can fail to name its zone.
+ */
+export type MovementSearchResult =
+  | {
+      ok: true;
+      movements: InventoryMovement[];
+      /** True when a full page came back — more pages may exist WITHIN THE ANCHORS. */
+      hasMore: boolean;
+      /** The CLOSED concrete tenant-local range this result was computed against… */
+      resolvedFrom: string | null;
+      resolvedTo: string | null;
+      /** …and the AUTHORITATIVE tenant timezone it was resolved under. REQUIRED: the
+       * client binds the session to it and re-sends it on every later request. */
+      resolvedTimeZone: string;
+      error?: undefined;
+    }
+  | {
+      ok: false;
+      error: MovementError;
+      movements?: undefined;
+      hasMore?: undefined;
+      resolvedFrom?: undefined;
+      resolvedTo?: undefined;
+      resolvedTimeZone?: undefined;
+    };
 
 /** A filter payload the server has fully validated + anchored. */
 interface ResolvedMovementFilter {
@@ -247,13 +266,19 @@ export async function searchMovementsAction(
   }
 }
 
-export interface MovementExportResult {
-  ok: boolean;
-  movements?: InventoryMovement[];
-  /** True when the cap was hit and MORE matching rows exist beyond it. */
-  capped?: boolean;
-  error?: MovementError;
-}
+/** An export. Discriminated for the same reason: a success is a success, an error is
+ * an error, and neither can masquerade as the other by omitting a field. The export
+ * carries no timezone of its own — it is rendered with the ACTIVE session's, and the
+ * server already refused it if the tenant's zone had changed (expectedTimeZone). */
+export type MovementExportResult =
+  | {
+      ok: true;
+      movements: InventoryMovement[];
+      /** True when the cap was hit and MORE matching rows exist beyond it. */
+      capped: boolean;
+      error?: undefined;
+    }
+  | { ok: false; error: MovementError; movements?: undefined; capped?: undefined };
 
 /**
  * M8E.1 — export ALL rows matching the current filters, not just the loaded
@@ -289,7 +314,7 @@ export async function exportMovementsAction(
     return { ok: true, movements: all, capped: probe.length > 0 };
   } catch (error) {
     console.error("[madaf/actions] exportMovementsAction failed:", error);
-    return { ok: false };
+    return { ok: false, error: "failed" };
   }
 }
 

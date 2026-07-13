@@ -251,12 +251,29 @@ window paired the *new* filters with the *old* result set.
 A correct reducer was **not enough**. The filter controls each held their own
 `useState` and a **passive `useEffect`** noticed the change and invalidated the session
 *afterwards* — so one **committed render** still carried the new filter value beside
-the old rows, the old `hasMore` and an enabled Export. The controls and the session
-therefore now live in the **same reducer**, and a control change dispatches
-`filters_changed` **synchronously in the event handler**. There is no render in which
-they can disagree. (The mounted test proves this by firing the change event *without*
-`act()` and reading the DOM in the same synchronous turn — a passive-effect
-invalidation fails it; verified by deliberately reintroducing the defect.)
+the old rows, the old `hasMore` and an enabled Export.
+
+Fixing the *selects* was still not enough: the **product-search box** kept its own
+state and invalidated only when its 300ms debounce elapsed, so for a third of a second
+the input read "Widget" over the previous session's rows, with **Export enabled**.
+Every filter — search included — now lives in the same reducer and dispatches
+`filters_changed` **synchronously in the event handler**. The search passes
+`defer: true`, which postpones **only the network request**; the invalidation happens
+on the keystroke. There is no render in which a visible control can disagree with the
+displayed session.
+
+While the request waits, the session is `debouncing`: rows gone, anchors gone,
+timezone binding gone, Export and Load-more unavailable, and a pending state visible.
+A **no-op** patch (retyping the same applied term) returns the existing state
+untouched — so a healthy session is not needlessly torn down, and **no generation is
+burned**. Generations are allocated **by the reducer**, only when a transition is
+accepted, so the component's request generation and the reducer's session generation
+cannot drift apart.
+
+*(The mounted tests prove this by firing the event **without `act()`** and reading the
+DOM in the same synchronous turn — `act()` flushes passive effects and would hide the
+very window the bug lived in. Both were confirmed **falsifiable** by deliberately
+reintroducing the defect.)*
 
 Every transition goes through one reducer (`src/lib/movement-session.ts`), which the
 component renders from and the tests drive directly:
@@ -306,9 +323,23 @@ rendered with. After a zone change forced a new session, the rows came from a qu
 server ran under the **new** zone but were printed under the **old** one. So the page
 prop is now **bootstrap only**: it seeds the initial SSR session (which genuinely *is*
 its zone) and is never consulted again. Every row and every CSV cell is formatted with
-**`session.timeZone`** — the zone the server resolved *that* session under. Screen and
-file therefore always agree, and a row is never printed under an interpretation other
-than the one that produced it.
+**`session.timeZone`** — the zone the server resolved *that* session under.
+
+*And a success must be able to name that zone.* The result type was one
+optional-everything shape, so a type-valid `ok: true` could arrive **without**
+`resolvedTimeZone` — and the client fell back to the page prop (`?? timeZone`),
+printing a UTC-resolved session's rows in Jerusalem. The result is now
+**discriminated**: `ok: true` **requires** `movements`, `hasMore`, `resolvedFrom`,
+`resolvedTo` and `resolvedTimeZone`; the error variants carry none of them. Compile-time
+`@ts-expect-error` tests pin it.
+
+TypeScript is not a runtime trust boundary, though — this reply crosses the network. So
+the client **also** validates it: a success whose `resolvedTimeZone` is missing or
+blank is **refused**. The rows are not shown, Export and Load-more stay disabled, the
+session enters `failed` with a **Retry**, and it is logged (no payload, no secrets).
+**There is no fallback anywhere.** A later page likewise may not *redefine* the
+session's zone — if one answers under a different zone it does not belong to this
+session, so the session goes stale rather than being silently re-bound.
 
 **Exactly-50-row behaviour (retained).** A final page that happens to be exactly
 `MOVEMENT_PAGE_SIZE` rows leaves `hasMore` true, costing one extra request that comes
@@ -533,23 +564,28 @@ regression here silently mis-files orders in the list, the count and the export.
 
 **The rest:**
 
-- `npm test` → **477** unit checks **+ 17 mounted component checks** (it runs both).
-- `npm run test:movements-table` → **17/17**, MOUNTING THE REAL `MovementsTable` in
+- `npm test` → **481** unit checks **+ 30 mounted component checks** (it runs both).
+- `npm run test:movements-table` → **30/30**, MOUNTING THE REAL `MovementsTable` in
   jsdom (no copy, no re-implementation) with the Server Actions supplied through the
   production injection seam and resolved by hand, so intermediate renders are
-  observable. **Reducer tests alone let three integration defects through**, so these
-  are not optional. They cover: the render committed *by the change event itself*
-  already has no old rows / no Load-more / no Export; a superseded response cannot
-  restore rows or Export; rapid double changes render only the latest; a session
-  resolved under **UTC** renders and exports **UTC**, not the Asia/Jerusalem page prop;
-  `timezone_changed` clears the rows and offers a working **Re-apply**; a failed
-  resolution offers a working **Retry**; both restart at offset zero with no old
-  anchors or timezone; Export is inert while resolving and after a stale reply; and
-  Arabic renders a bidi-safe timestamp.
-  Two of these were **verified to be falsifiable** by deliberately reintroducing the
-  defect (deferring the dispatch; formatting with the page prop) and watching them
-  fail.
-- `npm run test:movement-session` → **26/26**, driving the **production reducer** and
+  observable. **Reducer tests alone let five integration defects through**, so these
+  are not optional. They cover: the render committed *by the change event itself* —
+  and, separately, *by the keystroke itself* — already has no old rows, no Load-more
+  and no Export, with a pending state visible and **no request yet issued**; rapid
+  typing issues exactly one request for the final term; clearing the search invalidates
+  the same way; a **no-op** retype keeps the session and burns no generation; Export and
+  Load-more are inert during the debounce; superseded responses (success *and* failure)
+  cannot restore or destroy a newer session; a session resolved under **UTC** renders
+  and exports **UTC**, not the Asia/Jerusalem page prop; a **malformed success with no
+  `resolvedTimeZone` fails closed** (no rows, no fallback, Retry offered) — as does a
+  blank one; a later page cannot redefine the session's zone; `timezone_changed` clears
+  the rows and offers a working **Re-apply**; **Retry and Re-apply are keyboard-focusable
+  and keyboard-activatable**; and Hebrew/Arabic render bidi-safe timestamps with
+  logical-CSS-only layout.
+  Three of these were **verified to be falsifiable** by deliberately reintroducing the
+  defect (deferring the dispatch; deferring the *keystroke's* dispatch; restoring the
+  `?? timeZone` fallback) and watching them fail.
+- `npm run test:movement-session` → **30/30**, driving the **production reducer** and
   the **production Server Actions** (not a copy): closed Today/7d/month ranges, a
   next-day movement excluded, offsets stable across midnight, an atomic filter reset,
   a stale response ignored, Export gated and Export/list parity, later-page retry

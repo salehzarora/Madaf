@@ -32,6 +32,8 @@ import {
   canExportSession,
   canLoadMoreSession,
   initialMovementSession,
+  isDebouncing,
+  isResolvedTimeZone,
   movementSessionReducer,
   needsRestart,
   nextOffset,
@@ -51,6 +53,10 @@ import { cn } from "@/lib/utils";
 
 // The page size (MOVEMENT_PAGE_SIZE) lives with the session reducer, which is what
 // decides whether a short page means "the end".
+
+/** How long the product search waits before dialling. ONLY the request is debounced —
+ * the session is invalidated the instant the operator types. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 function productMatches(p: Product, q: string): boolean {
   return [
@@ -113,21 +119,20 @@ export function MovementsTable({
   download?: (filename: string, csv: string) => void;
 }) {
   const t = dict.admin.inventory.movements;
-  /** The raw search box. NOT an applied filter until the debounce fires. */
-  const [query, setQuery] = useState("");
 
   /**
-   * THE SESSION — and the SELECTED FILTERS, in one reducer.
+   * THE SESSION — and EVERY SELECTED FILTER, including the search text, in one reducer.
    *
    * They live together deliberately. When they were separate (`useState` per control
-   * + a `useEffect` that noticed the change and invalidated afterwards), one
-   * committed render could show the NEW filter values beside the OLD rows, the OLD
-   * `hasMore`, the OLD anchors and an ENABLED Export — an export fired in that window
-   * produced a file for a query nobody had asked for. Now a control change and the
-   * death of the previous session are ONE synchronous dispatch, so that render cannot
-   * exist. `session.filters` is both the selected snapshot and (once `ready`) the
-   * snapshot the rows came from; they can never disagree, because any change
-   * invalidates.
+   * + a `useEffect` that noticed the change and invalidated afterwards), one committed
+   * render could show the NEW filter value beside the OLD rows, the OLD `hasMore`, the
+   * OLD anchors and an ENABLED Export — an export fired in that window produced a file
+   * for a query nobody had asked for. The search box was the last control still doing
+   * that: it invalidated only when its 300ms debounce elapsed, so for a third of a
+   * second the input read "Widget" over the previous session's rows.
+   *
+   * Now EVERY control — search included — invalidates in the same synchronous dispatch
+   * that changes it. Only the *request* is debounced.
    */
   const [session, dispatch] = useReducer(
     movementSessionReducer,
@@ -135,12 +140,14 @@ export function MovementsTable({
     () => initialMovementSession(initialMovements, timeZone),
   );
   const { rows, filters } = session;
-  const { preset, customFrom, customTo, reason, direction } = filters;
+  const { preset, customFrom, customTo, reason, direction, query } = filters;
 
-  /** Export is gated on a RESOLVED session — never on a resolving/failed/stale one. */
+  /** Export is gated on a RESOLVED session — never on a debouncing/resolving/failed/
+   * stale one. */
   const exportReady = canExportSession(session);
   const loadMoreReady = canLoadMoreSession(session);
   const restartable = needsRestart(session);
+  const debouncing = isDebouncing(session);
   /** The zone THIS session's rows were resolved under — never the bootstrap prop. */
   const rowTimeZone = sessionTimeZone(session);
 
@@ -148,11 +155,8 @@ export function MovementsTable({
   // Export runs its own server round-trip over ALL filtered rows (M8E.1).
   const [exporting, startExport] = useTransition();
   const [exportNote, setExportNote] = useState<string | null>(null);
-  /** The generation counter. Bumped in EVENT HANDLERS only (never during render), so
-   * the component and the reducer always agree which request owns which session. */
-  const genRef = useRef(0);
   /** The generation whose first page we have already requested — so the effect that
-   * performs the I/O fires exactly once per session. */
+   * performs the I/O fires exactly once per session. Written in effects only. */
   const firedRef = useRef(0);
 
   const productById = useMemo(
@@ -164,83 +168,110 @@ export function MovementsTable({
     [orders],
   );
 
+  /** The product ids matching the SESSION's OWN search text. Derived here (the reducer
+   * is pure and has no catalog), so a request can never carry ids from a query the
+   * session no longer holds. undefined = no product filter; [] = matched nothing. */
+  const productIds = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return undefined;
+    return products.filter((p) => productMatches(p, q)).map((p) => p.id);
+  }, [query, products]);
+
   /** Nothing is filtered — so an empty list means "no movements yet", not
    * "no matches". Read from the SESSION's filters, which are the selected ones. */
   const isDefault =
     reason === "all" &&
     direction === "all" &&
     preset === "all" &&
-    filters.productIds === undefined;
+    query.trim() === "";
 
-  /** ONE synchronous transition: change the control AND invalidate the session. */
-  function applyFilters(patch: Partial<MovementFilters>): void {
-    genRef.current += 1;
-    dispatch({ type: "filters_changed", generation: genRef.current, patch });
+  /**
+   * ONE synchronous transition: change the control AND invalidate the session. The
+   * REDUCER allocates the generation — and only when the patch actually changes
+   * something — so a no-op (retyping the same term) can neither tear down a healthy
+   * session nor let the component's request generation drift from the reducer's.
+   */
+  function applyFilters(patch: Partial<MovementFilters>, defer = false): void {
+    dispatch({ type: "filters_changed", patch, defer });
   }
 
   /** Retry a failed resolution / re-apply a stale one — same filters, NEW session. */
   function restartSession(): void {
-    genRef.current += 1;
-    dispatch({ type: "retry", generation: genRef.current });
+    dispatch({ type: "retry" });
   }
 
-  // Debounce the product search: the term is only APPLIED (and the session only
-  // invalidated) once the operator stops typing. This effect performs no
-  // invalidation logic of its own — it just fires the same synchronous transition
-  // every other control fires. The dispatch carries a PATCH, which the reducer
-  // merges into ITS OWN current filters, so a `reason` changed during those 300ms
-  // cannot be clobbered by a stale closure; and a patch that changes nothing is a
-  // no-op there, so typing that does not alter the matched set leaves the session
-  // alone. Nothing about the session is read here, so nothing here can go stale.
-  useEffect(() => {
-    const id = setTimeout(() => {
-      const q = query.trim().toLowerCase();
-      // undefined = no product filter; [] = matched nothing → zero rows (correct).
-      const productIds = q
-        ? products.filter((p) => productMatches(p, q)).map((p) => p.id)
-        : undefined;
-      applyFilters({ productIds });
-    }, 300);
-    return () => clearTimeout(id);
-  }, [query, products]);
-
   /**
-   * Perform the first-page request for whatever session is currently RESOLVING.
+   * Perform the first-page request for the session the reducer says is pending.
    *
-   * This effect does I/O only. It never *decides* that the session is stale — the
-   * handler above already did that, synchronously, in the same transition as the
-   * control change. Keying on the generation makes it fire exactly once per session
-   * and read the reducer's authoritative filters rather than a captured snapshot.
+   * This effect does I/O ONLY. It never decides that a session is dead — the handler
+   * already did that, synchronously, in the same transition as the control change. For
+   * a search change it merely waits out the debounce before dialling; the rows, the
+   * anchors, the timezone binding and Export went the moment the operator typed.
+   *
+   * Keying on the session makes it fire exactly once per generation and read the
+   * reducer's authoritative filters rather than a captured snapshot, and the cleanup
+   * cancels a superseded debounce before it can ever reach the network.
    */
   useEffect(() => {
-    if (session.status !== "resolving") return;
+    const pending = session.status === "resolving" || session.status === "debouncing";
+    if (!pending) return;
     if (firedRef.current === session.generation) return;
-    firedRef.current = session.generation;
-    const myGen = session.generation;
-    const request = sessionRequest(session, 0);
 
-    startLoading(async () => {
-      // A brand-new session: no anchors and no expected zone, so the server resolves
-      // the preset ONCE and hands back BOTH concrete dates plus the zone it used.
-      const result = await searchAction(request);
-      if (result.ok) {
+    const myGen = session.generation;
+    const request = sessionRequest(session, 0, productIds);
+
+    const fire = () => {
+      if (firedRef.current === myGen) return;
+      firedRef.current = myGen;
+      dispatch({ type: "request_started", generation: myGen });
+      startLoading(async () => {
+        // A brand-new session: no anchors and no expected zone, so the server resolves
+        // the preset ONCE and hands back BOTH concrete dates plus the zone it used.
+        const result = await searchAction(request);
+        if (!result.ok) {
+          dispatch(
+            result.error === "timezone_changed"
+              ? { type: "session_stale", generation: myGen }
+              : { type: "resolve_failed", generation: myGen },
+          );
+          return;
+        }
+        // FAIL CLOSED on a malformed success. TypeScript is a compile-time contract,
+        // not a trust boundary: this reply crossed the network. A success that cannot
+        // name the zone it was resolved under must NOT be rendered — falling back to
+        // the page's bootstrap zone is exactly how a UTC session came to print
+        // Jerusalem wall clocks over its own rows.
+        // FAIL CLOSED on a malformed success. TypeScript is a compile-time contract,
+        // not a trust boundary: this reply crossed the network. A success that cannot
+        // name the zone it was resolved under must NOT be rendered — falling back to
+        // the page's bootstrap zone is exactly how a UTC session came to print
+        // Jerusalem wall clocks over its own rows.
+        if (!isResolvedTimeZone(result.resolvedTimeZone)) {
+          console.error(
+            "[madaf/movements] refusing a success with no resolvedTimeZone",
+          );
+          dispatch({ type: "resolve_failed", generation: myGen });
+          return;
+        }
         dispatch({
           type: "resolved",
           generation: myGen,
-          rows: result.movements ?? [],
-          hasMore: !!result.hasMore,
-          from: result.resolvedFrom ?? null,
-          to: result.resolvedTo ?? null,
-          // The SERVER's zone owns this session's rows.
-          timeZone: result.resolvedTimeZone ?? timeZone,
+          rows: result.movements,
+          hasMore: result.hasMore,
+          from: result.resolvedFrom,
+          to: result.resolvedTo,
+          // The SERVER's zone owns this session's rows. There is no fallback.
+          timeZone: result.resolvedTimeZone,
         });
-      } else if (result.error === "timezone_changed") {
-        dispatch({ type: "session_stale", generation: myGen });
-      } else {
-        dispatch({ type: "resolve_failed", generation: myGen });
-      }
-    });
-  }, [session, searchAction, timeZone]);
+      });
+    };
+
+    if (session.status === "debouncing") {
+      const id = setTimeout(fire, SEARCH_DEBOUNCE_MS);
+      return () => clearTimeout(id); // a newer keystroke cancels this request
+    }
+    fire();
+  }, [session, productIds, searchAction]);
 
   function onLoadMore() {
     // An event handler closes over the CURRENT render's session — which is exactly
@@ -248,7 +279,8 @@ export function MovementsTable({
     const active = session;
     if (!canLoadMoreSession(active)) return;
     const myGen = active.generation;
-    const request = sessionRequest(active, nextOffset(active));
+    const sessionZone = active.timeZone;
+    const request = sessionRequest(active, nextOffset(active), productIds);
     dispatch({ type: "page_requested", generation: myGen });
     startLoading(async () => {
       // The SESSION's own filters, its CLOSED anchors, and the timezone it was
@@ -256,20 +288,29 @@ export function MovementsTable({
       // range that moved at midnight is exactly how rows get skipped or repeated.
       // A retry re-sends the identical request for the identical reason.
       const result = await searchAction(request);
-      if (result.ok) {
-        dispatch({
-          type: "page_loaded",
-          generation: myGen,
-          rows: result.movements ?? [],
-          hasMore: !!result.hasMore,
-        });
-      } else if (result.error === "timezone_changed") {
-        dispatch({ type: "session_stale", generation: myGen });
-      } else {
-        // Transient — the session (and its anchors) survive so a retry pages the
-        // SAME range.
-        dispatch({ type: "page_failed", generation: myGen });
+      if (!result.ok) {
+        dispatch(
+          result.error === "timezone_changed"
+            ? { type: "session_stale", generation: myGen }
+            : // Transient — the session (and its anchors) survive so a retry pages
+              // the SAME range.
+              { type: "page_failed", generation: myGen },
+        );
+        return;
       }
+      // A later page may NEVER redefine the session's timezone — it can only belong
+      // to it. If the server somehow answered under a different zone, the page does
+      // not describe this session's window, so the session is stale.
+      if (result.resolvedTimeZone !== sessionZone) {
+        dispatch({ type: "session_stale", generation: myGen });
+        return;
+      }
+      dispatch({
+        type: "page_loaded",
+        generation: myGen,
+        rows: result.movements,
+        hasMore: result.hasMore,
+      });
     });
   }
 
@@ -294,12 +335,13 @@ export function MovementsTable({
     startExport(async () => {
       // The SAME filters, anchors and timezone binding the visible rows came from —
       // so the file and the screen cannot describe different days.
-      const result = await exportAction(sessionRequest(active, 0));
-      if (result.error === "timezone_changed") {
-        dispatch({ type: "session_stale", generation: active.generation });
+      const result = await exportAction(sessionRequest(active, 0, productIds));
+      if (!result.ok) {
+        if (result.error === "timezone_changed") {
+          dispatch({ type: "session_stale", generation: active.generation });
+        }
         return; // nothing was exported
       }
-      if (!result.ok || !result.movements) return;
       const exportRows = result.movements;
       const rowsCsv = exportRows.map((m) => {
         const product = m.productId ? productById.get(m.productId) : undefined;
@@ -348,7 +390,12 @@ export function MovementsTable({
           <Input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            /* The search text is a FILTER, and it invalidates the session in the same
+               transition that changes the input — exactly like every other control.
+               `defer` only postpones the network call by SEARCH_DEBOUNCE_MS; it does
+               NOT postpone the invalidation. (It used to, and for 300ms the box read
+               "Widget" over the previous session's rows, with Export enabled.) */
+            onChange={(e) => applyFilters({ query: e.target.value }, true)}
             placeholder={t.searchPlaceholder}
             aria-label={t.searchPlaceholder}
             className="ps-9"
@@ -479,7 +526,15 @@ export function MovementsTable({
         </p>
       ) : null}
 
-      {rows.length === 0 ? (
+      {/* PENDING. The session is already dead — the operator has typed, or a filter
+          moved — but its request has not answered (or, while debouncing, not even
+          dialled). Showing "no results" here would be a lie, and showing the OLD rows
+          is the very defect this closes. */}
+      {debouncing || (loading && rows.length === 0) ? (
+        <p role="status" className="px-1 py-6 text-center text-sm text-ink-muted">
+          {t.loadingMore}
+        </p>
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={<History />}
           title={isDefault ? t.empty : dict.catalog.noResults}

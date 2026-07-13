@@ -97,7 +97,10 @@ interface Harness {
   answerSearch: (i: number, r: MovementSearchResult) => Promise<void>;
   answerExport: (i: number, r: MovementExportResult) => Promise<void>;
   csv: { filename: string; body: string }[];
-  unmount: () => void;
+  /** Resolve every still-pending request, then unmount. An in-flight `useTransition`
+   * left dangling on an unmounted root keeps React's act queue busy and corrupts the
+   * NEXT test — so a test never leaks a promise it did not answer. */
+  teardown: () => Promise<void>;
 }
 
 let harnesses: Harness[] = [];
@@ -165,7 +168,11 @@ function mount(opts: {
         await exportDeferreds[i].promise;
       });
     },
-    unmount() {
+    async teardown() {
+      await act(async () => {
+        for (const d of searchDeferreds) d.resolve({ ok: false, error: "failed" });
+        for (const d of exportDeferreds) d.resolve({ ok: false, error: "failed" });
+      });
       act(() => root.unmount());
       container.remove();
     },
@@ -209,10 +216,84 @@ function selectOption(el: Element, value: string) {
 }
 
 const presetSelect = (h: Harness) => $$(h, "select")[1]; // [0] = reason, [1] = date
+const searchInput = (h: Harness) => $(h, 'input[type="search"]') as HTMLInputElement;
 
+/** Type into the search box the way React sees it (a discrete `input` event). */
+function typeSearch(h: Harness, value: string) {
+  act(() => {
+    const node = searchInput(h);
+    Object.getOwnPropertyDescriptor(
+      dom.window.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(node, value);
+    node.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  });
+}
+
+/** Type WITHOUT act(), and read the DOM in the same synchronous turn — the only way
+ * to prove the invalidation is not merely being flushed for us by `act`. */
+function typeSearchAndReadDom<T>(h: Harness, value: string, read: () => T): T {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const prev = g.IS_REACT_ACT_ENVIRONMENT;
+  g.IS_REACT_ACT_ENVIRONMENT = false;
+  try {
+    const node = searchInput(h);
+    Object.getOwnPropertyDescriptor(
+      dom.window.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(node, value);
+    node.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    return read(); // ← BEFORE any effect, and long before the 300ms debounce
+  } finally {
+    g.IS_REACT_ACT_ENVIRONMENT = prev;
+  }
+}
+
+/** Re-enter the act world after an un-acted dispatch, so React's queued work is
+ * flushed here rather than leaking into the next test. */
+async function settle() {
+  await act(async () => {});
+}
+
+/** Advance past the search debounce so the (already-invalidated) request dials. */
+async function flushDebounce() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 350));
+  });
+}
+
+/**
+ * Focus a control the way a keyboard user reaches it, and assert it actually took
+ * focus (i.e. it is in the tab order — a `<div onClick>` would not be).
+ */
+function focusIt(el: Element): boolean {
+  act(() => (el as HTMLButtonElement).focus());
+  return dom.window.document.activeElement === el;
+}
+
+/**
+ * Activate a focused control by KEYBOARD. jsdom does not implement a button's
+ * Enter-to-activate behaviour, so this fires the activation event the browser would
+ * synthesize — which is the same handler path, on an element we have just proven is
+ * keyboard-focusable.
+ */
+function pressEnter(el: Element) {
+  act(() => {
+    el.dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    (el as HTMLButtonElement).dispatchEvent(
+      new dom.window.MouseEvent("click", { bubbles: true }),
+    );
+  });
+}
+
+/** A well-formed SUCCESS. `resolvedTimeZone` is REQUIRED by the type — that is the
+ * C2 contract — so a success can no longer omit the zone it was resolved under. */
+type MovementOk = Extract<MovementSearchResult, { ok: true }>;
 const ok = (
   rows: InventoryMovement[],
-  over: Partial<MovementSearchResult> = {},
+  over: Partial<Omit<MovementOk, "ok">> = {},
 ): MovementSearchResult => ({
   ok: true,
   movements: rows,
@@ -223,8 +304,8 @@ const ok = (
   ...over,
 });
 
-afterEach(() => {
-  for (const h of harnesses) h.unmount();
+afterEach(async () => {
+  for (const h of harnesses) await h.teardown();
   harnesses = [];
 });
 
@@ -584,22 +665,314 @@ describe("Export gating and RTL", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+describe("C1 — the product SEARCH invalidates synchronously; only the request waits", () => {
+  it("the render committed BY THE KEYSTROKE already has no old session", async () => {
+    const h = mount({ initial: [movement("a"), movement("b")] });
+    assert.equal(rowCells(h).length, 2);
+    assert.equal(exportButton(h)?.disabled, false);
+
+    // Read the DOM in the SAME synchronous turn as the input event — 300ms before the
+    // debounce could possibly fire. The search box was the last control that let the
+    // OLD rows and an ENABLED Export sit under the NEW text for a third of a second.
+    const snap = typeSearchAndReadDom(h, "Widget", () => ({
+      value: searchInput(h).value,
+      rows: rowCells(h).length,
+      exportDisabled: exportButton(h)?.disabled ?? true,
+      loadMore: loadMoreButton(h) !== undefined,
+      pending: (h.container.querySelector('[role="status"]')?.textContent ?? "").length > 0,
+      requests: h.searches.length,
+    }));
+
+    assert.equal(snap.value, "Widget", "the input shows the new text…");
+    assert.equal(snap.rows, 0, "…and the old rows are ALREADY gone");
+    assert.equal(snap.exportDisabled, true, "Export disabled IMMEDIATELY");
+    assert.equal(snap.loadMore, false, "Load more unavailable IMMEDIATELY");
+    assert.equal(snap.pending, true, "a pending/debouncing state is visible");
+    assert.equal(snap.requests, 0, "…but NO request has been made yet (debounced)");
+
+    // Only the REQUEST was deferred.
+    await settle();
+    await flushDebounce();
+    assert.equal(h.searches.length, 1, "exactly one request, for the latest query");
+    assert.deepEqual(h.searches[0].productIds, ["p1"], "…carrying the matched ids");
+    await h.answerSearch(0, ok([movement("c")]));
+    assert.equal(rowCells(h).length, 1);
+    assert.equal(exportButton(h)?.disabled, false);
+  });
+
+  it("rapid typing issues ONE request, for the final query", async () => {
+    const h = mount({ initial: [movement("a")] });
+    typeSearch(h, "W");
+    typeSearch(h, "Wi");
+    typeSearch(h, "Widget");
+    assert.equal(h.searches.length, 0, "no request while the operator is still typing");
+    assert.deepEqual(rowCells(h), [], "…and the old session is dead throughout");
+
+    await flushDebounce();
+    assert.equal(h.searches.length, 1, "earlier timers were cancelled");
+    assert.deepEqual(h.searches[0].productIds, ["p1"]);
+  });
+
+  it("Export and Load more cannot run while the search debounce is pending", async () => {
+    const h = mount({ initial: [movement("a")] });
+    // Drive a real resolved session first (the SSR one issues no request).
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([movement("a")], { hasMore: true }));
+    assert.equal(exportButton(h)?.disabled, false);
+    assert.equal(loadMoreButton(h)?.disabled, false);
+
+    typeSearch(h, "Widget"); // debouncing now
+    assert.equal(exportButton(h)?.disabled, true);
+    assert.equal(loadMoreButton(h), undefined);
+
+    click(exportButton(h)!);
+    assert.equal(h.exports.length, 0, "Export cannot run during the debounce");
+    await flushDebounce();
+    assert.equal(h.searches.length, 2, "only the search request went out");
+  });
+
+  it("an OLD search response cannot restore rows or Export; an OLD failure cannot kill the new session", async () => {
+    const h = mount({ initial: [] });
+    typeSearch(h, "Widget");
+    await flushDebounce(); // request #0 for "Widget"
+    typeSearch(h, "Gadget");
+    await flushDebounce(); // request #1 for "Gadget"
+    assert.equal(h.searches.length, 2);
+
+    // The OLD request answers last, with rows.
+    await h.answerSearch(0, ok([movement("stale")], { hasMore: true }));
+    assert.deepEqual(rowCells(h), [], "a superseded search reply may not restore rows");
+    assert.equal(exportButton(h)?.disabled, true);
+
+    // The CURRENT one resolves.
+    await h.answerSearch(1, ok([movement("fresh")]));
+    assert.equal(rowCells(h).length, 1);
+    assert.equal(exportButton(h)?.disabled, false);
+
+    // …and a late FAILURE for the dead generation cannot kill it.
+    await h.answerSearch(0, { ok: false, error: "failed" });
+    assert.equal(rowCells(h).length, 1, "the live session survives");
+    assert.ok(!text(h).includes("Could not load"));
+  });
+
+  it("clearing the search invalidates synchronously too", async () => {
+    const h = mount({ initial: [] });
+    typeSearch(h, "Widget");
+    await flushDebounce();
+    await h.answerSearch(0, ok([movement("a")]));
+    assert.equal(rowCells(h).length, 1);
+
+    const snap = typeSearchAndReadDom(h, "", () => ({
+      rows: rowCells(h).length,
+      exportDisabled: exportButton(h)?.disabled ?? true,
+    }));
+    assert.equal(snap.rows, 0, "clearing is a filter change like any other");
+    assert.equal(snap.exportDisabled, true);
+
+    await settle();
+    await flushDebounce();
+    assert.equal(h.searches[1].productIds, undefined, "no product filter");
+  });
+
+  it("a NO-OP search (same applied term) keeps the session and burns no generation", async () => {
+    const h = mount({ initial: [] });
+    typeSearch(h, "Widget");
+    await flushDebounce();
+    await h.answerSearch(0, ok([movement("a")], { hasMore: true }));
+    assert.equal(rowCells(h).length, 1);
+    assert.equal(exportButton(h)?.disabled, false);
+
+    // Retyping the SAME term (only whitespace differs) changes no applied filter.
+    typeSearch(h, "Widget ");
+    assert.equal(rowCells(h).length, 1, "a healthy session is NOT torn down");
+    assert.equal(exportButton(h)?.disabled, false, "…and Export stays available");
+    await flushDebounce();
+    assert.equal(h.searches.length, 1, "no request — nothing changed");
+
+    // …and the session generation is still coherent: load-more still pages it.
+    click(loadMoreButton(h)!);
+    assert.equal(h.searches.length, 2);
+    assert.equal(h.searches[1].offset, 1, "offset from the SAME session's rows");
+    await h.answerSearch(1, ok([movement("b")]));
+    assert.equal(rowCells(h).length, 2, "the page appended to the SAME session");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+describe("C2 — a SUCCESS must name the timezone it was resolved under", () => {
+  it("a malformed success (no resolvedTimeZone) FAILS CLOSED — no rows, no fallback", async () => {
+    const h = mount({ initial: [movement("a")], timeZone: JLM });
+    selectOption(presetSelect(h), "today");
+
+    // A type-valid-looking success that omits the zone. The cast is the point: this
+    // reply crossed the network, and TypeScript is not a runtime trust boundary.
+    const malformed = {
+      ok: true,
+      movements: [movement("x")],
+      hasMore: false,
+      resolvedFrom: "2026-07-13",
+      resolvedTo: "2026-07-13",
+    } as unknown as MovementSearchResult;
+    await h.answerSearch(0, malformed);
+
+    assert.deepEqual(rowCells(h), [], "the rows are NOT displayed");
+    assert.ok(
+      !text(h).includes("12:57"),
+      "and above all NOT rendered under the page's Jerusalem prop",
+    );
+    assert.equal(exportButton(h)?.disabled, true, "Export stays disabled");
+    assert.equal(loadMoreButton(h), undefined, "Load more stays unavailable");
+    assert.ok(text(h).includes("Could not load"), "a failed state, with an explanation");
+    const retry = button(h, "Retry");
+    assert.ok(retry, "…and a Retry");
+
+    // A subsequent VALID reply under UTC succeeds and binds the session to UTC.
+    click(retry!);
+    await h.answerSearch(1, ok([movement("a")], { resolvedTimeZone: UTC }));
+    assert.equal(rowCells(h).length, 1);
+    assert.ok(rowCells(h)[0].includes("09:57"), "rendered in the SESSION's zone");
+    assert.ok(!rowCells(h)[0].includes("12:57"));
+    assert.equal(exportButton(h)?.disabled, false);
+  });
+
+  it("an empty-string timezone is also refused (not just a missing key)", async () => {
+    const h = mount({ initial: [], timeZone: JLM });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([movement("a")], { resolvedTimeZone: "  " }));
+    assert.deepEqual(rowCells(h), [], "a blank zone is not a zone");
+    assert.equal(exportButton(h)?.disabled, true);
+    assert.ok(button(h, "Retry"));
+  });
+
+  it("a LATER PAGE cannot redefine the session's timezone", async () => {
+    const h = mount({ initial: [] });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([movement("a")], { hasMore: true })); // bound to JLM
+
+    click(loadMoreButton(h)!);
+    // The page comes back claiming a DIFFERENT zone — it cannot belong to this
+    // session, so the session is stale rather than silently re-bound.
+    await h.answerSearch(1, ok([movement("b")], { resolvedTimeZone: UTC }));
+    assert.deepEqual(rowCells(h), [], "the session is invalidated, not re-bound");
+    assert.ok(button(h, "Re-apply filter"));
+    assert.equal(exportButton(h)?.disabled, true);
+  });
+
+  it("screen and CSV agree, and the browser timezone is irrelevant", async () => {
+    const original = process.env.TZ;
+    process.env.TZ = "Pacific/Kiritimati"; // a wildly different machine zone
+    try {
+      const h = mount({ initial: [], timeZone: JLM });
+      selectOption(presetSelect(h), "today");
+      await h.answerSearch(0, ok([movement("a")], { resolvedTimeZone: UTC }));
+
+      const onScreen = rowCells(h)[0];
+      assert.ok(onScreen.includes("09:57"), "the SESSION's zone, not the machine's");
+
+      click(exportButton(h)!);
+      await h.answerExport(0, { ok: true, movements: [movement("a")], capped: false });
+      assert.ok(h.csv[0].body.includes(onScreen), "CSV cell === screen cell");
+      assert.ok(!h.csv[0].body.includes("12:57"));
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+describe("accessibility — keyboard recovery and RTL", () => {
+  it("Retry is reachable and activatable from the keyboard", async () => {
+    const h = mount({ initial: [] });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, { ok: false, error: "failed" });
+
+    const retry = button(h, "Retry")!;
+    assert.equal(retry.tagName, "BUTTON", "a semantic button, not a div");
+    assert.equal(retry.getAttribute("type"), "button");
+    assert.ok(!retry.disabled);
+
+    assert.ok(focusIt(retry), "it takes focus — it is in the tab order");
+    pressEnter(retry);
+    assert.equal(h.searches.length, 2, "keyboard activation restarts the session");
+    assert.equal(h.searches[1].offset, 0);
+  });
+
+  it("Re-apply is reachable and activatable from the keyboard", async () => {
+    const h = mount({ initial: [] });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([movement("a")], { hasMore: true }));
+    click(loadMoreButton(h)!);
+    await h.answerSearch(1, { ok: false, error: "timezone_changed" });
+
+    const reapply = button(h, "Re-apply filter")!;
+    assert.equal(reapply.tagName, "BUTTON");
+    assert.ok(focusIt(reapply), "it takes focus — it is in the tab order");
+    pressEnter(reapply);
+    assert.equal(h.searches.length, 3);
+    assert.equal(h.searches[2].offset, 0, "offset zero");
+    assert.equal(h.searches[2].expectedTimeZone, undefined, "no old binding");
+  });
+
+  it("Hebrew renders RTL-correct content with a bidi-safe timestamp", async () => {
+    const he = mount({ initial: [], timeZone: JLM, locale: "he" });
+    selectOption(presetSelect(he), "today");
+    await he.answerSearch(0, ok([movement("a")]));
+
+    const cell = rowCells(he)[0];
+    assert.ok(cell.includes("12:57"), "the tenant wall clock, in Hebrew");
+    assert.ok(/\d/.test(cell), "digits are Western (bidi-safe in an RTL line)");
+
+    // The recovery strings are translated, not left in English.
+    const heDict = getDictionary("he").admin.inventory.movements;
+    const enDict = getDictionary("en").admin.inventory.movements;
+    assert.notEqual(heDict.retry, enDict.retry);
+    assert.notEqual(heDict.reapplyFilter, enDict.reapplyFilter);
+    assert.notEqual(heDict.loadFailed, enDict.loadFailed);
+    // Layout uses LOGICAL properties only — nothing hard-codes a physical side.
+    const src = readFileSync(
+      join(process.cwd(), "src/components/admin/movements-table.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      src,
+      /className="[^"]*\b(ml-|mr-|pl-|pr-|left-|right-|text-left|text-right)/,
+      "logical CSS only — a physical side would flip wrongly in RTL",
+    );
+  });
+});
+
 describe("architecture (what a render cannot show)", () => {
   it("no passive-effect invalidation, no hydration suppression, no server-only import", () => {
     const src = readFileSync(
       join(process.cwd(), "src/components/admin/movements-table.tsx"),
       "utf8",
     );
-    // Invalidation happens in the HANDLER, in the same transition as the control.
-    assert.match(src, /function applyFilters\(patch: Partial<MovementFilters>\)/);
-    assert.match(src, /dispatch\(\{ type: "filters_changed", generation: genRef\.current, patch \}\)/);
-    // The old passive path is gone: no effect keyed on the filter values.
+    // Invalidation happens in the HANDLER, in the same transition as the control —
+    // and the REDUCER allocates the generation, so a no-op cannot burn one.
+    assert.match(
+      src,
+      /function applyFilters\(patch: Partial<MovementFilters>, defer = false\)/,
+    );
+    assert.match(src, /dispatch\(\{ type: "filters_changed", patch, defer \}\)/);
+    assert.doesNotMatch(src, /genRef/, "the component no longer allocates generations");
+    // The SEARCH BOX is a filter like any other: it dispatches on change. It must NOT
+    // keep its own useState, and the debounce must NOT be what invalidates.
+    assert.match(
+      src,
+      /onChange=\{\(e\) => applyFilters\(\{ query: e\.target\.value \}, true\)\}/,
+      "typing invalidates synchronously; only the request is deferred",
+    );
+    assert.doesNotMatch(src, /setQuery|useState\(""\)/, "no second query state");
+    assert.doesNotMatch(src, /useLayoutEffect|flushSync|suppressHydrationWarning/);
+    // No fallback may reintroduce the page prop as a session timezone.
     assert.doesNotMatch(
       src,
-      /\}, \[reason, direction, preset, customFrom, customTo, productIds\]\)/,
-      "no useEffect that notices a filter change and invalidates afterwards",
+      /resolvedTimeZone \?\?/,
+      "a success that cannot name its zone must FAIL, not borrow the page's",
     );
-    assert.doesNotMatch(src, /useLayoutEffect|flushSync|suppressHydrationWarning/);
+    assert.match(src, /isResolvedTimeZone\(result\.resolvedTimeZone\)/, "runtime guard");
     // The Server Actions are TYPE-ONLY imports, so no server-only module is dragged in.
     assert.match(src, /^import type \{\n(?:.*\n)*?\} from "@\/lib\/actions\/inventory";/m);
     assert.doesNotMatch(src, /^import \{[^}]*searchMovementsAction/m);
