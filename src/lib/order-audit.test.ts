@@ -486,21 +486,35 @@ test("guard: the RLS policy preserves the customer clause and adds an order clau
   assert.deepEqual(creates, ["public.audit_events"], "only the audit_events policy is created");
 });
 
-// ── 34–35. NO Order Timeline UI and NO global Activity Log in this phase ──
-test("guard: M8H.1 adds NO Order Timeline UI and NO global Activity Log route", () => {
+// ── 34–35. The Order Timeline is M8H.3; a GLOBAL Activity Log is still not ──
+// M8H.1 asserted that neither existed yet. M8H.3 delivered the per-order
+// Timeline (that half of the fence has been crossed, deliberately and under
+// review), so the guard now pins the CURRENT boundary: the read-only Order
+// Timeline exists, and the cross-entity Activity Log browser still does NOT.
+test("guard: the Order Timeline is per-order (M8H.3) — no global Activity Log route", () => {
+  // M8H.3 delivered exactly these, and nothing wider.
   for (const p of [
     "components/admin/order-timeline.tsx",
-    "components/admin/activity-log.tsx",
-    "app/[locale]/admin/activity",
-    "app/[locale]/admin/audit",
     "lib/data/order-timeline.ts",
     "lib/actions/order-timeline.ts",
   ]) {
-    assert.ok(!existsSync(join(process.cwd(), "src", p)), `${p} must not exist (M8H.2)`);
+    assert.ok(existsSync(join(process.cwd(), "src", p)), `${p} exists (M8H.3)`);
   }
-  // The order detail page gains no timeline in this phase.
+  // A tenant-wide audit browser is NOT in scope and must not have appeared.
+  for (const p of [
+    "components/admin/activity-log.tsx",
+    "app/[locale]/admin/activity",
+    "app/[locale]/admin/audit",
+  ]) {
+    assert.ok(
+      !existsSync(join(process.cwd(), "src", p)),
+      `${p} must not exist (a global Activity Log is future scope)`,
+    );
+  }
+  // The Timeline is mounted on the ORDER detail page, scoped to that one order.
   const detail = readSrc("app/[locale]/admin/orders/[id]/page.tsx");
-  assert.ok(!/OrderTimeline|order-timeline/i.test(detail));
+  assert.ok(/OrderTimeline/.test(detail));
+  assert.ok(/getOrderTimelinePage\(\{ orderId: order\.id \}\)/.test(detail));
 });
 
 // ── 36–39. No client-provided actor / tenant / event type / metadata ───────

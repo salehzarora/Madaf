@@ -610,16 +610,25 @@ test("guard: changing the timezone emits NO audit event (reads/settings are sile
   assert.ok(!/_log_customer_audit_event|_log_order_audit_event|audit_events/i.test(MIGRATION));
 });
 
-// ══ Scope: M8H.2 adds no Order Timeline / Activity Log ═══════════════════
-test("guard: M8H.2 adds NO Order Timeline UI and NO global Activity Log", () => {
+// ══ Scope: the Order Timeline is M8H.3; a global Activity Log is still not ══
+// M8H.2 deferred the Order Timeline UI to M8H.3, which has now delivered it.
+// What must STILL hold is that M8H.2's own contribution stayed timezone-only,
+// and that no tenant-wide audit browser has appeared.
+test("guard: no global Activity Log route (still future scope)", () => {
   for (const p of [
-    "components/admin/order-timeline.tsx",
     "components/admin/activity-log.tsx",
     "app/[locale]/admin/activity",
     "app/[locale]/admin/audit",
   ]) {
-    assert.ok(!existsSync(join(process.cwd(), "src", p)), `${p} must not exist (M8H.3)`);
+    assert.ok(
+      !existsSync(join(process.cwd(), "src", p)),
+      `${p} must not exist (a global Activity Log is future scope)`,
+    );
   }
+  // The M8H.3 Timeline consumes the M8H.2 formatter — it never re-derives a zone.
+  const ui = stripComments(readSrc("components/admin/order-timeline.tsx"));
+  assert.ok(/formatTenantDateTime\(event\.createdAt, locale, timeZone\)/.test(ui));
+  assert.ok(!/Intl\.DateTimeFormat|toLocaleString|resolvedOptions/.test(ui));
 });
 
 // ══ Settings control: a11y, explicit save, RTL/LTR, ar/he/en ════════════

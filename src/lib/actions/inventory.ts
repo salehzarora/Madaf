@@ -267,9 +267,11 @@ export async function searchMovementsAction(
 }
 
 /** An export. Discriminated for the same reason: a success is a success, an error is
- * an error, and neither can masquerade as the other by omitting a field. The export
- * carries no timezone of its own — it is rendered with the ACTIVE session's, and the
- * server already refused it if the tenant's zone had changed (expectedTimeZone). */
+ * an error, and neither can masquerade as the other by omitting a field. A success
+ * MUST carry the `resolvedTimeZone` the rows were resolved under — the client
+ * verifies it against the active session's zone BEFORE reading any row, and
+ * refuses to build a CSV if it is missing or disagrees (the server had already
+ * refused the query outright if the tenant's zone had changed: expectedTimeZone). */
 export type MovementExportResult =
   | {
       ok: true;
