@@ -1164,6 +1164,7 @@ const en: Dictionary = {
       loading: "Loading…",
       loadMore: "Load more",
       loadError: "Couldn't load more activity.",
+      error: "Couldn't load activity.",
       retry: "Retry",
       actorMember: "A team member",
       actorFormer: "Former team member",

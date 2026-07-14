@@ -30,11 +30,13 @@ import { interpolate } from "@/i18n/dictionaries";
 import type { AuditSensitivity } from "@/lib/audit-events";
 import {
   isOrderAuditFieldKey,
+  isOrderInitiatorKind,
   isOrderInventoryEffect,
+  isOrderLinkKind,
   orderAuditSensitivity,
   renderOrderAuditDetails,
   resolveOrderEventKey,
-  type OrderAuditEventKey,
+  type OrderAuditFieldKey,
 } from "@/lib/order-audit";
 import type { TimelineActor } from "@/lib/customer-timeline";
 import type { OrderStatus } from "@/lib/types";
@@ -64,30 +66,90 @@ export interface OrderTimelinePage {
   hasMore: boolean;
 }
 
-// ── Client-safe metadata projection ────────────────────────────────────────
-// Mirrors the M8H.1 SQL key allowlist (_log_order_audit_event) EXACTLY — the
-// same keys, per the same event types. Anything else (a stray/legacy key such as
-// the seed's `order_number`, or any future producer key) is dropped BEFORE the
-// row crosses the wire. Values are re-validated by the renderers below.
-const ORDER_CLIENT_METADATA_KEYS: Record<OrderAuditEventKey, readonly string[]> = {
-  "order.created": ["initiator_kind", "item_count"],
-  "order.updated": ["changed_fields", "item_count_before", "item_count_after"],
-  "order.status_changed": ["from_status", "to_status", "inventory_effect"],
-  "order.customer_linked": ["link_kind"],
-};
+/**
+ * The result of the OPTIONAL initial Timeline read, as it reaches the client
+ * component. The Timeline is a non-critical widget on the Order Details page, so
+ * its first read is isolated from the REQUIRED order reads: a success carries the
+ * first page; a failure is represented explicitly ({ ok: false }) so the client
+ * can render a localized, retryable error WITHOUT the surrounding Order Details
+ * page crashing, and WITHOUT ever faking "no activity" on error. A failure
+ * carries no backend error text — only the boolean.
+ */
+export type OrderTimelineInitial =
+  | { ok: true; page: OrderTimelinePage }
+  | { ok: false };
+
+// ── Client-safe metadata projection (KEY-safe AND VALUE-safe) ───────────────
+// This is the security boundary, NOT the renderer. It mirrors the M8H.1 SQL
+// contract (_log_order_audit_event) both in WHICH keys are allowed per event and
+// in what SHAPE each value may take, and it VALIDATES every value before it is
+// added to the client-bound object. A malformed value nested under an otherwise
+// allowlisted key (e.g. a secret object smuggled in where a count belongs, or a
+// snapshot object hidden inside the changed-fields array) is dropped here — it
+// never crosses the Server Component / Server Action boundary. The renderers
+// re-validate too, but only as defence in depth; correctness does not depend on
+// them, because by the time a value reaches them it is already a closed enum, a
+// bounded integer, or a filtered field-key array.
+
+const ORDER_STATUSES: readonly OrderStatus[] = [
+  "new",
+  "confirmed",
+  "preparing",
+  "delivered",
+  "cancelled",
+];
+function isOrderStatus(v: unknown): v is OrderStatus {
+  return (
+    typeof v === "string" && (ORDER_STATUSES as readonly string[]).includes(v)
+  );
+}
+
+/** A generous upper bound on any rendered count. The domain maximum is ~200
+ * distinct order lines (update_order_items caps lines at 200), so this only ever
+ * rejects absurd / overflow / adversarial magnitudes, never a real count. */
+const ORDER_COUNT_MAX = 1_000_000;
+
+/** A safe, non-negative integer count — or undefined. Rejects strings, objects,
+ * arrays, booleans, NaN/Infinity, negatives, non-integers, and absurd
+ * magnitudes, so an object/array/string can never be forwarded under a numeric
+ * key. */
+function safeOrderCount(v: unknown): number | undefined {
+  return typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= 0 &&
+    v <= ORDER_COUNT_MAX
+    ? v
+    : undefined;
+}
+
+/** The `changed_fields` array reduced to the known display-safe identifiers,
+ * order-preserving + deduped. A non-array, nested values, and arbitrary strings
+ * are all rejected; the closed field-key set (`items` / `notes`) also bounds the
+ * length, so no cap is needed. */
+function safeChangedFields(v: unknown): OrderAuditFieldKey[] {
+  if (!Array.isArray(v)) return [];
+  const out: OrderAuditFieldKey[] = [];
+  for (const f of v) {
+    if (isOrderAuditFieldKey(f) && !out.includes(f)) out.push(f);
+  }
+  return out;
+}
 
 /**
- * Project stored metadata down to the client-safe allowlist for its event type.
- * An unrecognized event type yields `{}` — nothing raw is ever rendered.
+ * Project stored metadata down to the client-safe, VALUE-VALIDATED allowlist for
+ * its event type. An unrecognized event type yields `{}` — nothing raw is ever
+ * rendered — and a malformed value under a known key is omitted (the event row
+ * itself is kept; only the bad value is dropped).
  *
  * `source` and `initial_status` are deliberately NOT projected for
  * `order.created`: they are safe to STORE (and the SQL allows them) but the
  * Timeline does not render them — `initial_status` is always 'new' (noise), and
- * the channel is already conveyed honestly by `initiator_kind`. Projecting only
- * what is rendered keeps the wire payload minimal.
+ * the channel is already conveyed honestly by `initiator_kind`.
  *
- * `changed_fields` is additionally filtered to the known field-key allowlist, so
- * an unexpected field name can never reach a label lookup.
+ * The result is a fresh object built ONLY from validated primitives / a filtered
+ * field-key array, so no sub-object from the source (which could carry a hashed
+ * token, a customer snapshot, notes text, an order number, a price, …) can be
+ * forwarded by reference.
  */
 export function clientSafeOrderMetadata(
   eventType: string,
@@ -95,16 +157,41 @@ export function clientSafeOrderMetadata(
 ): Record<string, unknown> {
   const key = resolveOrderEventKey(eventType);
   if (!key) return {};
-  const allow = ORDER_CLIENT_METADATA_KEYS[key];
   const src = metadata ?? {};
   const out: Record<string, unknown> = {};
-  for (const k of allow) {
-    if (!(k in src)) continue;
-    if (k === "changed_fields") {
-      const arr = Array.isArray(src[k]) ? (src[k] as unknown[]) : [];
-      out[k] = arr.filter(isOrderAuditFieldKey);
-    } else {
-      out[k] = src[k];
+
+  switch (key) {
+    case "order.created": {
+      if (isOrderInitiatorKind(src.initiator_kind)) {
+        out.initiator_kind = src.initiator_kind;
+      }
+      const count = safeOrderCount(src.item_count);
+      if (count !== undefined) out.item_count = count;
+      break;
+    }
+    case "order.updated": {
+      // Present-and-array → the filtered field-key list (possibly empty); a
+      // non-array is dropped entirely.
+      if (Array.isArray(src.changed_fields)) {
+        out.changed_fields = safeChangedFields(src.changed_fields);
+      }
+      const before = safeOrderCount(src.item_count_before);
+      if (before !== undefined) out.item_count_before = before;
+      const after = safeOrderCount(src.item_count_after);
+      if (after !== undefined) out.item_count_after = after;
+      break;
+    }
+    case "order.status_changed": {
+      if (isOrderStatus(src.from_status)) out.from_status = src.from_status;
+      if (isOrderStatus(src.to_status)) out.to_status = src.to_status;
+      if (isOrderInventoryEffect(src.inventory_effect)) {
+        out.inventory_effect = src.inventory_effect;
+      }
+      break;
+    }
+    case "order.customer_linked": {
+      if (isOrderLinkKind(src.link_kind)) out.link_kind = src.link_kind;
+      break;
     }
   }
   return out;
@@ -130,19 +217,6 @@ export function buildOrderTimelineEvent(input: {
 }
 
 // ── Event-specific presentation ────────────────────────────────────────────
-
-const ORDER_STATUSES: readonly OrderStatus[] = [
-  "new",
-  "confirmed",
-  "preparing",
-  "delivered",
-  "cancelled",
-];
-function isOrderStatus(v: unknown): v is OrderStatus {
-  return (
-    typeof v === "string" && (ORDER_STATUSES as readonly string[]).includes(v)
-  );
-}
 
 /** The validated before → after status pair for an `order.status_changed` row,
  * or null for any other event / a malformed or unknown status. The UI renders

@@ -23,6 +23,7 @@ import {
   listCategories,
   listDocumentsForOrder,
   listProducts,
+  safeInitialOrderTimeline,
 } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
 import { formatTenantDateTime } from "@/lib/time";
@@ -50,18 +51,25 @@ export default async function AdminOrderDetailPage({
   // they must still render (with the subtotal they're counted in), not
   // silently disappear (M8A). The items editor excludes inactive products
   // from its add-picker on its own.
-  const [customer, orderDocs, products, categories, timelinePage] =
-    await Promise.all([
-      getCustomer(order.customerId),
-      listDocumentsForOrder(order.id),
-      listProducts({ includeInactive: true }),
-      listCategories(),
-      // Activity timeline (M8H.3) — the FIRST bounded page of this order's real
-      // M8H.1 audit_events. RLS scopes it (can_access_order), so a sales_rep
-      // only reaches an assigned order's history; getOrder already gated the
-      // page itself. Read-only: viewing records NO audit event.
-      getOrderTimelinePage({ orderId: order.id }),
-    ]);
+  // Activity timeline (M8H.3) — the FIRST bounded page of this order's real
+  // M8H.1 audit_events. RLS scopes it (can_access_order), so a sales_rep only
+  // reaches an assigned order's history; getOrder already gated the page itself.
+  // Read-only: viewing records NO audit event. It is an OPTIONAL widget, so its
+  // initial read is ISOLATED (safeInitialOrderTimeline never throws): a Timeline
+  // failure renders a localized, retryable error INSIDE the card and never
+  // rejects the required Order Details render. Kicked off before the required
+  // reads so it still loads concurrently; the required reads below still fail
+  // the page normally if THEY fail.
+  const timelinePromise = safeInitialOrderTimeline(() =>
+    getOrderTimelinePage({ orderId: order.id }),
+  );
+  const [customer, orderDocs, products, categories] = await Promise.all([
+    getCustomer(order.customerId),
+    listDocumentsForOrder(order.id),
+    listProducts({ includeInactive: true }),
+    listCategories(),
+  ]);
+  const timeline = await timelinePromise;
   const productById = new Map(products.map((p) => [p.id, p]));
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   // Latest document record per type, for the documents history/generate card.
@@ -214,7 +222,7 @@ export default async function AdminOrderDetailPage({
                 orderId={order.id}
                 locale={locale}
                 dict={dict}
-                initialPage={timelinePage}
+                initial={timeline}
                 timeZone={timeZone}
                 loadMore={loadOrderTimelineAction}
               />

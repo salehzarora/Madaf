@@ -1155,6 +1155,7 @@ const he: Dictionary = {
       loading: "טוען…",
       loadMore: "טען עוד",
       loadError: "טעינת פעילות נוספת נכשלה.",
+      error: "טעינת הפעילות נכשלה.",
       retry: "נסה שוב",
       actorMember: "חבר צוות",
       actorFormer: "חבר צוות לשעבר",

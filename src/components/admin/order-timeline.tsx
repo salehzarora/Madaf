@@ -22,7 +22,7 @@ import {
   orderStatusTransition,
   orderTimelineDetails,
   type OrderTimelineEvent,
-  type OrderTimelinePage,
+  type OrderTimelineInitial,
 } from "@/lib/order-timeline";
 import { formatTenantDateTime } from "@/lib/time";
 
@@ -167,23 +167,35 @@ function TimelineRow({
 /**
  * Read-only Order Timeline (M8H.3). Renders the server-fetched initial page and
  * appends older pages through the bounded server action. State is Order-scoped
- * (a fresh component per order id via the page); overlapping "load more" clicks
- * are guarded by a ref; a failed load KEEPS the already-rendered events and
- * offers a retry, so a Timeline failure can never blank the Order Details around
- * it. No edit/delete controls, no raw metadata, and viewing writes nothing.
+ * (a fresh component per order id via the page); overlapping clicks are guarded
+ * by a ref; no edit/delete controls, no raw metadata, and viewing writes nothing.
+ *
+ * The INITIAL read is optional and isolated on the server (safeInitialOrderTimeline),
+ * so it arrives as a discriminated `initial`:
+ *   • { ok: true, page } — render the first page (or the calm empty state);
+ *   • { ok: false }      — render a localized, RETRYABLE error IN PLACE, without
+ *                          the Order Details page ever crashing and WITHOUT
+ *                          faking "no activity". Retry performs a fresh first-page
+ *                          read through the SAME bounded action; on success it
+ *                          replaces the error with the real page, on failure it
+ *                          stays a contained, still-retryable error.
+ * A later Load-More failure instead KEEPS the already-rendered events and offers
+ * a retry, so a Timeline failure never blanks the Order Details around it.
  */
 export function OrderTimeline({
   orderId,
   locale,
   dict,
-  initialPage,
+  initial,
   timeZone,
   loadMore,
 }: {
   orderId: string;
   locale: Locale;
   dict: Dictionary;
-  initialPage: OrderTimelinePage;
+  /** The isolated initial read result (success carries the first page; failure
+   * is explicit so the card can offer a retry instead of crashing the page). */
+  initial: OrderTimelineInitial;
   /** M8H.2 — the tenant's IANA zone (server-derived). Audit rows are absolute
    * UTC instants; they are DISPLAYED in the business's timezone. Never the
    * device's, and never the server machine's. */
@@ -191,9 +203,20 @@ export function OrderTimeline({
   loadMore: LoadOrderTimeline;
 }) {
   const t = dict.audit.timeline;
-  const [events, setEvents] = useState<OrderTimelineEvent[]>(initialPage.events);
-  const [cursor, setCursor] = useState<string | null>(initialPage.nextCursor);
-  const [hasMore, setHasMore] = useState<boolean>(initialPage.hasMore);
+  const [events, setEvents] = useState<OrderTimelineEvent[]>(
+    initial.ok ? initial.page.events : [],
+  );
+  const [cursor, setCursor] = useState<string | null>(
+    initial.ok ? initial.page.nextCursor : null,
+  );
+  const [hasMore, setHasMore] = useState<boolean>(
+    initial.ok ? initial.page.hasMore : false,
+  );
+  // The initial server read failed → show a retryable error IN PLACE (never the
+  // empty state, which would falsely claim "no activity").
+  const [initialFailed, setInitialFailed] = useState(!initial.ok);
+  // A Load-More failure while events are already shown (distinct from the initial
+  // failure above).
   const [error, setError] = useState(false);
   const [loading, startLoading] = useTransition();
   // A ref guard so overlapping clicks (or a click while the transition is still
@@ -233,6 +256,58 @@ export function OrderTimeline({
         inFlight.current = false;
       }
     });
+  }
+
+  // Retry the INITIAL read: a fresh FIRST page (no cursor) through the same
+  // bounded action + safe projection the SSR path used. On success it replaces
+  // the error with the real page; on failure it stays a contained error.
+  function onRetryInitial() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    startLoading(async () => {
+      try {
+        const res = await loadMore({ orderId }); // no cursor → first page
+        if (!res.ok || !res.page) {
+          setInitialFailed(true); // still failed; remain retryable
+          return;
+        }
+        const page = res.page;
+        setEvents(page.events);
+        setCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+        setInitialFailed(false);
+      } catch {
+        setInitialFailed(true);
+      } finally {
+        inFlight.current = false;
+      }
+    });
+  }
+
+  // Initial read failed: a localized, retryable error IN PLACE — never the empty
+  // state, and the surrounding Order Details page is fully rendered around this.
+  if (initialFailed) {
+    return (
+      <div className="flex flex-col">
+        <p
+          role="alert"
+          className="rounded-field bg-surface-sunken px-4 py-6 text-center text-sm font-medium text-danger"
+        >
+          {t.error}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onRetryInitial}
+          disabled={loading}
+          aria-busy={loading}
+          className="mt-3 self-center"
+        >
+          {loading ? t.loading : t.retry}
+        </Button>
+      </div>
+    );
   }
 
   if (events.length === 0) {

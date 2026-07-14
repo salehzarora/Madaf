@@ -1154,6 +1154,7 @@ const ar: Dictionary = {
       loading: "جارٍ التحميل…",
       loadMore: "تحميل المزيد",
       loadError: "تعذّر تحميل المزيد من النشاط.",
+      error: "تعذّر تحميل النشاط.",
       retry: "إعادة المحاولة",
       actorMember: "أحد أعضاء الفريق",
       actorFormer: "عضو فريق سابق",

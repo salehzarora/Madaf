@@ -86,5 +86,6 @@ export {
 } from "./customer-timeline";
 export {
   getOrderTimelinePage,
+  safeInitialOrderTimeline,
   type OrderTimelineQuery,
 } from "./order-timeline";

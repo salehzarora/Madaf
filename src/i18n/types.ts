@@ -1220,6 +1220,9 @@ export interface Dictionary {
       loading: string;
       loadMore: string;
       loadError: string;
+      /** M8H.3 — the INITIAL-load failure (nothing loaded yet), distinct from
+       * loadError ("…more…") which is for a later Load-More failure. */
+      error: string;
       retry: string;
       /** Actor fallbacks (no display name → email is unavailable/withheld). */
       actorMember: string;

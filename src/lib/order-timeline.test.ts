@@ -21,7 +21,10 @@ import { test } from "node:test";
 
 import { loadOrderTimelineAction } from "./actions/order-timeline";
 import { decodeTimelineCursor, type TimelineActor } from "./customer-timeline";
-import { getOrderTimelinePage } from "./data/order-timeline";
+import {
+  getOrderTimelinePage,
+  safeInitialOrderTimeline,
+} from "./data/order-timeline";
 import { orderAuditEvents } from "./mock";
 import { orderAuditEventLabel, ORDER_AUDIT_EVENT_KEYS } from "./order-audit";
 import {
@@ -150,6 +153,185 @@ test("the legacy seed event is mirrored in the mock and stays inert", () => {
   assert.equal(built.sensitivity, "medium"); // unknown is never under-classified
   assert.equal(orderAuditEventLabel(built.eventType, EN), EN.audit.unknownEvent);
   assert.deepEqual(orderTimelineDetails(built, EN), []);
+});
+
+// ══ 1b. VALUE-SAFE projection (P2) — malformed values never cross the wire ══
+// The projection is the security boundary, not the renderer: a malformed value
+// nested under an allowlisted key must be omitted BEFORE it reaches the client.
+
+/** Assert a projected metadata object contains ONLY safe leaves: strings
+ * (closed enums), finite non-negative integers, or arrays of strings. No nested
+ * object, no array-of-object, ever — whatever the input tried to smuggle in. */
+function assertOnlySafeLeaves(meta: Record<string, unknown>) {
+  for (const [k, v] of Object.entries(meta)) {
+    if (Array.isArray(v)) {
+      for (const el of v) {
+        assert.equal(typeof el, "string", `${k}[] element must be a string`);
+      }
+    } else {
+      assert.ok(
+        typeof v === "string" ||
+          (typeof v === "number" && Number.isInteger(v) && v >= 0),
+        `${k} must be a closed enum string or a safe integer, got ${typeof v}`,
+      );
+    }
+  }
+}
+
+test("count fields REJECT a nested object (the confirmed P2 payload)", () => {
+  // The exact shape Codex flagged: a token nested under a numeric key.
+  const out = clientSafeOrderMetadata("order.updated", {
+    changed_fields: ["notes"],
+    item_count_before: { token_hash: "secret" },
+    item_count_after: ["private"],
+  });
+  assert.deepEqual(out, { changed_fields: ["notes"] });
+  assert.ok(!("item_count_before" in out));
+  assert.ok(!("item_count_after" in out));
+  assertOnlySafeLeaves(out);
+});
+
+test("count fields reject array / string / boolean / NaN / Infinity / negative / float", () => {
+  for (const bad of [
+    [1, 2, 3],
+    { a: 1 },
+    "5",
+    true,
+    NaN,
+    Infinity,
+    -Infinity,
+    -1,
+    3.5,
+    Number.MAX_SAFE_INTEGER, // above the sane bound
+    null,
+    undefined,
+  ]) {
+    const out = clientSafeOrderMetadata("order.created", {
+      initiator_kind: "authenticated_user",
+      item_count: bad,
+    });
+    assert.ok(!("item_count" in out), `item_count must drop ${String(bad)}`);
+    // The valid sibling still survives.
+    assert.equal(out.initiator_kind, "authenticated_user");
+  }
+});
+
+test("count fields ACCEPT a valid non-negative integer (incl. 0)", () => {
+  for (const good of [0, 1, 5, 200]) {
+    const out = clientSafeOrderMetadata("order.created", { item_count: good });
+    assert.equal(out.item_count, good);
+  }
+});
+
+test("enum fields reject a number, an unknown string, an object, and null", () => {
+  for (const bad of [5, "not_a_channel", { x: 1 }, null, ["authenticated_user"]]) {
+    const out = clientSafeOrderMetadata("order.created", { initiator_kind: bad });
+    assert.ok(
+      !("initiator_kind" in out),
+      `initiator_kind must drop ${JSON.stringify(bad)}`,
+    );
+  }
+  // status + inventory_effect + link_kind reject the same way.
+  const s = clientSafeOrderMetadata("order.status_changed", {
+    from_status: "new",
+    to_status: "not_a_status",
+    inventory_effect: { nested: "x" },
+  });
+  assert.deepEqual(s, { from_status: "new" }); // only the valid enum survives
+  const l = clientSafeOrderMetadata("order.customer_linked", {
+    link_kind: "../../etc/passwd",
+  });
+  assert.deepEqual(l, {});
+});
+
+test("enum fields ACCEPT only their exact closed values", () => {
+  assert.equal(
+    clientSafeOrderMetadata("order.created", {
+      initiator_kind: "showcase_guest",
+    }).initiator_kind,
+    "showcase_guest",
+  );
+  const s = clientSafeOrderMetadata("order.status_changed", {
+    from_status: "preparing",
+    to_status: "delivered",
+    inventory_effect: "restored",
+  });
+  assert.deepEqual(s, {
+    from_status: "preparing",
+    to_status: "delivered",
+    inventory_effect: "restored",
+  });
+});
+
+test("changed_fields rejects a non-array, nested values, and arbitrary strings; dedupes", () => {
+  // Non-array → dropped entirely.
+  const notArray = clientSafeOrderMetadata("order.updated", {
+    changed_fields: { items: true },
+  });
+  assert.ok(!("changed_fields" in notArray));
+  // Arbitrary strings + nested objects + a sensitive key → filtered to the
+  // known display-safe identifiers only; duplicates collapsed.
+  const mixed = clientSafeOrderMetadata("order.updated", {
+    changed_fields: [
+      "items",
+      "items", // duplicate
+      "price", // not a display-safe field key
+      "notes",
+      { token_hash: "secret" }, // nested object
+      ["nested"], // nested array
+      "customer_id",
+      42,
+    ],
+  });
+  assert.deepEqual(mixed.changed_fields, ["items", "notes"]);
+  assertOnlySafeLeaves(mixed);
+});
+
+test("a deeply nested sensitive object under every key is fully stripped", () => {
+  const deep = {
+    a: { b: { c: { token_hash: "x", customer_snapshot: { phone: "050" } } } },
+  };
+  const out = clientSafeOrderMetadata("order.updated", {
+    changed_fields: [deep, "notes"],
+    item_count_before: deep,
+    item_count_after: { nested: deep },
+  });
+  assert.deepEqual(out, { changed_fields: ["notes"] });
+  assertOnlySafeLeaves(out);
+  // The sensitive strings appear NOWHERE in the serialized output.
+  const json = JSON.stringify(out);
+  assert.doesNotMatch(json, /token_hash|customer_snapshot|050/);
+});
+
+test("a malformed KNOWN event keeps the event but forwards NO malformed value", () => {
+  const built = buildOrderTimelineEvent({
+    id: "1",
+    eventType: "order.status_changed", // known event
+    createdAt: "2026-07-01T09:30:00Z",
+    actor: NO_ACTOR,
+    metadata: {
+      from_status: { evil: "obj" },
+      to_status: 999,
+      inventory_effect: ["array"],
+      // a stray sensitive key that is not even allowlisted
+      token_hash: "secret",
+    },
+  });
+  // The event survives (title still renders) but carries zero metadata.
+  assert.equal(built.eventType, "order.status_changed");
+  assert.deepEqual(built.metadata, {});
+  assertOnlySafeLeaves(built.metadata);
+});
+
+test("CLIENT-BOUNDARY proof: the produced page payload has no malformed/nested value", async () => {
+  // Inspect the REAL produced OrderTimelinePage (the object that crosses the
+  // Server Component / Server Action boundary) — not a DOM render.
+  const pageOut = await getOrderTimelinePage({ orderId: MOCK_ORDER, pageSize: 50 });
+  const json = JSON.stringify(pageOut);
+  assert.doesNotMatch(json, /token_hash|customer_snapshot|order_number|MDF-/);
+  for (const e of pageOut.events) {
+    assertOnlySafeLeaves(e.metadata);
+  }
 });
 
 test("projection tolerates null/undefined metadata", () => {
@@ -281,6 +463,7 @@ test("every event key has a non-empty label + details in ar/he/en", () => {
       dict.audit.timeline.loading,
       dict.audit.timeline.loadMore,
       dict.audit.timeline.loadError,
+      dict.audit.timeline.error,
       dict.audit.timeline.retry,
       dict.audit.timeline.actorMember,
       dict.audit.timeline.actorFormer,
@@ -443,6 +626,80 @@ test("no rendered event carries a raw/forbidden metadata key", async () => {
       assert.ok(!(k in e.metadata), `${e.eventType} must not carry ${k}`);
     }
   }
+});
+
+// ══ 4b. Isolated initial read (P1) — a Timeline failure is CONTAINED ═══════
+// safeInitialOrderTimeline is the exact wrapper the Order Details page uses for
+// the OPTIONAL first Timeline read. It must NEVER throw — a failure becomes
+// { ok: false } with no backend text — so the required Order Details render can
+// never be rejected by a Timeline read.
+
+test("a THROWING initial read is contained as { ok: false } (never rejects)", async () => {
+  const res = await safeInitialOrderTimeline(async () => {
+    throw new Error("PGRST500: relation secret_table leaked; connection=postgres://u:p@h");
+  });
+  assert.deepEqual(res, { ok: false });
+});
+
+test("the contained failure carries NO backend error text", async () => {
+  const secret = "PGRST500 relation secret; postgres://user:pw@host/db";
+  const res = await safeInitialOrderTimeline(async () => {
+    throw new Error(secret);
+  });
+  // The only thing the client learns is that it failed — never why.
+  assert.equal(JSON.stringify(res), JSON.stringify({ ok: false }));
+  assert.doesNotMatch(JSON.stringify(res), /PGRST|postgres:|secret|host/);
+});
+
+test("a synchronously-throwing thunk is also contained", async () => {
+  const res = await safeInitialOrderTimeline(() => {
+    throw new Error("boom");
+  });
+  assert.deepEqual(res, { ok: false });
+});
+
+test("a successful initial read passes the real first page through unchanged", async () => {
+  const page = await getOrderTimelinePage({ orderId: MOCK_ORDER, pageSize: 3 });
+  const res = await safeInitialOrderTimeline(() =>
+    getOrderTimelinePage({ orderId: MOCK_ORDER, pageSize: 3 }),
+  );
+  assert.equal(res.ok, true);
+  assert.ok(res.ok && res.page);
+  assert.deepEqual(
+    res.ok ? res.page.events.map((e) => e.id) : [],
+    page.events.map((e) => e.id),
+  );
+  // The safe projection still ran on this path (no malformed/nested value).
+  if (res.ok) {
+    for (const e of res.page.events) assertOnlySafeLeaves(e.metadata);
+  }
+});
+
+test("guard: the page ISOLATES the timeline read but not the required reads", () => {
+  const src = stripComments(readSrc("app/[locale]/admin/orders/[id]/page.tsx"));
+  // The optional timeline goes through the safe wrapper...
+  assert.match(src, /safeInitialOrderTimeline\(\s*\(\)\s*=>/);
+  assert.match(src, /getOrderTimelinePage\(\{ orderId: order\.id \}\)/);
+  assert.match(src, /initial=\{timeline\}/);
+  // ...while the REQUIRED reads stay in a plain Promise.all (they must still
+  // fail the page if they fail — they are NOT wrapped in the safe helper).
+  assert.match(src, /Promise\.all\(\[/);
+  const requiredBlock = src.slice(
+    src.indexOf("Promise.all(["),
+    src.indexOf("]);", src.indexOf("Promise.all([")),
+  );
+  for (const req of [
+    "getCustomer(",
+    "listDocumentsForOrder(",
+    "listProducts(",
+    "listCategories(",
+  ]) {
+    assert.ok(requiredBlock.includes(req), `${req} stays a required read`);
+  }
+  assert.ok(
+    !requiredBlock.includes("safeInitialOrderTimeline"),
+    "required reads are NOT swallowed by the timeline isolation",
+  );
 });
 
 // ══ 5. The read-only Server Action ════════════════════════════════════════

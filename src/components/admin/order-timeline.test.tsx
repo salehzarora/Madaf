@@ -35,7 +35,11 @@ import { createRoot } from "react-dom/client";
 import { OrderTimeline } from "@/components/admin/order-timeline";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { OrderTimelineActionResult } from "@/lib/actions/order-timeline";
-import { buildOrderTimelineEvent, type OrderTimelinePage } from "@/lib/order-timeline";
+import {
+  buildOrderTimelineEvent,
+  type OrderTimelineInitial,
+  type OrderTimelinePage,
+} from "@/lib/order-timeline";
 import type { TimelineActor } from "@/lib/customer-timeline";
 import { formatTenantDateTime } from "@/lib/time";
 
@@ -118,7 +122,10 @@ interface Harness {
 let harnesses: Harness[] = [];
 
 function mount(opts: {
-  initial: OrderTimelinePage;
+  /** The initial SUCCESS page (wrapped as { ok:true } internally). */
+  initial?: OrderTimelinePage;
+  /** Mount with an initial-read FAILURE ({ ok:false }) instead of a page. */
+  initialFailed?: boolean;
   timeZone?: string;
   locale?: "ar" | "he" | "en";
 }): Harness {
@@ -135,6 +142,10 @@ function mount(opts: {
     return d.promise;
   };
 
+  const initialProp: OrderTimelineInitial = opts.initialFailed
+    ? { ok: false }
+    : { ok: true, page: opts.initial ?? page([]) };
+
   const locale = opts.locale ?? "en";
   const root = createRoot(container);
   act(() => {
@@ -143,7 +154,7 @@ function mount(opts: {
         orderId: ORDER,
         locale,
         dict: getDictionary(locale),
-        initialPage: opts.initial,
+        initial: initialProp,
         timeZone: opts.timeZone ?? JLM,
         loadMore,
       }),
@@ -484,6 +495,129 @@ describe("OrderTimeline — pagination", () => {
   });
 });
 
+describe("OrderTimeline — initial read failure (P1) is contained + retryable", () => {
+  it("renders a localized error + retry IN PLACE, not the empty state", () => {
+    const h = mount({ initialFailed: true });
+    const body = text(h);
+    // A localized Timeline-specific error via alert semantics — the GENERAL
+    // "couldn't load activity", not the "…load MORE…" (nothing was loaded yet).
+    const alert = $(h, '[role="alert"]');
+    assert.ok(alert, "the initial failure uses alert semantics");
+    assert.ok(body.includes(EN.audit.timeline.error));
+    assert.ok(
+      !body.includes(EN.audit.timeline.loadError),
+      "the initial state does not use the 'load more' wording",
+    );
+    assert.ok(retryButton(h), "a retry control is offered");
+    // It must NOT masquerade as "no activity" (that would fake an empty history).
+    assert.ok(!body.includes(EN.audit.timeline.empty));
+    assert.ok(!body.includes(EN.audit.timeline.emptyHint));
+    // And no events are shown.
+    assert.equal(rows(h).length, 0);
+  });
+
+  it("never leaks raw backend text on the initial failure", () => {
+    const h = mount({ initialFailed: true });
+    assert.doesNotMatch(
+      text(h),
+      /error:|stack|supabase|PGRST|postgres:|column .* does not exist/i,
+    );
+  });
+
+  it("retry performs a FRESH first-page read (no cursor) and recovers", async () => {
+    const h = mount({ initialFailed: true });
+    click(retryButton(h)!);
+    // A first-page read — no cursor.
+    assert.equal(h.requests.length, 1);
+    assert.deepEqual(h.requests[0], { orderId: ORDER });
+
+    await h.answer(0, { ok: true, page: page([CREATED, STATUS], "cur-9") });
+    // The error is replaced by the real first page.
+    assert.equal($(h, '[role="alert"]'), null, "the initial error cleared");
+    assert.equal(rows(h).length, 2);
+    assert.ok(text(h).includes(EN.audit.order.events["order.created"]));
+    // Pagination is live again (the fresh page's cursor drives Load more).
+    assert.ok(loadMoreButton(h));
+  });
+
+  it("a retry that SUCCEEDS with an empty history shows the calm empty state", async () => {
+    const h = mount({ initialFailed: true });
+    click(retryButton(h)!);
+    await h.answer(0, { ok: true, page: page([]) });
+    assert.equal($(h, '[role="alert"]'), null);
+    assert.ok(text(h).includes(EN.audit.timeline.empty));
+    assert.equal(rows(h).length, 0);
+  });
+
+  it("a FAILED retry stays a contained, still-retryable error", async () => {
+    const h = mount({ initialFailed: true });
+    click(retryButton(h)!);
+    await h.answer(0, { ok: false });
+    // Still the initial error, still offering retry — recoverable.
+    assert.ok($(h, '[role="alert"]'));
+    assert.ok(retryButton(h), "retry is still offered after a failed retry");
+    // A second retry can still fire a fresh read.
+    click(retryButton(h)!);
+    assert.equal(h.requests.length, 2);
+    await h.answer(1, { ok: true, page: page([CREATED]) });
+    assert.equal(rows(h).length, 1, "eventually recovers");
+  });
+
+  it("a retry that REJECTS (transport) stays contained and retryable", async () => {
+    const container = dom.window.document.createElement("div");
+    dom.window.document.body.appendChild(container);
+    let calls = 0;
+    let rejectFirst!: (e: unknown) => void;
+    const loadMore = () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise<OrderTimelineActionResult>((_r, rej) => {
+          rejectFirst = rej;
+        });
+      }
+      return Promise.resolve<OrderTimelineActionResult>({
+        ok: true,
+        page: page([CREATED]),
+      });
+    };
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        React.createElement(OrderTimeline, {
+          orderId: ORDER,
+          locale: "en",
+          dict: EN,
+          initial: { ok: false },
+          timeZone: JLM,
+          loadMore,
+        }),
+      );
+    });
+    const retry = [...container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes(EN.audit.timeline.retry),
+    )!;
+    retry.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await act(async () => {
+      rejectFirst(new Error("TypeError: Failed to fetch"));
+      await Promise.resolve();
+    });
+    // Contained: still an alert, still a retry, guard released.
+    assert.ok(container.querySelector('[role="alert"]'));
+    const retry2 = [...container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes(EN.audit.timeline.retry),
+    )!;
+    assert.ok(retry2, "guard released — a second retry is possible");
+    await act(async () => {
+      retry2.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    assert.equal(calls, 2, "the second retry actually re-requested");
+    assert.equal(container.querySelectorAll("ol > li").length, 1, "recovered");
+    act(() => root.unmount());
+    container.remove();
+  });
+});
+
 describe("OrderTimeline — error, retry, empty", () => {
   it("a failed load KEEPS the rendered events and does not blank the card", async () => {
     const h = mount({ initial: page([CREATED, STATUS], "cur-1") });
@@ -552,7 +686,7 @@ describe("OrderTimeline — error, retry, empty", () => {
           orderId: ORDER,
           locale: "en",
           dict: EN,
-          initialPage: page([CREATED], "cur-1"),
+          initial: { ok: true, page: page([CREATED], "cur-1") },
           timeZone: JLM,
           loadMore,
         }),
