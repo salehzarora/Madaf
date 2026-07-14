@@ -57,6 +57,10 @@ export function ProductForm({
   // unrelated metadata edit must not implicitly create a 0-stock row (which
   // would flip availability to Out-of-stock) — see shouldSubmitInventory (B2).
   const hasExistingInventory = Boolean(inventory);
+  // Only an inventory-LESS product being EDITED gets the explicit "start
+  // tracking" opt-in. Create and already-tracked products submit inventory as
+  // before, so their behaviour is unchanged.
+  const showInventoryToggle = isEdit && !hasExistingInventory;
   const live = getDataMode() === "supabase";
 
   // The VALUE we persist: the raw storage path when the image lives in
@@ -71,6 +75,10 @@ export function ProductForm({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  // Explicit "start tracking inventory" opt-in for an inventory-less product
+  // (default OFF). Drives BOTH whether inventory is submitted and whether the
+  // inventory fields are enabled. Irrelevant when showInventoryToggle is false.
+  const [trackInventory, setTrackInventory] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // Holds a mock-mode object URL so it can be revoked when replaced/unmounted.
   const objectUrlRef = useRef<string | null>(null);
@@ -166,16 +174,13 @@ export function ProductForm({
     };
     // Only persist inventory when it should be touched: always on create and
     // for a product that already tracks stock, but for an inventory-LESS
-    // product only when the user actually entered stock data — so an unrelated
-    // metadata edit never creates a 0-stock row (B2).
+    // product ONLY when the owner explicitly turned tracking on — so an
+    // unrelated metadata edit never creates a 0-stock row, while an intentional
+    // zero / threshold-only edit is honoured (B2).
     const submitInventory = shouldSubmitInventory({
       isEdit,
       hasExistingInventory,
-      fields: {
-        quantityAvailable: String(fd.get("quantityAvailable") ?? ""),
-        warehouseLocation: String(fd.get("warehouseLocation") ?? ""),
-        expiryDate: String(fd.get("expiryDate") ?? ""),
-      },
+      trackingEnabled: trackInventory,
     });
 
     setSaving(true);
@@ -451,26 +456,52 @@ export function ProductForm({
           <CardTitle>{t.sectionInventory}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
+          {/* Inventory-less product: an explicit opt-in to START tracking. Off
+              by default so a metadata-only edit never creates a 0-stock row;
+              on → the fields below are enabled and inventory is submitted, with
+              quantity 0 / threshold-only being valid intentional input (B2). */}
+          {showInventoryToggle ? (
+            <label className="flex items-start gap-3 rounded-field border border-line p-3 sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 accent-brand-600"
+                checked={trackInventory}
+                onChange={(e) => setTrackInventory(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-ink">
+                  {t.trackInventory}
+                </span>
+                <span className="block text-xs text-ink-soft">
+                  {t.trackInventoryHint}
+                </span>
+              </span>
+            </label>
+          ) : null}
           <div>
             <Label htmlFor="np-qty">{t.stockQuantity}</Label>
             <Input id="np-qty" name="quantityAvailable" type="number" min={0}
               dir="ltr" className="tabular-nums"
+              disabled={showInventoryToggle && !trackInventory}
               defaultValue={inventory?.stockPackages ?? 0} />
           </div>
           <div>
             <Label htmlFor="np-thr">{t.lowStockThreshold}</Label>
             <Input id="np-thr" name="lowStockThreshold" type="number" min={0}
               dir="ltr" className="tabular-nums"
+              disabled={showInventoryToggle && !trackInventory}
               defaultValue={inventory?.lowStockThreshold ?? 10} />
           </div>
           <div>
             <Label htmlFor="np-loc">{t.warehouseLocation}</Label>
             <Input id="np-loc" name="warehouseLocation" dir="ltr"
+              disabled={showInventoryToggle && !trackInventory}
               defaultValue={inventory?.location} />
           </div>
           <div>
             <Label htmlFor="np-exp">{t.expiryDate}</Label>
             <Input id="np-exp" name="expiryDate" type="date" dir="ltr"
+              disabled={showInventoryToggle && !trackInventory}
               defaultValue={inventory?.nearestExpiry?.slice(0, 10)} />
           </div>
         </CardContent>

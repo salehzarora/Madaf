@@ -56,7 +56,17 @@ function linkStatus(
   return "active";
 }
 
-function deriveAvailability(qty: unknown, threshold: unknown): Availability {
+/**
+ * Availability derivation for the public showcase (`/showcase/<token>`), which
+ * also gates guest ordering (`showcase-view.tsx` reads `soldOut = availability
+ * === "outOfStock"`). Same contract as the shop/admin copies: no tracked
+ * quantity → In-stock; quantity 0 → Out-of-stock; below threshold → Low-stock.
+ * Exported for behavioural tests (B2) — no behaviour change.
+ */
+export function deriveAvailability(
+  qty: unknown,
+  threshold: unknown,
+): Availability {
   if (typeof qty !== "number") return "inStock";
   if (qty <= 0) return "outOfStock";
   if (typeof threshold === "number" && qty < threshold) return "lowStock";

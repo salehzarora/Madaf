@@ -19,7 +19,7 @@
 -- No tokens/secrets are printed.
 -- ═══════════════════════════════════════════════════════════════════════
 begin;
-select plan(22);
+select plan(38);
 
 -- ── Fixtures (as the transaction's superuser — RLS bypassed for setup) ──────
 --   tenant C  33333333-…  ownerC + adminC + repC; P_NOINV (no inventory row),
@@ -63,6 +63,20 @@ insert into public.inventory_items
   (tenant_id, product_id, quantity_available, low_stock_threshold)
 values
   ('33333333-3333-4333-8333-333333333333', 'cbc00000-0000-4000-8000-000000000002', 7, 10);
+
+-- P_ZERO + P_THRESH: inventory-less products used to prove EXPLICIT tracking
+-- intent (P2) — turning tracking on with quantity 0 / a threshold-only edit.
+insert into public.products
+  (id, tenant_id, category_id, name_ar, name_he, name_en, wholesale_price)
+values
+  ('cbc00000-0000-4000-8000-000000000003', '33333333-3333-4333-8333-333333333333',
+   'c2c00000-0000-4000-8000-000000000001', 'ج', 'ג', 'Zero', 5),
+  ('cbc00000-0000-4000-8000-000000000004', '33333333-3333-4333-8333-333333333333',
+   'c2c00000-0000-4000-8000-000000000001', 'د', 'ד', 'Thresh', 5),
+  ('cbc00000-0000-4000-8000-000000000005', '33333333-3333-4333-8333-333333333333',
+   'c2c00000-0000-4000-8000-000000000001', 'ه', 'ה', 'Loc', 5),
+  ('cbc00000-0000-4000-8000-000000000006', '33333333-3333-4333-8333-333333333333',
+   'c2c00000-0000-4000-8000-000000000001', 'و', 'ו', 'Exp', 5);
 
 -- ── 1–3. Functions exist with the intended signatures ──────────────────────
 select has_function('public', 'create_product', array['uuid','jsonb','jsonb'],
@@ -142,6 +156,121 @@ select is(
   (select quantity_available from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000002'),
   0, 'an intentional zero-stock edit persists (would derive Out-of-stock)');
 
+-- ── P2: EXPLICIT tracking-ON with quantity 0 creates a zero-stock row ──────
+-- The form's "Track inventory" toggle → p_inventory {quantity 0}. A row is
+-- created at 0 (→ Out-of-stock), proving intentional zero is honoured (not
+-- discarded like the old value-based heuristic did).
+select lives_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'low_stock_threshold',10)) $$,
+  'tracking ON with quantity 0 succeeds (intentional zero)');
+select is(
+  (select quantity_available from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000003'),
+  0, 'tracking-on-zero creates a row at quantity 0 (→ Out-of-stock)');
+
+-- ── P2: threshold-only intent (quantity 0, a chosen threshold) persists ────
+select lives_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000004',
+       jsonb_build_object('name_ar','د','name_he','ד','name_en','Thresh',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'low_stock_threshold',7)) $$,
+  'tracking ON with a threshold-only edit succeeds');
+select is(
+  (select quantity_available from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000004'),
+  0, 'threshold-only intent still records quantity 0');
+select is(
+  (select low_stock_threshold from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000004'),
+  7, 'threshold-only intent persists the chosen threshold');
+
+-- ── P2: malformed inventory is rejected by the RPC (server authority) ──────
+-- Covers negative quantity, out-of-range quantity, over-long location and a
+-- malformed date — the values a forged client could send past the UI.
+select throws_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',-1,'low_stock_threshold',10)) $$,
+  '22023', NULL, 'a negative quantity is rejected (upsert_inventory_item validation)');
+select throws_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'low_stock_threshold',-1)) $$,
+  '22023', NULL, 'a negative low_stock_threshold is rejected (validation)');
+select throws_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',200000000,'low_stock_threshold',10)) $$,
+  '22023', NULL, 'an out-of-range quantity (> 1e8) is rejected (validation)');
+select throws_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'warehouse_location',repeat('x',41))) $$,
+  '22023', NULL, 'an over-long warehouse_location (> 40 chars) is rejected');
+select throws_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ج','name_he','ג','name_en','Zero',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'expiry_date','not-a-date')) $$,
+  NULL, NULL, 'a malformed expiry_date is rejected (date cast fails)');
+
+-- ── P2: location-only tracking intent (quantity 0 + a warehouse location) ──
+select lives_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000005',
+       jsonb_build_object('name_ar','ه','name_he','ה','name_en','Loc',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'warehouse_location','A-9')) $$,
+  'tracking ON with a location-only edit succeeds');
+select is(
+  (select warehouse_location from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000005'),
+  'A-9', 'location-only intent creates a row and persists the location (quantity 0)');
+
+-- ── P2: expiry-only tracking intent (quantity 0 + a nearest expiry date) ───
+select lives_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000006',
+       jsonb_build_object('name_ar','و','name_he','ו','name_en','Exp',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5),
+       jsonb_build_object('quantity_available',0,'expiry_date','2027-01-15')) $$,
+  'tracking ON with an expiry-only edit succeeds');
+select is(
+  (select expiry_date from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000006'),
+  '2027-01-15'::date, 'expiry-only intent creates a row and persists the expiry (quantity 0)');
+
+-- ── P2: a threshold-only change on an EXISTING inventory row updates it ─────
+select lives_ok(
+  $$ select public.update_product(
+       '33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000002',
+       jsonb_build_object('name_ar','ب','name_he','ב','name_en','HasInvX',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',6),
+       jsonb_build_object('quantity_available',0,'low_stock_threshold',3)) $$,
+  'owner updates only the threshold on an already-tracked product');
+select is(
+  (select low_stock_threshold from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000002'),
+  3, 'the threshold change persists on the existing row');
+
 -- ── 16–17. admin is also allowed (owner/admin, not just owner) ─────────────
 set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000003","role":"authenticated"}';
 select lives_ok(
@@ -195,13 +324,15 @@ select throws_ok(
        null) $$,
   '42501', NULL, 'a non-member of tenant C cannot update_product (42501)');
 
--- ── 22. Integrity: no stray inventory rows from any blocked/again op ────────
--- (Only P_NOINV [row from test 10] and P_INV [seeded] exist; the sales_rep
---  upsert and every metadata-only edit added none.)
+-- ── Integrity: no stray inventory rows from any blocked/malformed op ────────
+-- Exactly six rows exist: P_NOINV (explicit inventory edit), P_INV (seeded),
+-- P_ZERO + P_THRESH + P_LOC + P_EXP (tracking-on). The sales_rep upsert, the
+-- cross-tenant attempt, the malformed payloads and every metadata-only edit
+-- added none.
 reset role;
 select is(
   (select count(*) from public.inventory_items where tenant_id = '33333333-3333-4333-8333-333333333333'),
-  2::bigint, 'tenant C has exactly 2 inventory rows (no stray rows created)');
+  6::bigint, 'tenant C has exactly 6 inventory rows (no stray rows created)');
 
 select finish();
 rollback;

@@ -332,6 +332,9 @@ const en: Dictionary = {
         vatRate: "VAT rate",
         trackExpiry: "Track expiry dates",
         trackExpiryHint: "Enable for dairy and other short-shelf-life goods.",
+        trackInventory: "Track inventory for this product",
+        trackInventoryHint:
+          "Off by default. Turn on to start tracking stock — a quantity of 0 marks it out of stock.",
         active: "Active (visible in catalog)",
         activeHint: "Inactive products stay in admin but leave the customer catalog.",
         imageUrl: "Image URL",

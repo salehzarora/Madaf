@@ -137,7 +137,14 @@ function mapManufacturer(row: Row<"manufacturers">): Manufacturer {
   };
 }
 
-function deriveAvailability(
+/**
+ * Availability derivation for the admin catalog + `/product/[id]` read path
+ * (via `mapProduct`). Reads the embedded `inventory_items` row: NO row →
+ * In-stock (untracked/available); quantity 0 → Out-of-stock; below the
+ * threshold → Low-stock. Exported for behavioural tests (B2) — no behaviour
+ * change. (The public shop uses the parallel copy in `token.ts`.)
+ */
+export function deriveAvailability(
   inv: Pick<
     Row<"inventory_items">,
     "quantity_available" | "low_stock_threshold"

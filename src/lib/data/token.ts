@@ -47,7 +47,19 @@ function isExternalUrl(value: unknown): value is string {
   return typeof value === "string" && /^https?:\/\//i.test(value);
 }
 
-function deriveAvailability(qty: unknown, threshold: unknown): Availability {
+/**
+ * Availability derivation for the PUBLIC shop (`/shop/<token>`). This is the
+ * exact function whose output `shop-view.tsx` reads as `soldOut = availability
+ * === "outOfStock"`, so it is the orderability contract for the anon shop:
+ *   - no tracked quantity (untracked product) → In-stock (orderable),
+ *   - quantity 0 → Out-of-stock (ordering disabled),
+ *   - below the low-stock threshold → Low-stock (still orderable).
+ * Exported for behavioural tests (B2) — no behaviour change.
+ */
+export function deriveAvailability(
+  qty: unknown,
+  threshold: unknown,
+): Availability {
   if (typeof qty !== "number") return "inStock";
   if (qty <= 0) return "outOfStock";
   if (typeof threshold === "number" && qty < threshold) return "lowStock";

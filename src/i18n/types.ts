@@ -329,6 +329,8 @@ export interface Dictionary {
         vatRate: string;
         trackExpiry: string;
         trackExpiryHint: string;
+        trackInventory: string;
+        trackInventoryHint: string;
         active: string;
         activeHint: string;
         imageUrl: string;

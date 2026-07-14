@@ -1,20 +1,26 @@
 /**
- * PILOT-READINESS-BATCH-B · B2 — the product-form inventory-submission gate.
+ * PILOT-READINESS-BATCH-B · B2 — the product-form inventory-submission gate,
+ * now driven by an EXPLICIT "Track inventory" opt-in (P2 correction).
  *
- * Availability is DERIVED from `inventory_items`: NO row → In-stock (untracked),
- * a row at quantity 0 → Out-of-stock. The shared product form always renders the
+ * Availability is derived from `inventory_items`: NO row → In-stock (untracked,
+ * orderable); a row at quantity 0 → Out-of-stock. The form always renders the
  * inventory section and defaults an inventory-less product's quantity to 0. The
- * old form ALWAYS submitted inventory on edit, so an unrelated metadata edit
- * (name/price/image) INSERTed a 0-stock row and silently flipped a product from
- * In-stock to Out-of-stock, disabling ordering.
+ * original bug always submitted inventory on edit (a metadata edit created a
+ * 0-stock row); the first fix inferred intent from the field values, which
+ * silently discarded an intentional quantity 0 or a threshold-only edit.
  *
- * `shouldSubmitInventory` is the pure decision the form now makes before calling
- * the action. This suite pins the contract:
+ * `shouldSubmitInventory` now decides purely from (isEdit, hasExistingInventory,
+ * trackingEnabled) — never from the numeric values — so intent is unambiguous:
  *   • create always seeds inventory;
- *   • a product that already tracks stock always re-submits (intentional edits
- *     and legitimate zero-stock rows are preserved);
- *   • an inventory-LESS product submits inventory ONLY when the user actually
- *     entered stock data — otherwise no row is created and it stays In-stock.
+ *   • a product that already tracks stock always re-submits (intentional zero
+ *     and threshold-only edits preserved);
+ *   • an inventory-less product submits ONLY when the owner explicitly enabled
+ *     tracking. Off (the default) → no row is created and it stays In-stock.
+ *
+ * The field values (quantity 0, threshold-only, location-only, expiry-only) no
+ * longer affect the decision; that they produce/persist the intended row is
+ * proven at the RPC layer (supabase/tests/product_write_rpcs.test.sql) and the
+ * availability outcome in src/lib/data/product-availability.live.test.ts.
  *
  * Runner: `npm run test:product-inventory-intent`.
  */
@@ -23,11 +29,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  inventoryFieldsEngaged,
-  shouldSubmitInventory,
-  type InventoryFieldValues,
-} from "./product-inventory-intent";
+import { shouldSubmitInventory } from "./product-inventory-intent";
 
 const stripComments = (s: string): string =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -39,182 +41,155 @@ const productFormSrc = (): string =>
     ),
   );
 
-/** The untouched defaults an inventory-LESS product's form renders. */
-const UNTOUCHED: InventoryFieldValues = {
-  quantityAvailable: "0",
-  warehouseLocation: "",
-  expiryDate: "",
-};
+// ══ CREATE — always seeds inventory (unchanged) ══════════════════════════════
 
-// ══ inventoryFieldsEngaged — the "did the user enter stock data?" signal ═════
-
-test("engaged: untouched defaults (qty 0, no location, no expiry) are NOT engaged", () => {
-  assert.equal(inventoryFieldsEngaged(UNTOUCHED), false);
-});
-
-test("engaged: an empty quantity string is treated as untouched", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, quantityAvailable: "" }),
-    false,
-  );
-});
-
-test("engaged: a non-numeric quantity is not a positive quantity", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, quantityAvailable: "abc" }),
-    false,
-  );
-});
-
-test("engaged: an explicit quantity of 0 alone is NOT engagement", () => {
-  // The exact ambiguous case: 0 is indistinguishable from the default, so it
-  // must not, on its own, create a row for an inventory-less product.
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, quantityAvailable: "0" }),
-    false,
-  );
-});
-
-test("engaged: a positive quantity IS engagement", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, quantityAvailable: "5" }),
-    true,
-  );
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, quantityAvailable: " 12 " }),
-    true,
-  );
-});
-
-test("engaged: a warehouse location alone IS engagement (qty still 0)", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, warehouseLocation: "A-3" }),
-    true,
-  );
-});
-
-test("engaged: a whitespace-only location is NOT engagement", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, warehouseLocation: "   " }),
-    false,
-  );
-});
-
-test("engaged: an expiry date alone IS engagement (qty still 0)", () => {
-  assert.equal(
-    inventoryFieldsEngaged({ ...UNTOUCHED, expiryDate: "2026-12-31" }),
-    true,
-  );
-});
-
-// ══ shouldSubmitInventory — the full create/edit decision ════════════════════
-
-test("create ALWAYS submits inventory (even at the qty-0 default)", () => {
+test("create always submits inventory (tracking flag is irrelevant)", () => {
   assert.equal(
     shouldSubmitInventory({
       isEdit: false,
       hasExistingInventory: false,
-      fields: UNTOUCHED,
+      trackingEnabled: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldSubmitInventory({
+      isEdit: false,
+      hasExistingInventory: false,
+      trackingEnabled: true,
     }),
     true,
   );
 });
 
-test("edit of a product that ALREADY tracks stock always submits — untouched", () => {
-  // A legitimate zero-stock row must be preserved (re-submitted), not dropped.
+// ══ EXISTING inventory row — always re-submits (preserve) ════════════════════
+
+test("edit of an already-tracked product always submits — metadata-only", () => {
+  // Preserves the existing row (incl. a legitimate zero) on an unrelated edit.
   assert.equal(
     shouldSubmitInventory({
       isEdit: true,
       hasExistingInventory: true,
-      fields: UNTOUCHED,
+      trackingEnabled: false,
     }),
     true,
   );
 });
 
-test("edit of a product that ALREADY tracks stock always submits — qty 0 kept", () => {
+test("edit of an already-tracked product always submits — intentional zero / threshold", () => {
   assert.equal(
     shouldSubmitInventory({
       isEdit: true,
       hasExistingInventory: true,
-      fields: { ...UNTOUCHED, quantityAvailable: "0" },
+      trackingEnabled: true,
     }),
     true,
   );
 });
 
-test("THE BUG: edit of an inventory-LESS product with untouched fields OMITS inventory", () => {
-  // This is the exact regression B2 fixes: an unrelated metadata edit must not
-  // create a 0-stock row and flip availability Out-of-stock.
+// ══ INVENTORY-LESS product — the explicit toggle is the ONLY signal ══════════
+
+test("THE FIX: inventory-less edit with tracking OFF never submits (metadata/price/description edit)", () => {
+  // The decision is field-agnostic: ANY metadata edit (name, price, image,
+  // description) with tracking off omits inventory — no 0-stock row, stays
+  // In-stock/orderable.
   assert.equal(
     shouldSubmitInventory({
       isEdit: true,
       hasExistingInventory: false,
-      fields: UNTOUCHED,
+      trackingEnabled: false,
     }),
     false,
   );
 });
 
-test("edit of an inventory-LESS product submits when a positive quantity is entered", () => {
+test("inventory-less edit with tracking ON submits (explicit opt-in)", () => {
+  // Turning tracking on is the intent — the field values (0 quantity,
+  // threshold-only, location-only, expiry-only) no longer gate this; they are
+  // exercised at the RPC/live layer.
   assert.equal(
     shouldSubmitInventory({
       isEdit: true,
       hasExistingInventory: false,
-      fields: { ...UNTOUCHED, quantityAvailable: "20" },
+      trackingEnabled: true,
     }),
     true,
   );
 });
 
-test("edit of an inventory-LESS product submits when a location is entered", () => {
-  assert.equal(
-    shouldSubmitInventory({
-      isEdit: true,
-      hasExistingInventory: false,
-      fields: { ...UNTOUCHED, warehouseLocation: "Cold-1" },
-    }),
-    true,
-  );
+test("intent no longer depends on numeric value: OFF stays OFF, ON stays ON", () => {
+  // The ambiguity the P2 flagged — an intentional 0 was indistinguishable from
+  // the default 0 — is gone: only the explicit boolean decides.
+  const base = { isEdit: true, hasExistingInventory: false } as const;
+  assert.equal(shouldSubmitInventory({ ...base, trackingEnabled: false }), false);
+  assert.equal(shouldSubmitInventory({ ...base, trackingEnabled: true }), true);
 });
 
-test("edit of an inventory-LESS product submits when an expiry is entered", () => {
-  assert.equal(
-    shouldSubmitInventory({
-      isEdit: true,
-      hasExistingInventory: false,
-      fields: { ...UNTOUCHED, expiryDate: "2027-01-15" },
-    }),
-    true,
-  );
-});
+// ══ Wiring guard — the product form must USE the explicit toggle ═════════════
+// The unit tests above prove the decision; pgTAP proves the RPC creates/omits
+// the row; the live test proves the availability outcome. This guard proves the
+// form closes the loop: it shows the opt-in for an inventory-less edit, gates
+// the fields on it, and feeds the toggle (not the values) into the decision.
 
-// ══ Wiring guard — the product form must actually USE the decision ═══════════
-// The unit tests above prove the decision; the pgTAP suite proves the RPC skips
-// the inventory upsert when p_inventory is null. This guard proves the form
-// closes the loop: it gates the inventory arg on shouldSubmitInventory rather
-// than sending inventory unconditionally on edit (the original bug).
-
-test("guard: product form derives hasExistingInventory from the inventory prop", () => {
+test("guard: form derives hasExistingInventory + the inventory-less toggle condition", () => {
+  const src = productFormSrc();
   assert.match(
-    productFormSrc(),
+    src,
     /hasExistingInventory = Boolean\(inventory\)/,
-    "the form must know whether a row already exists (from the inventory prop)",
+    "must know whether a row already exists (from the inventory prop)",
+  );
+  assert.match(
+    src,
+    /showInventoryToggle = isEdit && !hasExistingInventory/,
+    "the opt-in appears ONLY when editing an inventory-less product",
   );
 });
 
-test("guard: product form gates the inventory arg on shouldSubmitInventory", () => {
+test("guard: form feeds the explicit toggle (not field values) into the decision", () => {
   const src = productFormSrc();
   assert.match(
     src,
     /shouldSubmitInventory\(\{/,
-    "the form must call the shared decision, not always send inventory on edit",
+    "must call the shared decision",
   );
-  // The update call must SPREAD inventory conditionally — never an unconditional
-  // `inventory: inventoryInput` on the edit path.
+  assert.match(
+    src,
+    /trackingEnabled: trackInventory/,
+    "the decision must be driven by the explicit toggle state",
+  );
+  // No inference from the numeric fields any more.
+  assert.doesNotMatch(
+    src,
+    /inventoryFieldsEngaged/,
+    "must NOT infer intent from field values (the discarded-intent P2)",
+  );
   assert.match(
     src,
     /\.\.\.\(submitInventory \? \{ inventory: inventoryInput \} : \{\}\)/,
     "updateProductAction must receive inventory only when submitInventory is true",
+  );
+});
+
+test("guard: form renders the localized toggle and disables the fields when off", () => {
+  const src = productFormSrc();
+  assert.match(
+    src,
+    /showInventoryToggle \? \(/,
+    "the toggle is rendered conditionally for the inventory-less edit",
+  );
+  assert.match(
+    src,
+    /t\.trackInventory\b/,
+    "the toggle uses the localized label",
+  );
+  assert.match(
+    src,
+    /checked=\{trackInventory\}/,
+    "the toggle is a controlled checkbox bound to the tracking state",
+  );
+  assert.match(
+    src,
+    /disabled=\{showInventoryToggle && !trackInventory\}/,
+    "inventory inputs are disabled until tracking is enabled",
   );
 });
