@@ -39,6 +39,8 @@ import type {
   Supplier,
 } from "@/lib/types";
 import {
+  collectExportRows,
+  isRangeNotSatisfiable,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
   type OrderListRow,
@@ -1305,22 +1307,39 @@ export async function sbListOrdersForExport(
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
   if (query.customerId && !isUuid(query.customerId)) return [];
-  const limit = Math.max(1, cap);
-  // Same tenant-zone bounds as the list + count — an export can never contain a
-  // different set of days than the screen it was exported from.
+  // ONE tenant zone for every batch — same bounds as the list + count, so an
+  // export can never contain a different set of days than the screen it was
+  // exported from.
   const timeZone = await getTenantTimeZone();
-  const { data, error } = await buildOrdersQuery(
-    client,
-    tenantId,
-    query,
-    ORDER_LIST_SELECT,
-    timeZone,
-  )
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .range(0, limit - 1);
-  if (error) fail("listOrdersForExport", error.message);
-  return (data as unknown as OrderListDbRow[]).map(mapOrderListRow);
+  // Page the filtered set server-side in batches of ORDERS_EXPORT_BATCH (< the
+  // PostgREST max_rows ceiling) so no single request is silently clamped and the
+  // full set up to `cap` is actually returned. Every batch rebuilds the SAME
+  // filtered/ordered query (a Supabase query builder is single-use) and applies
+  // the SAME tenant scope; collectExportRows dedupes by id across batches.
+  const dbRows = await collectExportRows<OrderListDbRow>(async (offset, limit) => {
+    const { data, error } = await buildOrdersQuery(
+      client,
+      tenantId,
+      query,
+      ORDER_LIST_SELECT,
+      timeZone,
+    )
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + limit - 1);
+    // An over-range boundary fetch (offset === count when the filtered set size
+    // is an exact multiple of the batch) is a benign end-of-set signal, not a
+    // failure — see isRangeNotSatisfiable. Any OTHER error is real.
+    // An over-range boundary fetch (offset === count when the filtered set size
+    // is an exact multiple of the batch) is a benign end-of-set signal, not a
+    // failure — see isRangeNotSatisfiable. Any OTHER error is real.
+    if (error) {
+      if (isRangeNotSatisfiable(error)) return [];
+      fail("listOrdersForExport", error.message);
+    }
+    return (data as unknown as OrderListDbRow[]) ?? [];
+  }, cap);
+  return dbRows.map(mapOrderListRow);
 }
 
 export async function sbListDocuments(): Promise<OrderDocument[]> {

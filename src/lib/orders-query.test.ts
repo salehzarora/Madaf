@@ -8,12 +8,18 @@
  * Runner: `npm run test:orders-search` (tsx → node:test).
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import {
+  collectExportRows,
+  isRangeNotSatisfiable,
   hasActiveFilters,
   tenantToday,
   nextCalendarDay,
+  ORDERS_EXPORT_BATCH,
+  ORDERS_EXPORT_CAP,
   ORDERS_MAX_PAGE_SIZE,
   ORDERS_PAGE_SIZE,
   orderMatchesSearch,
@@ -32,6 +38,8 @@ import { listOrdersForExport, searchOrders } from "./data/orders";
 import { customers as mockCustomers, orders as mockOrders } from "./mock";
 
 const MOCK_TOTAL = mockOrders.length;
+const readSrc = (rel: string): string =>
+  readFileSync(join(process.cwd(), "src", rel), "utf8");
 
 // ── 1. Default query parsing ───────────────────────────────────────────────
 test("parseOrdersQuery: defaults for an empty URL", () => {
@@ -289,6 +297,200 @@ test("listOrdersForExport (mock): full filtered set, NOT the current page", asyn
   assert.ok(statusFiltered.every((r) => r.status === "new"));
   // The export cap truncates.
   assert.equal((await listOrdersForExport(parseOrdersQuery({}), 2)).length, 2);
+});
+
+// ══ Export batch-and-probe (P1 fix) — the PRODUCTION collectExportRows ══════
+// A fake page reader models a real filtered DESC result set. Critically it also
+// models the PostgREST `max_rows` CLAMP that caused the silent-truncation defect:
+// a request for more than `serverMaxRows` rows is clamped. Because the production
+// algorithm never asks for more than ORDERS_EXPORT_BATCH (< 1000) per call, the
+// clamp can never fire — which is exactly what the fix guarantees.
+
+/** Build a fake, PostgREST-shaped page reader over `total` synthetic rows.
+ * `serverMaxRows` clamps any single request, exactly like PostgREST max_rows.
+ * Records every requested limit so a test can assert none exceed the batch. */
+function fakeReader(total: number, serverMaxRows = 1000) {
+  const rows = Array.from({ length: total }, (_, i) => ({ id: `o${i}` }));
+  const requestedLimits: number[] = [];
+  const reader = async (offset: number, limit: number) => {
+    requestedLimits.push(limit);
+    const effective = Math.min(limit, serverMaxRows); // the max_rows clamp
+    return rows.slice(offset, offset + effective);
+  };
+  return { rows, reader, requestedLimits };
+}
+
+test("export: 1001 rows are ALL returned despite a 1000-row server clamp", async () => {
+  // The exact scenario the P1 blocker described: more rows than max_rows.
+  const { reader, requestedLimits } = fakeReader(1001, 1000);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 1001, "no silent truncation at the server ceiling");
+  assert.equal(new Set(out.map((r) => r.id)).size, 1001, "no duplicates");
+  // Deterministic order preserved (the reader returns in-order slices).
+  assert.deepEqual(out.map((r) => r.id).slice(0, 3), ["o0", "o1", "o2"]);
+  // EVERY request stayed within the batch bound — so the clamp never bit.
+  assert.ok(
+    requestedLimits.every((l) => l <= ORDERS_EXPORT_BATCH),
+    "no single request exceeds ORDERS_EXPORT_BATCH",
+  );
+  assert.ok(requestedLimits.every((l) => l <= 1000));
+});
+
+test("export: fewer than one batch returns everything, one request", async () => {
+  const { reader, requestedLimits } = fakeReader(37);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 37);
+  // 37 < 500 → a single short page ends the loop.
+  assert.equal(requestedLimits.length, 1);
+});
+
+test("export: an exact batch boundary does not over- or under-fetch", async () => {
+  const { reader } = fakeReader(ORDERS_EXPORT_BATCH); // exactly 500
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, ORDERS_EXPORT_BATCH);
+});
+
+test("export: >1 batch (1250 rows) returns all in order, ≤500 per call", async () => {
+  const { reader, requestedLimits } = fakeReader(1250);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 1250);
+  assert.ok(requestedLimits.every((l) => l <= ORDERS_EXPORT_BATCH));
+});
+
+test("export: exactly the logical cap (5000) returns all with capped=false", async () => {
+  // The action asks for CAP+1 to probe. Exactly 5000 present → 5000 returned,
+  // and the action's `rows.length > CAP` is 5000 > 5000 = FALSE.
+  const { reader } = fakeReader(ORDERS_EXPORT_CAP);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, ORDERS_EXPORT_CAP);
+  assert.equal(out.length > ORDERS_EXPORT_CAP, false, "capped=false at equality");
+});
+
+test("export: one past the cap (5001) returns CAP+1 so the probe detects capped", async () => {
+  const { reader } = fakeReader(ORDERS_EXPORT_CAP + 1);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length > ORDERS_EXPORT_CAP, true, "capped=true past the cap");
+  // …and the action would slice back to the cap (mirrored here for clarity).
+  assert.equal(out.slice(0, ORDERS_EXPORT_CAP).length, ORDERS_EXPORT_CAP);
+});
+
+test("export: 6000 present but cap+1 requested → stops at 5001, ≤500/call", async () => {
+  const { reader, requestedLimits } = fakeReader(6000);
+  const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, ORDERS_EXPORT_CAP + 1); // never the whole 6000
+  assert.ok(requestedLimits.every((l) => l <= ORDERS_EXPORT_BATCH));
+  const totalRequested = requestedLimits.reduce((a, b) => a + b, 0);
+  assert.ok(totalRequested <= ORDERS_EXPORT_CAP + 1 + ORDERS_EXPORT_BATCH);
+});
+
+test("export: DEDUPE — a row straddling two pages (concurrent insert) appears once", async () => {
+  // Model a concurrent insert: an overlapping reader where page 2 repeats the
+  // last id of page 1 (the DESC window shifted by one).
+  const requested: number[] = [];
+  const overlapping = async (offset: number, limit: number) => {
+    requested.push(limit);
+    if (offset === 0) {
+      return Array.from({ length: limit }, (_, i) => ({ id: `o${i}` }));
+    }
+    // Second window is shifted back by 1, so `o{offset-1}` reappears.
+    const start = offset - 1;
+    const remaining = 900 - start;
+    if (remaining <= 0) return [];
+    return Array.from({ length: Math.min(limit, remaining) }, (_, i) => ({
+      id: `o${start + i}`,
+    }));
+  };
+  const out = await collectExportRows(overlapping, ORDERS_EXPORT_CAP + 1);
+  assert.equal(new Set(out.map((r) => r.id)).size, out.length, "no duplicate ids");
+  assert.ok(out.some((r) => r.id === "o499") && out.some((r) => r.id === "o500"));
+});
+
+test("export: cap of 0 returns nothing and issues no request", async () => {
+  const { reader, requestedLimits } = fakeReader(10);
+  const out = await collectExportRows(reader, 0);
+  assert.equal(out.length, 0);
+  assert.equal(requestedLimits.length, 0);
+});
+
+test("export: an all-duplicate response terminates (maxPages backstop)", async () => {
+  // Pathological: every page returns the SAME single id. Must not loop forever.
+  let calls = 0;
+  const stuck = async () => {
+    calls += 1;
+    return [{ id: "same" }];
+  };
+  const out = await collectExportRows(stuck, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 1);
+  assert.ok(calls <= Math.ceil((ORDERS_EXPORT_CAP + 1) / ORDERS_EXPORT_BATCH) + 3);
+});
+
+test("guard: sbListOrdersForExport pages via collectExportRows, never one big range", () => {
+  const src = readSrc("lib/data/supabase-reads.ts");
+  const fn = src.slice(src.indexOf("export async function sbListOrdersForExport"));
+  const body = fn.slice(0, fn.indexOf("\nexport ", 1));
+  assert.match(body, /collectExportRows<OrderListDbRow>/);
+  assert.match(body, /\.range\(offset, offset \+ limit - 1\)/);
+  // The defective single big-range read must be gone.
+  assert.doesNotMatch(body, /\.range\(0, limit - 1\)/);
+  assert.doesNotMatch(body, /\.range\(0, \d{4,}/);
+});
+
+// ── Export over-range boundary (exact-multiple-of-batch) tolerance ──────────
+// When the filtered count is an exact multiple of the batch, the loop probes one
+// page past the end (offset === count). PostgREST normally returns an empty 200
+// for that, but a count-aware config returns PGRST103 / 416 — which the export
+// reader tolerates as end-of-set so a 500/1000/… boundary can't break the CSV.
+
+test("isRangeNotSatisfiable recognises PGRST103 only", () => {
+  assert.equal(isRangeNotSatisfiable({ code: "PGRST103" }), true);
+  assert.equal(isRangeNotSatisfiable({ code: "PGRST116" }), false);
+  assert.equal(isRangeNotSatisfiable({ code: "42501" }), false);
+  assert.equal(isRangeNotSatisfiable({ code: null }), false);
+  assert.equal(isRangeNotSatisfiable(null), false);
+  assert.equal(isRangeNotSatisfiable(undefined), false);
+});
+
+test("export: an EXACT-MULTIPLE-of-500 set returns all rows (empty over-range probe)", async () => {
+  // The reader models the production closure: over-range → [] (either a native
+  // empty 200, or a PGRST103 that isRangeNotSatisfiable converted to []).
+  for (const total of [500, 1000, 5000]) {
+    const { reader, requestedLimits } = fakeReader(total);
+    const out = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+    assert.equal(out.length, total, `all ${total} rows returned`);
+    assert.equal(out.length > ORDERS_EXPORT_CAP, false, "capped=false");
+    // One extra request past the last full page (the benign over-range probe).
+    assert.equal(requestedLimits.length, total / ORDERS_EXPORT_BATCH + 1);
+    assert.ok(requestedLimits.every((l) => l <= ORDERS_EXPORT_BATCH));
+  }
+});
+
+test("export: the ALGORITHM propagates an over-range THROW — tolerance must live in the reader", async () => {
+  // collectExportRows must NOT swallow a fetch error itself: a reader that throws
+  // at over-range (an un-tolerated 416) propagates. This is WHY the closure, not
+  // the algorithm, converts PGRST103 → [] (proven by the closure guard below).
+  const rows = Array.from({ length: 500 }, (_, i) => ({ id: `o${i}` }));
+  const throwingReader = async (offset: number, limit: number) => {
+    if (offset >= rows.length) {
+      const err = new Error("Requested range not satisfiable") as Error & {
+        code: string;
+      };
+      err.code = "PGRST103";
+      throw err;
+    }
+    return rows.slice(offset, offset + limit);
+  };
+  await assert.rejects(() => collectExportRows(throwingReader, ORDERS_EXPORT_CAP + 1));
+});
+
+test("guard: the export closure tolerates an over-range (PGRST103) instead of failing", () => {
+  const src = readSrc("lib/data/supabase-reads.ts");
+  const fn = src.slice(src.indexOf("export async function sbListOrdersForExport"));
+  const body = fn.slice(0, fn.indexOf("\nexport ", 1));
+  // The closure converts a benign over-range error to an empty page, and only
+  // then fails on any OTHER error — never an unconditional `if (error) fail`.
+  assert.match(body, /if \(isRangeNotSatisfiable\(error\)\) return \[\]/);
+  assert.match(body, /fail\("listOrdersForExport", error\.message\)/);
 });
 
 // ── 21/22. No tenant/role trust; public_ref surfaced alongside admin number ─

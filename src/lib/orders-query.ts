@@ -31,6 +31,76 @@ export const ORDERS_PAGE_SIZE = 50;
 export const ORDERS_MAX_PAGE_SIZE = 100;
 /** Defensive filtered-export ceiling (unchanged from the old client export). */
 export const ORDERS_EXPORT_CAP = 5000;
+/**
+ * Per-request page size for the server-side CSV export. Deliberately BELOW the
+ * PostgREST `max_rows` ceiling (1000 by default, and never assumed to be exactly
+ * 1000) so no single request can be silently clamped — the batch LOOP, not one
+ * giant `.range(0, cap)`, is what reaches the cap. This is the fix for the
+ * silent-truncation defect where a single `.range(0, 5000)` returned only the
+ * first `max_rows` rows while `capped` (which compared against 5000) never fired.
+ */
+export const ORDERS_EXPORT_BATCH = 500;
+
+/**
+ * PostgREST's "Requested range not satisfiable" code (an over-range offset).
+ *
+ * When the filtered set size is an EXACT multiple of the batch, the final loop
+ * iteration below asks for a page at `offset === count`. Because the export
+ * query requests no row count, PostgREST normally answers that with an empty
+ * 200 (so the caller sees a clean short page). But a configuration that DID know
+ * the exact count would answer PGRST103 / HTTP 416 instead — so the export reader
+ * treats THIS specific over-range signal as "no more rows" rather than failing
+ * the whole CSV. A 500 / 1000 / … boundary must never break an export; any other
+ * error is still a real failure.
+ */
+export function isRangeNotSatisfiable(
+  error: { code?: string | null } | null | undefined,
+): boolean {
+  return !!error && error.code === "PGRST103";
+}
+
+/**
+ * Collect up to `cap` export rows by paging a bounded fetch — at most `batchSize`
+ * (≤ ORDERS_EXPORT_BATCH) rows per request — until a SHORT page is returned
+ * (the set is exhausted) or `cap` rows have been gathered. Deduped by id: a
+ * concurrent INSERT can shift a `created_at DESC, id DESC` offset window so a row
+ * straddles two adjacent pages, and the `seen` set drops the repeat so the CSV
+ * never contains a duplicate row. (A concurrent DELETE could skip a row, but
+ * orders are never hard-deleted in this product — only cancelled — so no export
+ * row is ever skipped in practice.)
+ *
+ * PURE + INJECTABLE: the real Supabase export and its unit tests run this SAME
+ * algorithm (the tests pass a fake page reader), so there is no test-only
+ * duplicate of the cap/dedupe logic. `offset` advances by the number of rows the
+ * reader actually returned; `maxPages` bounds the request count even under a
+ * pathological all-duplicate response so the loop always terminates.
+ */
+export async function collectExportRows<T extends { id: string }>(
+  fetchPage: (offset: number, limit: number) => Promise<readonly T[]>,
+  cap: number,
+  batchSize: number = ORDERS_EXPORT_BATCH,
+): Promise<T[]> {
+  const out: T[] = [];
+  const seen = new Set<string>();
+  const safeCap = Math.max(0, Math.trunc(cap));
+  if (safeCap === 0) return out;
+  const step = Math.max(1, Math.min(batchSize, ORDERS_EXPORT_BATCH));
+  const maxPages = Math.ceil(safeCap / step) + 2;
+  let offset = 0;
+  for (let page = 0; page < maxPages && out.length < safeCap; page += 1) {
+    const want = Math.min(step, safeCap - out.length);
+    const rows = await fetchPage(offset, want);
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+      if (out.length >= safeCap) break;
+    }
+    offset += rows.length;
+    if (rows.length < want) break; // short page ⇒ the filtered set is exhausted
+  }
+  return out;
+}
 /** Free-text term cap (mirrors the customers search .slice(0, 120)). */
 export const ORDERS_SEARCH_MAX = 120;
 /** Absurd-offset guard: page can never exceed this (avoids a giant range()). */
