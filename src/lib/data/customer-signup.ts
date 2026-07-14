@@ -10,6 +10,9 @@ import "server-only";
  * the raw token is generated in the action and returned once. Supabase-mode
  * only (mock has no auth/tenant).
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database } from "@/lib/supabase/database.types";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
 
 import { getDataContext } from "@/lib/auth/session";
@@ -165,6 +168,47 @@ export async function listSignupRequests(): Promise<SignupRequest[]> {
     approvedCustomerId: r.approved_customer_id,
     createdAt: r.created_at,
   }));
+}
+
+/**
+ * PILOT-C1 (Batch C correction) — the EXACT pending-signup count query, taking
+ * an explicit client + server-derived tenant so it is injectable for tests
+ * while remaining the SINGLE production query (no duplicated count logic).
+ *
+ * `head: true` returns NO rows (no name/phone/email/notes — no signup PII); the
+ * `count: "exact"` total comes back in the Content-Range header, so it is
+ * correct ABOVE the PostgREST max_rows ceiling — a row-list read would silently
+ * truncate and undercount once processed rows displace older pending ones.
+ *
+ * Pending = neither approved nor rejected (the table has no status column).
+ * Tenant-scoped + the "signup_requests: owner/admin read" RLS policy is the
+ * authorization boundary: a sales_rep / non-member / cross-tenant caller counts
+ * zero. `tenantId` is server-derived; the client never chooses it.
+ */
+export async function sbCountPendingSignupRequests(
+  client: SupabaseClient<Database>,
+  tenantId: string,
+): Promise<number> {
+  const { count, error } = await client
+    .from("customer_signup_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .is("approved_at", null)
+    .is("rejected_at", null);
+  if (error) {
+    throw new Error(
+      `[madaf/data] countPendingSignupRequests: ${error.message}`,
+    );
+  }
+  return count ?? 0;
+}
+
+/** Exact count of PENDING signup requests for the current tenant — used by the
+ * Dashboard card instead of loading (and JS-filtering) signup rows. Throws on a
+ * read failure (the page's existing error contract), never a silent 0. */
+export async function countPendingSignupRequests(): Promise<number> {
+  const { client, tenantId } = await getDataContext();
+  return sbCountPendingSignupRequests(client, tenantId);
 }
 
 export async function approveSignupRequest(

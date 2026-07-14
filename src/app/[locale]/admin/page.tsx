@@ -20,7 +20,7 @@ import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import { getDashboardMetrics, getDataMode, getTenantTimeZone, searchOrders } from "@/lib/data";
-import { listSignupRequests } from "@/lib/data/customer-signup";
+import { countPendingSignupRequests } from "@/lib/data/customer-signup";
 import { parseOrdersQuery } from "@/lib/orders-query";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { formatTenantDateTime } from "@/lib/time";
@@ -80,8 +80,9 @@ export default async function AdminDashboardPage({
   const activeProductCount = metrics.activeProductCount;
   const activeShopCount = metrics.activeShopCount;
 
-  // Pending store-signup requests — supabase owner/admin only (the list RPC
-  // path is owner/admin; mock has no signups).
+  // Pending store-signup requests — supabase owner/admin only (mock has no
+  // signups). An EXACT server-side count (no signup rows / PII loaded, correct
+  // above the PostgREST 1000-row ceiling) — Batch C bounded-read correction.
   const isSupabase = getDataMode() === "supabase";
   const dashRole = isSupabase
     ? (await getSessionContext()).membership?.role
@@ -89,7 +90,7 @@ export default async function AdminDashboardPage({
   const canSeeSignups =
     isSupabase && (dashRole === "owner" || dashRole === "admin");
   const pendingSignups = canSeeSignups
-    ? (await listSignupRequests()).filter((r) => r.status === "pending").length
+    ? await countPendingSignupRequests()
     : 0;
 
   // Open-orders segmented mini-bar shares.
