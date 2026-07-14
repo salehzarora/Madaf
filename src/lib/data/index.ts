@@ -84,3 +84,7 @@ export {
   getTimelineActorLabelsForIds,
   type TimelineQuery,
 } from "./customer-timeline";
+export {
+  getOrderTimelinePage,
+  type OrderTimelineQuery,
+} from "./order-timeline";

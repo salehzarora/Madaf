@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GuestOrderCard } from "@/components/admin/guest-order-card";
 import { OrderItemsEditor } from "@/components/admin/order-items-editor";
+import { OrderTimeline } from "@/components/admin/order-timeline";
 import { OrderStatusControl } from "@/components/order-status-control";
 import { ProductImage } from "@/components/product-image";
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
+import { loadOrderTimelineAction } from "@/lib/actions/order-timeline";
 import { getSessionContext } from "@/lib/auth/session";
 import { orderSubtotal, productName } from "@/lib/catalog-helpers";
 import {
   getCustomer,
   getDataMode,
   getOrder,
+  getOrderTimelinePage,
   getTenantTimeZone,
   listCategories,
   listDocumentsForOrder,
@@ -47,12 +50,18 @@ export default async function AdminOrderDetailPage({
   // they must still render (with the subtotal they're counted in), not
   // silently disappear (M8A). The items editor excludes inactive products
   // from its add-picker on its own.
-  const [customer, orderDocs, products, categories] = await Promise.all([
-    getCustomer(order.customerId),
-    listDocumentsForOrder(order.id),
-    listProducts({ includeInactive: true }),
-    listCategories(),
-  ]);
+  const [customer, orderDocs, products, categories, timelinePage] =
+    await Promise.all([
+      getCustomer(order.customerId),
+      listDocumentsForOrder(order.id),
+      listProducts({ includeInactive: true }),
+      listCategories(),
+      // Activity timeline (M8H.3) — the FIRST bounded page of this order's real
+      // M8H.1 audit_events. RLS scopes it (can_access_order), so a sales_rep
+      // only reaches an assigned order's history; getOrder already gated the
+      // page itself. Read-only: viewing records NO audit event.
+      getOrderTimelinePage({ orderId: order.id }),
+    ]);
   const productById = new Map(products.map((p) => [p.id, p]));
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   // Latest document record per type, for the documents history/generate card.
@@ -192,6 +201,25 @@ export default async function AdminOrderDetailPage({
             live={live && canManage}
             dict={dict}
           />
+
+          {/* Activity timeline (M8H.3) — read-only audit events for THIS order.
+              Visible to anyone who can view the order (RLS-scoped); no controls,
+              no mutations, and opening it records nothing. */}
+          <Card>
+            <CardHeader variant="strip">
+              <CardTitle>{dict.audit.timeline.heading}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <OrderTimeline
+                orderId={order.id}
+                locale={locale}
+                dict={dict}
+                initialPage={timelinePage}
+                timeZone={timeZone}
+                loadMore={loadOrderTimelineAction}
+              />
+            </CardContent>
+          </Card>
         </div>
 
         <div className="flex flex-col gap-4">
