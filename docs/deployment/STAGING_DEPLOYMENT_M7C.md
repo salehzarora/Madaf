@@ -22,7 +22,7 @@ Related: [../AUTH_AND_ACCESS_MODEL.md](../AUTH_AND_ACCESS_MODEL.md) ·
 | Service | Purpose | Notes |
 | --- | --- | --- |
 | **GitHub repo** | source + CI (`.github/workflows/ci.yml`) | CI runs lint/build/audit on **Node 22**, no secrets |
-| **Vercel project** | hosts the Next.js app | build = `next build`; framework auto-detected |
+| **Vercel project** | hosts the Next.js app | build = the `package.json` `build` script (`npm run build`), which runs deploy-safety + `next build` + the dynamic-route guard. **Do NOT override the Build Command with bare `next build`** (see §5). Framework auto-detected |
 | **Supabase staging project** | hosted Postgres + Auth + Storage | SEPARATE project from any future production |
 | **SMS provider** (Twilio/MessageBird/Vonage/…) **or Send SMS Hook** | phone-OTP delivery | credentials live in the **Supabase dashboard/secrets**, never in the repo/Vercel client env |
 | **Error reporting / monitoring** | crash + uptime visibility | placeholder — see RUNBOOK §Monitoring |
@@ -114,8 +114,15 @@ server-only linter `assessDeploymentSafety()`
 ## 5. Vercel setup checklist
 
 - [ ] **Connect the GitHub repo** to a new Vercel project.
-- [ ] **Framework**: Next.js (auto-detected). **Build command**: `next build`
-      (default). **Install**: `npm ci`. **Output**: default (`.next`).
+- [ ] **Framework**: Next.js (auto-detected). **Build command**: leave it as the
+      Vercel default — because the repo has a `build` script, Vercel runs
+      `npm run build`, which is `check:deploy-safety && next build &&
+      check-dynamic-routes`. **Do NOT override the Build Command with bare
+      `next build`**: that bypasses BOTH the deploy-safety gate (which blocks a
+      hosted mock-mode / missing-canonical-URL / local-Supabase deploy) and the
+      dynamic-route SSG guard — the exact failure classes (broken tokenized
+      links, empty-data SSG pages) these gates exist to catch. **Install**:
+      `npm ci`. **Output**: default (`.next`).
 - [ ] **Set environment variables** (§2) for Production and Preview. Keep
       server-only vars unchecked for "expose to browser".
 - [ ] **Configure the domain / preview URLs**; keep them in sync with Supabase
@@ -166,6 +173,14 @@ server-only linter `assessDeploymentSafety()`
   `signUpAction` reject, not just hidden). Set it `true` only if you rely on the
   email-based team-invite flow (a phone-only account can't accept an email
   invite yet — see AUTH_AND_ACCESS_MODEL §2b).
+- [ ] **PILOT — team invitations (conditional):** invitation acceptance is
+      **email-verified**, so if the pilot businesses will use **team invites**
+      (owner/admin inviting colleagues at `/admin/team`), you MUST set
+      **`MADAF_EMAIL_AUTH_ENABLED=true`** before the pilot deployment — otherwise
+      the invited user cannot sign in to accept. If the pilot runs with a single
+      owner per tenant and no team invites, phone-primary operation is fine and
+      this flag can stay **off**. This is a configuration choice only — do NOT
+      enable email auth in code or change hosted Supabase Auth settings for it.
 - **Auth redirect / site URLs** must match the deployed origin.
 - **Rate limits** reviewed (Supabase `[auth.rate_limit]` equivalents + provider
   caps).
@@ -234,9 +249,17 @@ expected — any other `NEXT_PUBLIC_*` whose name looks secret (broad markers:
 an enabled legal flag, a non-`disabled`/`sandbox` provider mode, an enabled dev
 fake-OTP path in a deploy, a local Supabase URL in a deploy,
 `MADAF_TRUSTED_DOCUMENT_STORAGE=enabled` **without a project ref** (always
-required), and missing Supabase/app-URL config. It is **not** run at build time
-(so the zero-env mock build never breaks); call it from an ops health check or a
-one-off script. Example (local):
+required), and missing Supabase/app-URL config.
+
+**It DOES run at build time.** `npm run build` is `check:deploy-safety &&
+next build && check-dynamic-routes` (`package.json`), so the linter
+(`scripts/check-deployment-safety.ts`, which calls `assessDeploymentSafety`)
+runs as a **build gate** — a misconfigured hosted deploy (mock mode on Vercel,
+missing/preview/localhost canonical URL, a local Supabase URL, an enabled legal
+flag, …) FAILS the build. It is written to **pass** for a zero-env mock build
+(the errors fire only for a hosted/deploy config), so the local mock build never
+breaks even though the gate runs. You can still invoke it standalone as an ops
+health check or a one-off script. Example (local):
 
 ```bash
 NODE_OPTIONS='--conditions=react-server' npx tsx -e "import('./src/lib/config/deployment-safety.ts').then(m=>console.log(m.assessDeploymentSafety(process.env,{treatAsDeploy:true})))"
