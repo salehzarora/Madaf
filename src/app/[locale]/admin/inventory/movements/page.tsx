@@ -13,7 +13,6 @@ import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
   getTenantTimeZone,
-  listOrders,
   listProducts,
   searchInventoryMovements,
 } from "@/lib/data";
@@ -38,11 +37,12 @@ export default async function InventoryMovementsPage({
 
   // includeInactive: movements may reference deactivated products (M8A rule).
   // Initial page (unfiltered, 50 rows) — the client re-queries the server on
-  // filter change and appends older pages via "load more" (M8D).
-  const [movements, products, orders] = await Promise.all([
+  // filter change and appends older pages via "load more" (M8D). Each movement
+  // arrives with its order reference already hydrated by a targeted, bounded
+  // lookup (Batch C) — no full listOrders() scan that would drop older orders.
+  const [movements, products] = await Promise.all([
     searchInventoryMovements({}, 0, 50),
     listProducts({ includeInactive: true }),
-    listOrders(),
   ]);
   // Export is owner/admin (mock demo stays open; RLS already limits the data).
   const isSupabase = getDataMode() === "supabase";
@@ -69,7 +69,6 @@ export default async function InventoryMovementsPage({
         timeZone={await getTenantTimeZone()}
         movements={movements}
         products={products}
-        orders={orders}
         canExport={canExport}
         locale={locale}
         dict={dict}

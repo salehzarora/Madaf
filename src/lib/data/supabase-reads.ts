@@ -1036,6 +1036,53 @@ export async function sbListInventoryMovements(
   return sbSearchInventoryMovements({}, offset, 500);
 }
 
+/** The order-reference fields the Movements table + CSV show. */
+export type MovementOrderRef = { number: string; publicRef: string | null };
+
+/**
+ * Batch C — the max order ids per `.in()` request when hydrating movement order
+ * references. The DISTINCT orders referenced by ONE movement page/batch (≤ the
+ * export batch of 500) are fetched in chunks of this size, so the request URL
+ * stays bounded — never a thousands-long IN list, and never a full Orders scan.
+ */
+const MOVEMENT_ORDER_REF_CHUNK = 200;
+
+/**
+ * Resolve `{ number, public_ref }` for a set of order ids with a TARGETED,
+ * tenant-scoped, RLS-authoritative read — chunked so the query is bounded by the
+ * (already bounded) movement result set, NOT by total order history. A null /
+ * non-uuid / duplicate id never triggers a lookup; an inaccessible or missing
+ * order simply has no entry (the caller renders "—"). No N+1: one query per
+ * ≤200-id chunk, never one per movement.
+ */
+export async function sbOrderRefsForIds(
+  client: Db,
+  tenantId: string,
+  orderIds: (string | null)[],
+): Promise<Map<string, MovementOrderRef>> {
+  const out = new Map<string, MovementOrderRef>();
+  const ids = [
+    ...new Set(orderIds.filter((id): id is string => !!id && isUuid(id))),
+  ];
+  for (let i = 0; i < ids.length; i += MOVEMENT_ORDER_REF_CHUNK) {
+    const chunk = ids.slice(i, i + MOVEMENT_ORDER_REF_CHUNK);
+    const { data, error } = await client
+      .from("orders")
+      .select("id, order_number, public_ref")
+      .eq("tenant_id", tenantId)
+      .in("id", chunk);
+    if (error) fail("orderRefsForIds", error.message);
+    for (const r of (data ?? []) as {
+      id: string;
+      order_number: string;
+      public_ref: string | null;
+    }[]) {
+      out.set(r.id, { number: r.order_number, publicRef: r.public_ref });
+    }
+  }
+  return out;
+}
+
 /**
  * Server-side stock-movement search (M8D) — filters run in the DB query
  * (RLS-scoped, owner/admin), so the client never loads more than one page.
@@ -1081,7 +1128,7 @@ export async function sbSearchInventoryMovements(
     .order("id", { ascending: false })
     .range(offset, offset + limit - 1);
   if (error) fail("searchInventoryMovements", error.message);
-  return (data ?? []).map((r) => ({
+  const rows = (data ?? []).map((r) => ({
     id: r.id,
     productId: r.product_id,
     orderId: r.order_id,
@@ -1090,6 +1137,23 @@ export async function sbSearchInventoryMovements(
     note: r.note ?? undefined,
     createdAt: r.created_at,
   }));
+  // Batch C — hydrate the order reference for ONLY the orders THIS page's
+  // movements point at (distinct ids, chunked, RLS-scoped). This replaces the
+  // former full listOrders() map on the page, so an order older than the first
+  // PostgREST page still resolves and no full Orders table is read.
+  const refs = await sbOrderRefsForIds(
+    client,
+    tenantId,
+    rows.map((m) => m.orderId),
+  );
+  return rows.map((m) => {
+    const ref = m.orderId ? refs.get(m.orderId) : undefined;
+    return {
+      ...m,
+      orderNumber: ref?.number,
+      orderPublicRef: ref?.publicRef ?? undefined,
+    };
+  });
 }
 
 export async function sbListInventory(): Promise<InventoryItem[]> {

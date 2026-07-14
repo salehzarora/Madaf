@@ -35,7 +35,7 @@ import { createRoot } from "react-dom/client";
 import { MovementsTable } from "@/components/admin/movements-table";
 import { getDictionary } from "@/i18n/dictionaries";
 import { formatTenantDateTime } from "@/lib/time";
-import type { InventoryMovement, Order, Product } from "@/lib/types";
+import type { InventoryMovement, Product } from "@/lib/types";
 import type {
   MovementExportResult,
   MovementSearchInput,
@@ -77,7 +77,23 @@ const movement = (id: string, createdAt = INSTANT): InventoryMovement => ({
   note: undefined,
 });
 
-const orders: Order[] = [];
+/** A movement that references an order, with its reference already HYDRATED
+ * onto the row (Batch C) — how every order-linked movement now arrives. */
+const orderMovement = (
+  id: string,
+  orderNumber: string,
+  orderPublicRef?: string,
+): InventoryMovement => ({
+  id,
+  productId: "p1",
+  orderId: `order-${id}`,
+  orderNumber,
+  orderPublicRef,
+  quantityDelta: -2,
+  reason: "order_reserved",
+  createdAt: INSTANT,
+  note: undefined,
+});
 
 /** A promise whose resolution the test controls — so intermediate renders exist. */
 function deferred<T>() {
@@ -139,7 +155,6 @@ function mount(opts: {
       React.createElement(MovementsTable, {
         movements: opts.initial ?? [],
         products: [product],
-        orders,
         canExport: true,
         locale,
         dict: getDictionary(locale),
@@ -1081,6 +1096,54 @@ describe("accessibility — keyboard recovery and RTL", () => {
       /className="[^"]*\b(ml-|mr-|pl-|pr-|left-|right-|text-left|text-right)/,
       "logical CSS only — a physical side would flip wrongly in RTL",
     );
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+describe("BATCH-C — the order reference is HYDRATED onto each movement", () => {
+  /** The 5th cell is the Order column. */
+  const orderCells = (h: Harness) =>
+    $$(h, "tbody tr td:nth-child(5)").map((td) => td.textContent?.trim() ?? "");
+
+  it("renders m.orderNumber (no orders prop, no full-Orders map)", async () => {
+    const h = mount({ initial: [orderMovement("a", "MDF-1042")] });
+    assert.deepEqual(
+      orderCells(h),
+      ["MDF-1042"],
+      "the hydrated order number is shown for an order-linked movement",
+    );
+  });
+
+  it("a null-order movement shows the manual badge, not a reference", async () => {
+    const h = mount({ initial: [movement("a")] });
+    const badge = getDictionary("en").admin.inventory.movements.manualBadge;
+    assert.deepEqual(orderCells(h), [badge], "manual movements are labelled, not blank");
+  });
+
+  it("an order-linked movement whose reference did NOT resolve shows —", async () => {
+    // orderId present but no hydrated number (order inaccessible/missing under RLS).
+    const unresolved: InventoryMovement = {
+      id: "u",
+      productId: "p1",
+      orderId: "order-gone",
+      orderNumber: undefined,
+      quantityDelta: -1,
+      reason: "order_reserved",
+      createdAt: INSTANT,
+    };
+    const h = mount({ initial: [unresolved] });
+    assert.deepEqual(orderCells(h), ["—"], "an unresolved reference is a safe dash, not a crash");
+  });
+
+  it("the CSV carries the hydrated order number + public ref", async () => {
+    const h = mount({ initial: [] });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([orderMovement("a", "MDF-1042", "MDF-PUB-77")]));
+    click(exportButton(h)!);
+    await h.answerExport(0, okExport([orderMovement("a", "MDF-1042", "MDF-PUB-77")]));
+    assert.equal(h.csv.length, 1, "a file was written");
+    assert.ok(h.csv[0].body.includes("MDF-1042"), "the order number is in the CSV");
+    assert.ok(h.csv[0].body.includes("MDF-PUB-77"), "…and the public ref");
   });
 });
 

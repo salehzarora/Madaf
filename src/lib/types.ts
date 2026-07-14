@@ -265,6 +265,15 @@ export interface InventoryMovement {
   productId: string | null;
   /** NULL for manual adjustments (no order). */
   orderId: string | null;
+  /**
+   * The referenced order's human number / public ref, HYDRATED from a targeted
+   * lookup of only the orders referenced by the returned movements (Batch C) —
+   * never a full Orders scan, so an order beyond the first PostgREST page still
+   * resolves. `undefined` when there is no order, or the order is
+   * inaccessible/missing under RLS (the UI shows "—").
+   */
+  orderNumber?: string;
+  orderPublicRef?: string;
   /** Packages; negative = deducted, positive = returned/added. */
   quantityDelta: number;
   /** Machine reason — usually an InventoryMovementReason. */

@@ -46,7 +46,6 @@ import {
   INVENTORY_MOVEMENT_REASONS,
   type InventoryMovement,
   type MovementDatePreset,
-  type Order,
   type Product,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -81,7 +80,6 @@ function productMatches(p: Product, q: string): boolean {
 export function MovementsTable({
   movements: initialMovements,
   products,
-  orders,
   canExport = false,
   locale,
   dict,
@@ -92,7 +90,6 @@ export function MovementsTable({
 }: {
   movements: InventoryMovement[];
   products: Product[];
-  orders: Order[];
   /** Owner/admin (RLS gives others zero rows anyway) — shows CSV export. */
   canExport?: boolean;
   locale: Locale;
@@ -162,10 +159,6 @@ export function MovementsTable({
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
-  );
-  const orderById = useMemo(
-    () => new Map(orders.map((o) => [o.id, o])),
-    [orders],
   );
 
   /** The product ids matching the SESSION's OWN search text. Derived here (the reducer
@@ -374,7 +367,6 @@ export function MovementsTable({
       const exportRows = result.movements;
       const rowsCsv = exportRows.map((m) => {
         const product = m.productId ? productById.get(m.productId) : undefined;
-        const order = m.orderId ? orderById.get(m.orderId) : undefined;
         return [
           // The operator's CSV is a HUMAN report under a localized "Date" header, so
           // it carries the SAME tenant wall clock the screen shows — not the raw UTC
@@ -387,8 +379,11 @@ export function MovementsTable({
           m.quantityDelta,
           reasonLabel(m.reason),
           m.note ?? "",
-          order?.number ?? "",
-          order?.publicRef ?? "",
+          // The order reference is hydrated onto each movement by a targeted,
+          // bounded lookup (Batch C) — not a full Orders map, so an order older
+          // than the first page still resolves here.
+          m.orderNumber ?? "",
+          m.orderPublicRef ?? "",
         ];
       });
       const h = t.csv;
@@ -587,7 +582,6 @@ export function MovementsTable({
                 const product = m.productId
                   ? productById.get(m.productId)
                   : undefined;
-                const order = m.orderId ? orderById.get(m.orderId) : undefined;
                 const positive = m.quantityDelta > 0;
                 return (
                   <tr
@@ -633,9 +627,9 @@ export function MovementsTable({
                     <td className="px-4 py-3">
                       {m.orderId === null ? (
                         <span className="text-ink-muted">{t.manualBadge}</span>
-                      ) : order ? (
+                      ) : m.orderNumber ? (
                         <span className="font-mono text-[13px] text-brand-700" dir="ltr">
-                          {order.number}
+                          {m.orderNumber}
                         </span>
                       ) : (
                         <span className="text-ink-muted">—</span>

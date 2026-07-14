@@ -254,7 +254,10 @@ test("guard: Customers list/detail never load the full orders collection", () =>
 
 // ── 28. No N+1: the customer search is a single query with an origin filter ─
 test("guard: origin is a single-query predicate (no per-row lookup)", () => {
-  const src = readSrc("lib/data/supabase-reads.ts");
+  // Normalize CRLF → LF so the `\n}\n` function-end delimiter matches on
+  // Windows checkouts (otherwise the slice runs to EOF and picks up unrelated
+  // helpers added later in the file).
+  const src = readSrc("lib/data/supabase-reads.ts").replace(/\r\n/g, "\n");
   const fn = src.slice(src.indexOf("export async function sbSearchCustomers"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
   // Exactly one base query on customers; origin is a filter, not a loop.
