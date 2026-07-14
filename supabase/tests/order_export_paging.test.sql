@@ -1,22 +1,30 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- pgTAP — Orders CSV export paging (PILOT-READINESS-BATCH-A / P1)
+-- pgTAP — Orders export KEYSET paging: SQL completeness / ordering / isolation
+-- (PILOT-READINESS-BATCH-A / A1.1)
 --
--- The P1 defect: the export issued ONE `.range(0, 5000)` PostgREST request,
--- which the HTTP layer silently clamps to `max_rows` (1000), so a tenant with
--- >1000 matching orders received a CSV of only the 1000 newest — presented as
--- complete, because the truncation check compared against 5000.
---
--- The fix pages the filtered set server-side in ≤500-row batches (below the
--- ceiling) and dedupes by id. PostgREST's `max_rows` is an HTTP-layer clamp that
--- pgTAP (talking straight to Postgres) does not see, so this suite proves the
--- DB-LAYER half of the contract that collectExportRows relies on:
---   • the SAME `created_at DESC, id DESC` ordering the list/export use retrieves
---     ALL 1001 rows of a large tenant across 3 batches (500 + 500 + 1);
+-- NOTE ON SCOPE: this is NOT the PostgREST max_rows regression test. pgTAP talks
+-- straight to Postgres, so it cannot exercise the HTTP `max_rows` ceiling or the
+-- supabase-js request path — that is covered by the REAL local PostgREST
+-- integration test `src/lib/data/orders-export.live.test.ts` (1,001 rows over the
+-- live HTTP API, authenticated as the tenant owner). This suite proves the
+-- DB-LAYER half the production keyset collector relies on:
+--   • the SAME row-value KEYSET the export issues — `(created_at, id) < cursor`,
+--     ORDER BY created_at DESC, id DESC — retrieves ALL 1001 rows of a large
+--     tenant across 3 batches (500 + 500 + 1), with the cursor taken from the
+--     previous batch's last row (no offset);
 --   • paging is DISTINCT (no duplicate id) and COMPLETE (no skipped id);
 --   • tenant scope holds on every batch (a second tenant's rows never appear).
--- The JS half — that every request stays ≤ ORDERS_EXPORT_BATCH so the clamp can
--- never fire, plus the cap/dedupe algorithm — is covered by the injected-reader
--- unit tests in src/lib/orders-query.test.ts (the SAME production function).
+-- NOT covered here (covered elsewhere, deliberately, so this header does not
+-- overclaim): the id tie-break on rows sharing an EXACT created_at is proven
+-- behaviourally by the `keyset tie-break` unit test (1,200 same-timestamp rows)
+-- in src/lib/orders-query.test.ts; the real HTTP / max_rows path by
+-- src/lib/data/orders-export.live.test.ts. The seed here uses DISTINCT created_at
+-- (one minute apart), so id is only the SECONDARY sort key here, never decisive;
+-- and the composite (tenant_id, created_at DESC) index that serves the scan is
+-- the SAME one the paginated list already relies on (unchanged, no new index).
+-- The JS half — the cap/dedupe/keyset-progression algorithm and the ≤500
+-- per-request bound — is covered by the injected-reader unit tests in
+-- src/lib/orders-query.test.ts (the SAME production function).
 --
 -- Run with the local stack up:  supabase test db
 -- Disposable tenants X (1001 orders) + Y (1 order) in THIS transaction; rolls back.
@@ -59,24 +67,41 @@ select is(
      where tenant_id = 'a1111111-1111-4111-8111-111111111111'),
   1001, 'tenant X has 1001 orders (> PostgREST max_rows of 1000)');
 
--- ── 2–4. Batched paging (created_at DESC, id DESC) across 3 batches ────────
--- Each batch mirrors the production ORDER BY + LIMIT/OFFSET the export issues.
-create temporary table export_pages (batch int, ord int, id uuid) on commit drop;
-insert into export_pages (batch, ord, id)
-select 1, row_number() over (order by created_at desc, id desc), id
+-- ── 2–4. KEYSET paging (created_at DESC, id DESC) across 3 batches ─────────
+-- Each batch mirrors the production reader EXACTLY: batch 1 has no cursor; every
+-- later batch fetches rows strictly OLDER than the previous batch's LAST row via
+-- the row-value comparison `(created_at, id) < (cursor.created_at, cursor.id)` —
+-- NO offset. This is the traversal that cannot skip a row when earlier rows leave
+-- the filter between pages.
+create temporary table export_pages
+  (batch int, ord int, id uuid, created_at timestamptz) on commit drop;
+
+-- Batch 1 — the newest 500 (no cursor).
+insert into export_pages (batch, ord, id, created_at)
+select 1, row_number() over (order by created_at desc, id desc), id, created_at
   from public.orders
  where tenant_id = 'a1111111-1111-4111-8111-111111111111'
- order by created_at desc, id desc limit 500 offset 0;
-insert into export_pages (batch, ord, id)
-select 2, 500 + row_number() over (order by created_at desc, id desc), id
-  from public.orders
- where tenant_id = 'a1111111-1111-4111-8111-111111111111'
- order by created_at desc, id desc limit 500 offset 500;
-insert into export_pages (batch, ord, id)
-select 3, 1000 + row_number() over (order by created_at desc, id desc), id
-  from public.orders
- where tenant_id = 'a1111111-1111-4111-8111-111111111111'
- order by created_at desc, id desc limit 500 offset 1000;
+ order by created_at desc, id desc limit 500;
+
+-- Batch 2 — rows OLDER than batch 1's last row (row-value keyset), next 500.
+insert into export_pages (batch, ord, id, created_at)
+with c as (
+  select created_at, id from export_pages where batch = 1 order by ord desc limit 1)
+select 2, 500 + row_number() over (order by o.created_at desc, o.id desc), o.id, o.created_at
+  from public.orders o, c
+ where o.tenant_id = 'a1111111-1111-4111-8111-111111111111'
+   and (o.created_at, o.id) < (c.created_at, c.id)
+ order by o.created_at desc, o.id desc limit 500;
+
+-- Batch 3 — rows OLDER than batch 2's last row (the final 1).
+insert into export_pages (batch, ord, id, created_at)
+with c as (
+  select created_at, id from export_pages where batch = 2 order by ord desc limit 1)
+select 3, 1000 + row_number() over (order by o.created_at desc, o.id desc), o.id, o.created_at
+  from public.orders o, c
+ where o.tenant_id = 'a1111111-1111-4111-8111-111111111111'
+   and (o.created_at, o.id) < (c.created_at, c.id)
+ order by o.created_at desc, o.id desc limit 500;
 
 select is((select count(*)::int from export_pages), 1001,
   'three ≤500 batches together retrieve ALL 1001 rows (nothing truncated)');

@@ -40,10 +40,10 @@ import type {
 } from "@/lib/types";
 import {
   collectExportRows,
-  isRangeNotSatisfiable,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
   type OrderListRow,
+  type OrdersExportCursor,
   type OrdersListResult,
   type OrdersQuery,
 } from "@/lib/orders-query";
@@ -1300,6 +1300,43 @@ export async function sbSearchOrders(query: OrdersQuery): Promise<OrdersListResu
   };
 }
 
+/**
+ * The production Orders-export KEYSET page reader, extracted so the real local
+ * PostgREST integration test can exercise the EXACT production query + cursor
+ * (no duplicated pagination logic). Given the resolved (client, tenant, query,
+ * timeZone), returns a `(cursor, limit) => rows` reader that:
+ *   • rebuilds the SAME filtered/tenant-scoped query every page (a supabase query
+ *     builder is single-use), so no batch can reinterpret the tenant, the
+ *     filters, or the tenant-timezone-derived date boundaries;
+ *   • orders `created_at DESC, id DESC` and, for a non-first page, adds the keyset
+ *     predicate `created_at < c.createdAt OR (created_at = c.createdAt AND id <
+ *     c.id)` — the same row-value keyset the Customer Timeline uses;
+ *   • requests `.limit(limit)` (≤ ORDERS_EXPORT_BATCH, no offset, no range), so a
+ *     single request can never be clamped by PostgREST max_rows and there is no
+ *     over-range/PGRST103 case. Any DB error aborts the export via fail().
+ */
+export function buildOrdersExportPageReader(
+  client: Db,
+  tenantId: string,
+  query: OrdersQuery,
+  timeZone: string,
+): (cursor: OrdersExportCursor | null, limit: number) => Promise<OrderListDbRow[]> {
+  return async (cursor, limit) => {
+    let qb = buildOrdersQuery(client, tenantId, query, ORDER_LIST_SELECT, timeZone)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (cursor) {
+      // Rows strictly OLDER than the cursor in (created_at DESC, id DESC).
+      qb = qb.or(
+        `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+      );
+    }
+    const { data, error } = await qb.limit(limit);
+    if (error) fail("listOrdersForExport", error.message);
+    return (data as unknown as OrderListDbRow[]) ?? [];
+  };
+}
+
 export async function sbListOrdersForExport(
   query: OrdersQuery,
   cap: number,
@@ -1307,38 +1344,14 @@ export async function sbListOrdersForExport(
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
   if (query.customerId && !isUuid(query.customerId)) return [];
-  // ONE tenant zone for every batch — same bounds as the list + count, so an
-  // export can never contain a different set of days than the screen it was
-  // exported from.
+  // ONE tenant zone, resolved once, drives every page — the same bounds as the
+  // list + count, so an export can never contain a different set of days than
+  // the screen it was exported from, and batch 2+ can never reinterpret them.
   const timeZone = await getTenantTimeZone();
-  // Page the filtered set server-side in batches of ORDERS_EXPORT_BATCH (< the
-  // PostgREST max_rows ceiling) so no single request is silently clamped and the
-  // full set up to `cap` is actually returned. Every batch rebuilds the SAME
-  // filtered/ordered query (a Supabase query builder is single-use) and applies
-  // the SAME tenant scope; collectExportRows dedupes by id across batches.
-  const dbRows = await collectExportRows<OrderListDbRow>(async (offset, limit) => {
-    const { data, error } = await buildOrdersQuery(
-      client,
-      tenantId,
-      query,
-      ORDER_LIST_SELECT,
-      timeZone,
-    )
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(offset, offset + limit - 1);
-    // An over-range boundary fetch (offset === count when the filtered set size
-    // is an exact multiple of the batch) is a benign end-of-set signal, not a
-    // failure — see isRangeNotSatisfiable. Any OTHER error is real.
-    // An over-range boundary fetch (offset === count when the filtered set size
-    // is an exact multiple of the batch) is a benign end-of-set signal, not a
-    // failure — see isRangeNotSatisfiable. Any OTHER error is real.
-    if (error) {
-      if (isRangeNotSatisfiable(error)) return [];
-      fail("listOrdersForExport", error.message);
-    }
-    return (data as unknown as OrderListDbRow[]) ?? [];
-  }, cap);
+  // Stable KEYSET traversal (no offset) so a concurrent filter change can never
+  // skip a still-matching row; collectExportRows dedupes by id as defence only.
+  const reader = buildOrdersExportPageReader(client, tenantId, query, timeZone);
+  const dbRows = await collectExportRows<OrderListDbRow>(reader, cap);
   return dbRows.map(mapOrderListRow);
 }
 

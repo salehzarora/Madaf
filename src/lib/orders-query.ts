@@ -41,42 +41,58 @@ export const ORDERS_EXPORT_CAP = 5000;
  */
 export const ORDERS_EXPORT_BATCH = 500;
 
-/**
- * PostgREST's "Requested range not satisfiable" code (an over-range offset).
- *
- * When the filtered set size is an EXACT multiple of the batch, the final loop
- * iteration below asks for a page at `offset === count`. Because the export
- * query requests no row count, PostgREST normally answers that with an empty
- * 200 (so the caller sees a clean short page). But a configuration that DID know
- * the exact count would answer PGRST103 / HTTP 416 instead — so the export reader
- * treats THIS specific over-range signal as "no more rows" rather than failing
- * the whole CSV. A 500 / 1000 / … boundary must never break an export; any other
- * error is still a real failure.
- */
-export function isRangeNotSatisfiable(
-  error: { code?: string | null } | null | undefined,
-): boolean {
-  return !!error && error.code === "PGRST103";
+/** The internal, server-side export cursor: the (immutable) sort key of the last
+ * row returned so far. `created_at` is set once at order creation and never
+ * updated by any order RPC; `id` is the immutable uuid PK — so the cursor can
+ * never point at a moved row. Carries nothing else (no tenant, no filter, no
+ * secret); it is never client-supplied. */
+export interface OrdersExportCursor {
+  createdAt: string;
+  id: string;
+}
+
+/** A row shape the keyset collector can derive its cursor from. */
+export interface ExportCursorRow {
+  id: string;
+  created_at: string;
 }
 
 /**
- * Collect up to `cap` export rows by paging a bounded fetch — at most `batchSize`
- * (≤ ORDERS_EXPORT_BATCH) rows per request — until a SHORT page is returned
- * (the set is exhausted) or `cap` rows have been gathered. Deduped by id: a
- * concurrent INSERT can shift a `created_at DESC, id DESC` offset window so a row
- * straddles two adjacent pages, and the `seen` set drops the repeat so the CSV
- * never contains a duplicate row. (A concurrent DELETE could skip a row, but
- * orders are never hard-deleted in this product — only cancelled — so no export
- * row is ever skipped in practice.)
+ * Collect up to `cap` export rows with STABLE KEYSET pagination (not offset).
  *
- * PURE + INJECTABLE: the real Supabase export and its unit tests run this SAME
- * algorithm (the tests pass a fake page reader), so there is no test-only
- * duplicate of the cap/dedupe logic. `offset` advances by the number of rows the
- * reader actually returned; `maxPages` bounds the request count even under a
- * pathological all-duplicate response so the loop always terminates.
+ * Offset/range paging skipped rows under an ordinary concurrent filter change:
+ * if a page-1 row leaves the active filter before page 2, every later row shifts
+ * left, so `offset = 500` now points PAST a still-matching row, which the export
+ * silently omitted. Keyset traversal fixes this: each page fetches rows strictly
+ * OLDER than the last row already returned —
+ *   created_at < cursor.created_at
+ *   OR (created_at = cursor.created_at AND id < cursor.id)
+ * ordered `created_at DESC, id DESC` — so removing an earlier row cannot move the
+ * window; the next page always continues exactly after the last returned row.
+ *
+ * Termination is a SHORT or EMPTY page (the keyset naturally returns nothing past
+ * the end — no over-range request, so no PostgREST 416/PGRST103 special case is
+ * needed) or reaching `cap`; `maxPages` is a defensive backstop. Dedupe by id
+ * remains as DEFENCE-IN-DEPTH only — with a unique (created_at, id) key a stable
+ * keyset cannot re-emit a returned row — and it never drives progression: the
+ * cursor always advances to the DB's actual last row, even if that row was a
+ * duplicate, so a deduped row can never stall the traversal.
+ *
+ * PURE + INJECTABLE: the real Supabase export and its tests run this SAME
+ * algorithm (tests pass a fake keyset page reader), so there is no test-only
+ * duplicate of the cursor/cap logic.
+ *
+ * SNAPSHOT NOTE (honest): this is NOT a database snapshot. A row inserted ahead
+ * of the current cursor after the export starts may or may not appear depending
+ * on timing. What IS guaranteed: no row that remains in the traversed keyset
+ * sequence is skipped merely because earlier rows were inserted or removed, and
+ * no row is duplicated.
  */
-export async function collectExportRows<T extends { id: string }>(
-  fetchPage: (offset: number, limit: number) => Promise<readonly T[]>,
+export async function collectExportRows<T extends ExportCursorRow>(
+  fetchPage: (
+    cursor: OrdersExportCursor | null,
+    limit: number,
+  ) => Promise<readonly T[]>,
   cap: number,
   batchSize: number = ORDERS_EXPORT_BATCH,
 ): Promise<T[]> {
@@ -86,17 +102,22 @@ export async function collectExportRows<T extends { id: string }>(
   if (safeCap === 0) return out;
   const step = Math.max(1, Math.min(batchSize, ORDERS_EXPORT_BATCH));
   const maxPages = Math.ceil(safeCap / step) + 2;
-  let offset = 0;
+  let cursor: OrdersExportCursor | null = null;
   for (let page = 0; page < maxPages && out.length < safeCap; page += 1) {
     const want = Math.min(step, safeCap - out.length);
-    const rows = await fetchPage(offset, want);
+    const rows = await fetchPage(cursor, want);
+    if (rows.length === 0) break; // no rows past the cursor ⇒ exhausted
     for (const row of rows) {
       if (seen.has(row.id)) continue;
       seen.add(row.id);
       out.push(row);
       if (out.length >= safeCap) break;
     }
-    offset += rows.length;
+    // Advance the cursor to the DB's ACTUAL last row of this page (keyset
+    // progression), regardless of dedupe — traversal continues from where the
+    // query left off, never from the last NEW row.
+    const last = rows[rows.length - 1];
+    cursor = { createdAt: last.created_at, id: last.id };
     if (rows.length < want) break; // short page ⇒ the filtered set is exhausted
   }
   return out;
