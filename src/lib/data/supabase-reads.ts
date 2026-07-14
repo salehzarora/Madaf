@@ -59,6 +59,7 @@ import { resolveTenantTimeZone } from "@/lib/time";
 
 import type { Db } from "./supabase-context";
 import type { CustomerRowStat } from "./customers";
+import type { DashboardMetrics } from "./dashboard";
 import {
   getDataContext,
   getSessionContext,
@@ -1144,6 +1145,129 @@ export async function sbGetOrder(id: string): Promise<Order | undefined> {
     .maybeSingle();
   if (error) fail("getOrder", error.message);
   return data ? mapOrder(data as OrderRow) : undefined;
+}
+
+// ── Dashboard metrics — ONE bounded aggregate (C1) ────────────────────────
+// Replaces the dashboard's full listOrders() scan with the get_dashboard_metrics
+// RPC (SECURITY INVOKER; RLS is the authorization boundary). The tenant zone is
+// resolved server-side (getTenantTimeZone) and passed so tenant-local
+// today/month/trend boundaries match the M8H.2 contract.
+
+/** The get_dashboard_metrics RPC jsonb blob (numbers may arrive as strings for
+ * numeric money, so every value is coerced through `dashNum`). */
+type DashboardMetricsJson = {
+  status_counts: Record<string, unknown>;
+  total_orders: unknown;
+  today: { count: unknown; revenue: unknown };
+  month: { count: unknown; revenue: unknown };
+  guest_pending: unknown;
+  trend: { day: string; total: unknown }[];
+  top_products: {
+    product_id: string;
+    name_ar: string;
+    name_he: string;
+    name_en: string;
+    revenue: unknown;
+  }[];
+  top_shops: {
+    customer_id: string;
+    name: string;
+    total: unknown;
+    count: unknown;
+  }[];
+  active_product_count: unknown;
+  active_shop_count: unknown;
+  low_stock: {
+    count: unknown;
+    out_of_stock_count: unknown;
+    items: {
+      product_id: string;
+      name_ar: string;
+      name_he: string;
+      name_en: string;
+      location: string | null;
+      stock: unknown;
+      threshold: unknown;
+    }[];
+  };
+};
+
+function dashNum(v: unknown): number {
+  if (typeof v === "number") return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function emptyDashboardMetrics(): DashboardMetrics {
+  return {
+    statusCounts: { new: 0, confirmed: 0, preparing: 0, delivered: 0, cancelled: 0 },
+    totalOrders: 0,
+    today: { count: 0, revenue: 0 },
+    month: { count: 0, revenue: 0 },
+    guestPending: 0,
+    trend: [],
+    topProducts: [],
+    topShops: [],
+    activeProductCount: 0,
+    activeShopCount: 0,
+    lowStock: { count: 0, outOfStockCount: 0, items: [] },
+  };
+}
+
+export async function sbGetDashboardMetrics(): Promise<DashboardMetrics> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return emptyDashboardMetrics();
+  // Authoritative tenant zone (from the cached membership; never client input).
+  const timeZone = await getTenantTimeZone();
+  const { data, error } = await client.rpc("get_dashboard_metrics", {
+    p_tenant_id: tenantId,
+    p_time_zone: timeZone,
+  });
+  if (error) fail("getDashboardMetrics", error.message);
+  if (!data) return emptyDashboardMetrics();
+  const m = data as unknown as DashboardMetricsJson;
+  const sc = m.status_counts ?? {};
+  return {
+    statusCounts: {
+      new: dashNum(sc.new),
+      confirmed: dashNum(sc.confirmed),
+      preparing: dashNum(sc.preparing),
+      delivered: dashNum(sc.delivered),
+      cancelled: dashNum(sc.cancelled),
+    },
+    totalOrders: dashNum(m.total_orders),
+    today: { count: dashNum(m.today?.count), revenue: dashNum(m.today?.revenue) },
+    month: { count: dashNum(m.month?.count), revenue: dashNum(m.month?.revenue) },
+    guestPending: dashNum(m.guest_pending),
+    trend: (m.trend ?? []).map((t) => ({
+      day: t.day,
+      total: dashNum(t.total),
+    })),
+    topProducts: (m.top_products ?? []).map((p) => ({
+      productId: p.product_id,
+      name: { ar: p.name_ar, he: p.name_he, en: p.name_en },
+      revenue: dashNum(p.revenue),
+    })),
+    topShops: (m.top_shops ?? []).map((s) => ({
+      customerId: s.customer_id,
+      name: s.name,
+      total: dashNum(s.total),
+      count: dashNum(s.count),
+    })),
+    activeProductCount: dashNum(m.active_product_count),
+    activeShopCount: dashNum(m.active_shop_count),
+    lowStock: {
+      count: dashNum(m.low_stock?.count),
+      outOfStockCount: dashNum(m.low_stock?.out_of_stock_count),
+      items: (m.low_stock?.items ?? []).map((i) => ({
+        productId: i.product_id,
+        name: { ar: i.name_ar, he: i.name_he, en: i.name_en },
+        location: i.location ?? "",
+        stock: dashNum(i.stock),
+        threshold: dashNum(i.threshold),
+      })),
+    },
+  };
 }
 
 // ── Orders server-side search + pagination (M8F.1) ────────────────────────

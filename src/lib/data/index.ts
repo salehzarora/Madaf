@@ -90,3 +90,9 @@ export {
   safeInitialOrderTimeline,
   type OrderTimelineQuery,
 } from "./order-timeline";
+export {
+  computeDashboardMetrics,
+  getDashboardMetrics,
+  type DashboardMetrics,
+  type DashboardMetricsInput,
+} from "./dashboard";

@@ -1986,6 +1986,10 @@ export type Database = {
           order_count: number
         }[]
       }
+      get_dashboard_metrics: {
+        Args: { p_now?: string; p_tenant_id: string; p_time_zone: string }
+        Returns: Json
+      }
       get_showcase_catalog: { Args: { p_token: string }; Returns: Json }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }

@@ -183,13 +183,21 @@ test("business day: an invalid instant or zone fails safely", () => {
   assert.equal(tenantDateKey(ROLLOVER, "Not/AZone"), "2026-08-31");
 });
 
-test("guard: the Dashboard and inventory pages no longer ask in UTC", () => {
+test("guard: the Dashboard and inventory date buckets are tenant-local, not UTC", () => {
+  // Batch C — the dashboard delegates its aggregates to the bounded
+  // getDashboardMetrics read; the tenant-local date bucketing now lives in the
+  // aggregate (mock path) / the get_dashboard_metrics RPC's AT TIME ZONE
+  // (supabase). The page itself must still never bucket in UTC.
   const dash = stripComments(readSrc("app/[locale]/admin/page.tsx"));
   assert.doesNotMatch(dash, /toISOString\(\)\.slice/, "no UTC today/month prefix");
   assert.doesNotMatch(dash, /createdAt\.slice\(0, ?10\)/, "no UTC day bucket");
   assert.doesNotMatch(dash, /createdAt\.startsWith\(/, "no UTC month bucket");
-  assert.match(dash, /tenantToday\(timeZone\)/, "tenant today");
-  assert.match(dash, /tenantDateKey\(o\.createdAt, timeZone\)/, "tenant day buckets");
+  assert.match(dash, /getDashboardMetrics\(\)/, "aggregates come from the bounded read");
+
+  // The tenant-local bucketing lives in the aggregate data layer (mock path).
+  const agg = stripComments(readSrc("lib/data/dashboard.ts"));
+  assert.match(agg, /tenantToday\(timeZone\)/, "tenant today");
+  assert.match(agg, /tenantDateKey\(o\.createdAt, timeZone\)/, "tenant day buckets");
 
   const inv = stripComments(readSrc("app/[locale]/admin/inventory/page.tsx"));
   assert.doesNotMatch(inv, /toISOString\(\)\.slice/, "no UTC expiry anchor");

@@ -18,24 +18,12 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
-import {
-  isLowStock,
-  LOW_STOCK_THRESHOLD,
-  orderSubtotal,
-  productName,
-} from "@/lib/catalog-helpers";
 import { getSessionContext } from "@/lib/auth/session";
-import {
-  getDataMode,
-  getTenantTimeZone,
-  listCustomers,
-  listInventory,
-  listOrders,
-  listProducts,
-} from "@/lib/data";
+import { getDashboardMetrics, getDataMode, getTenantTimeZone, searchOrders } from "@/lib/data";
 import { listSignupRequests } from "@/lib/data/customer-signup";
+import { parseOrdersQuery } from "@/lib/orders-query";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { formatTenantDateTime, tenantDateKey, tenantToday } from "@/lib/time";
+import { formatTenantDateTime } from "@/lib/time";
 import type { Locale } from "@/lib/types";
 
 const STATUS_COLOR = {
@@ -52,7 +40,13 @@ function compact(n: number, locale: Locale): string {
   return formatNumber(Math.round(n), locale);
 }
 
-/** Admin dashboard v2 — KPIs, trend + status, widgets, recent activity. */
+/** Admin dashboard v2 — KPIs, trend + status, widgets, recent activity.
+ *
+ * C1 (Batch C): all aggregates come from ONE bounded `getDashboardMetrics()`
+ * read (a tenant-scoped DB aggregate in supabase mode; the same definitions over
+ * the mock arrays in demo mode) instead of loading the ENTIRE order history and
+ * summing in JS — so a tenant past the PostgREST 1000-row ceiling can no longer
+ * see silently-truncated totals. Recent activity is a bounded 6-order page. */
 export default async function AdminDashboardPage({
   params,
 }: {
@@ -64,59 +58,28 @@ export default async function AdminDashboardPage({
   const t = dict.admin;
   const d = dict.admin.dashboard;
 
-  // includeInactive: order lines / inventory rows / low-stock entries may
-  // reference DEACTIVATED products — lookups must still resolve (M8A crash
-  // fix). Active-only derived values filter explicitly below.
-  const [orders, customers, inventory, products, timeZone] = await Promise.all([
-    listOrders(),
-    listCustomers(),
-    listInventory(),
-    listProducts({ includeInactive: true }),
+  // ONE bounded aggregate + a bounded 6-order "recent" page + the tenant zone.
+  const [metrics, recentResult, timeZone] = await Promise.all([
+    getDashboardMetrics(),
+    searchOrders(parseOrdersQuery({ pageSize: "6" })),
     getTenantTimeZone(), // M8H.2 — server-derived tenant zone for dashboard times
   ]);
-  const customerById = new Map(customers.map((c) => [c.id, c]));
-  const productById = new Map(products.map((p) => [p.id, p]));
-  // `isActive !== false`: mock products/customers omit the optional flag
-  // (implicitly active) — a truthy check would render 0 in mock mode. Both
-  // KPIs count only ACTIVE rows now that M8C can deactivate customers.
-  const activeProductCount = products.filter(
-    (p) => p.isActive !== false,
-  ).length;
-  const activeShopCount = customers.filter(
-    (c) => c.isActive !== false,
-  ).length;
+  const recent = recentResult.rows;
 
-  const live = orders.filter((o) => o.status !== "cancelled");
-  const newOrders = orders.filter((o) => o.status === "new");
-  const open = orders.filter((o) =>
-    ["new", "confirmed", "preparing"].includes(o.status),
-  );
-  // Mock data lives in July 2026; supabase mode uses the real current month IN THE
-  // TENANT'S TIMEZONE (the KPI was hardcoded to "2026-07" and went stale — M8A;
-  // M8H.2 makes the rollover happen on the tenant's midnight, not UTC's).
-  const monthPrefix =
-    getDataMode() === "mock"
-      ? "2026-07"
-      : tenantToday(timeZone).slice(0, 7);
-  // The BUCKET must be tenant-local too — `createdAt.startsWith("2026-09")` on a raw
-  // UTC string files 2026-08-31T21:30Z under August, though the tenant (and the
-  // timestamp shown beside it) says September 1.
-  const monthOrders = live.filter(
-    (o) => tenantDateKey(o.createdAt, timeZone).startsWith(monthPrefix),
-  );
-  const monthTotal = monthOrders.reduce((s, o) => s + orderSubtotal(o), 0);
-  // Low stock excludes DEACTIVATED products (M8D) — no point flagging stock
-  // for a product no longer sold. productById includes inactive rows.
-  const lowStockItems = inventory.filter(
-    (i) => isLowStock(i) && productById.get(i.productId)?.isActive !== false,
-  );
-  const outCount = lowStockItems.filter((i) => i.stockPackages === 0).length;
+  const sc = metrics.statusCounts;
+  const newOrdersCount = sc.new;
+  const openCount = sc.new + sc.confirmed + sc.preparing;
+  const inPreparation = sc.confirmed + sc.preparing;
+  const monthTotal = metrics.month.revenue;
+  const monthOrdersCount = metrics.month.count;
+  const todayOrdersCount = metrics.today.count;
+  const todayTotal = metrics.today.revenue;
+  const lowStockCount = metrics.lowStock.count;
+  const outCount = metrics.lowStock.outOfStockCount;
+  const pendingGuestOrders = metrics.guestPending;
+  const activeProductCount = metrics.activeProductCount;
+  const activeShopCount = metrics.activeShopCount;
 
-  // ── Operational alerts (M8B.4) ──────────────────────────────────────────
-  // Guest showcase orders awaiting a decision: status new, no linked shop.
-  const pendingGuestOrders = newOrders.filter(
-    (o) => !o.customerId && o.customerSnapshot?.guest,
-  ).length;
   // Pending store-signup requests — supabase owner/admin only (the list RPC
   // path is owner/admin; mock has no signups).
   const isSupabase = getDataMode() === "supabase";
@@ -129,47 +92,23 @@ export default async function AdminDashboardPage({
     ? (await listSignupRequests()).filter((r) => r.status === "pending").length
     : 0;
 
-  // At-a-glance counts. "Today" is the TENANT's current day — not UTC's. The old
-  // `new Date().toISOString().slice(0, 10)` asked the question in UTC, so for the
-  // three hours before a Jerusalem midnight the dashboard's "today" was yesterday
-  // while the order timestamps next to it already read tomorrow.
-  const todayStr = tenantToday(timeZone);
-  const todayOrders = live.filter(
-    (o) => tenantDateKey(o.createdAt, timeZone) === todayStr,
-  );
-  const todayOrdersCount = todayOrders.length;
-  // M8C: today's order value (non-cancelled, ex-VAT) for the ops strip.
-  const todayTotal = todayOrders.reduce((s, o) => s + orderSubtotal(o), 0);
-  // Orders being worked right now (confirmed or preparing).
-  const inPreparation = orders.filter((o) =>
-    ["confirmed", "preparing"].includes(o.status),
-  ).length;
-
   // Open-orders segmented mini-bar shares.
   const openBy = {
-    new: open.filter((o) => o.status === "new").length,
-    confirmed: open.filter((o) => o.status === "confirmed").length,
-    preparing: open.filter((o) => o.status === "preparing").length,
+    new: sc.new,
+    confirmed: sc.confirmed,
+    preparing: sc.preparing,
   };
 
-  // Daily totals (non-cancelled), last 14 days present in the data. The bucket key
-  // is the TENANT's calendar day — `createdAt.slice(0, 10)` is the UTC prefix, which
-  // puts an evening order in the previous day's bar for any zone ahead of UTC.
-  const byDay = new Map<string, number>();
-  for (const o of live) {
-    const day = tenantDateKey(o.createdAt, timeZone);
-    byDay.set(day, (byDay.get(day) ?? 0) + orderSubtotal(o));
-  }
-  const dayKeys = [...byDay.keys()].sort().slice(-14);
-  const trendDays: TrendDay[] = dayKeys.map((k, i) => {
-    const value = byDay.get(k) ?? 0;
-    const [, mm, dd] = k.split("-");
+  // Daily totals (non-cancelled), last 14 tenant-local days present in the data
+  // — computed server-side by the aggregate; the UI only formats.
+  const trendDays: TrendDay[] = metrics.trend.map((point, i) => {
+    const [, mm, dd] = point.day.split("-");
     return {
       dayLabel: `${Number(dd)}/${Number(mm)}`,
-      value,
-      compact: compact(value, locale),
-      full: formatCurrency(value, locale),
-      isToday: i === dayKeys.length - 1,
+      value: point.total,
+      compact: compact(point.total, locale),
+      full: formatCurrency(point.total, locale),
+      isToday: i === metrics.trend.length - 1,
     };
   });
 
@@ -188,45 +127,14 @@ export default async function AdminDashboardPage({
   const statuses = ["new", "confirmed", "preparing", "delivered", "cancelled"] as const;
   const segments = statuses.map((s) => ({
     label: dict.status[s],
-    count: orders.filter((o) => o.status === s).length,
+    count: sc[s],
     color: STATUS_COLOR[s],
   }));
 
-  // Top products by summed line revenue (non-cancelled).
-  const prodRev = new Map<string, number>();
-  for (const o of live) {
-    for (const it of o.items) {
-      prodRev.set(
-        it.productId,
-        (prodRev.get(it.productId) ?? 0) + it.quantity * it.unitPrice,
-      );
-    }
-  }
-  const topProducts = [...prodRev.entries()]
-    .map(([id, rev]) => ({ product: productById.get(id), rev }))
-    .filter((x) => x.product)
-    .sort((a, b) => b.rev - a.rev)
-    .slice(0, 5);
-  const topProdMax = Math.max(1, ...topProducts.map((x) => x.rev));
-
-  // Top shops by summed subtotal (non-cancelled).
-  const shopTotals = new Map<string, { total: number; count: number }>();
-  for (const o of live) {
-    const cur = shopTotals.get(o.customerId) ?? { total: 0, count: 0 };
-    shopTotals.set(o.customerId, {
-      total: cur.total + orderSubtotal(o),
-      count: cur.count + 1,
-    });
-  }
-  const topShops = [...shopTotals.entries()]
-    .map(([id, v]) => ({ customer: customerById.get(id), ...v }))
-    .filter((x) => x.customer)
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 4);
-
-  const recent = [...orders]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 6);
+  const topProducts = metrics.topProducts;
+  const topProdMax = Math.max(1, ...topProducts.map((x) => x.revenue));
+  const topShops = metrics.topShops;
+  const lowStockItems = metrics.lowStock.items;
 
   const actionLink =
     "inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-sm font-semibold transition-colors";
@@ -269,20 +177,20 @@ export default async function AdminDashboardPage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           label={t.metrics.newOrders}
-          value={formatNumber(newOrders.length, locale)}
+          value={formatNumber(newOrdersCount, locale)}
         >
           {/* All-time count of status=new — no "Today" badge (M8A: it was
               misleading; today's count has its own MetricCard below). */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-ink-muted">
-              {t.metrics.openOrders}: {formatNumber(open.length, locale)}
+              {t.metrics.openOrders}: {formatNumber(openCount, locale)}
             </span>
           </div>
         </KpiCard>
 
         <KpiCard
           label={t.metrics.openOrders}
-          value={formatNumber(open.length, locale)}
+          value={formatNumber(openCount, locale)}
         >
           <div className="flex h-1.5 overflow-hidden rounded-[3px] bg-line-hair">
             {(["new", "confirmed", "preparing"] as const).map((s) =>
@@ -290,7 +198,7 @@ export default async function AdminDashboardPage({
                 <span
                   key={s}
                   style={{
-                    width: `${(openBy[s] / Math.max(1, open.length)) * 100}%`,
+                    width: `${(openBy[s] / Math.max(1, openCount)) * 100}%`,
                     backgroundColor: STATUS_COLOR[s],
                   }}
                 />
@@ -323,14 +231,14 @@ export default async function AdminDashboardPage({
               ) : null}
             </svg>
             <span className="text-[11px] text-ink-muted">
-              {interpolate(d.ordersCount, { count: monthOrders.length })}
+              {interpolate(d.ordersCount, { count: monthOrdersCount })}
             </span>
           </div>
         </KpiCard>
 
         <KpiCard
           label={t.metrics.lowStock}
-          value={formatNumber(lowStockItems.length, locale)}
+          value={formatNumber(lowStockCount, locale)}
           tone="warning"
         >
           <div className="flex items-center gap-2">
@@ -386,16 +294,16 @@ export default async function AdminDashboardPage({
               {d.alerts.needsConfirmation}
             </span>
             <span className="block text-xs text-ink-soft">
-              {newOrders.length > 0
+              {newOrdersCount > 0
                 ? interpolate(d.alerts.needsConfirmationCount, {
-                    count: newOrders.length,
+                    count: newOrdersCount,
                   })
                 : d.alerts.needsConfirmationNone}
             </span>
           </span>
-          {newOrders.length > 0 ? (
+          {newOrdersCount > 0 ? (
             <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-              {formatNumber(newOrders.length, locale)}
+              {formatNumber(newOrdersCount, locale)}
             </span>
           ) : null}
         </Link>
@@ -490,16 +398,16 @@ export default async function AdminDashboardPage({
               {d.alerts.lowStock}
             </span>
             <span className="block text-xs text-ink-soft">
-              {lowStockItems.length > 0
+              {lowStockCount > 0
                 ? interpolate(d.alerts.lowStockCount, {
-                    count: lowStockItems.length,
+                    count: lowStockCount,
                   })
                 : d.alerts.lowStockNone}
             </span>
           </span>
-          {lowStockItems.length > 0 ? (
+          {lowStockCount > 0 ? (
             <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-              {formatNumber(lowStockItems.length, locale)}
+              {formatNumber(lowStockCount, locale)}
             </span>
           ) : null}
         </Link>
@@ -533,7 +441,7 @@ export default async function AdminDashboardPage({
           <div className="p-5">
             <StatusDonut
               segments={segments}
-              total={orders.length}
+              total={metrics.totalOrders}
               totalLabel={dict.nav.orders}
             />
           </div>
@@ -551,20 +459,20 @@ export default async function AdminDashboardPage({
             </span>
           </CardHeader>
           <ul className="flex flex-col gap-3 p-4">
-            {topProducts.map(({ product, rev }, i) => (
-              <li key={product!.id}>
+            {topProducts.map(({ productId, name, revenue }, i) => (
+              <li key={productId}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="truncate text-[13px] font-semibold text-ink">
-                    {productName(product!, locale)}
+                    {name[locale]}
                   </span>
                   <span className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink-soft">
-                    {formatCurrency(rev, locale)}
+                    {formatCurrency(revenue, locale)}
                   </span>
                 </div>
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-[3px] bg-line-hair">
                   <span
                     className={i === 0 ? "block h-full bg-brand-600" : "block h-full bg-brand-300"}
-                    style={{ width: `${(rev / topProdMax) * 100}%` }}
+                    style={{ width: `${(revenue / topProdMax) * 100}%` }}
                   />
                 </div>
               </li>
@@ -578,8 +486,8 @@ export default async function AdminDashboardPage({
             <CardTitle>{d.topCustomers}</CardTitle>
           </CardHeader>
           <ul className="divide-y divide-line-hair px-4">
-            {topShops.map(({ customer, total, count }, i) => (
-              <li key={customer!.id} className="flex items-center gap-3 py-3">
+            {topShops.map(({ customerId, name, total, count }, i) => (
+              <li key={customerId} className="flex items-center gap-3 py-3">
                 <span
                   className={
                     "flex size-[22px] shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold " +
@@ -591,7 +499,7 @@ export default async function AdminDashboardPage({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-semibold text-ink">
-                    {customer!.name}
+                    {name}
                   </p>
                   <p className="text-[11px] text-ink-muted">
                     {interpolate(d.ordersCount, { count })}
@@ -617,13 +525,8 @@ export default async function AdminDashboardPage({
             </Link>
           </CardHeader>
           <ul className="flex flex-col gap-2.5 p-4">
-            {lowStockItems.slice(0, 4).map((item) => {
-              // Guarded: the product may be deactivated (includeInactive map)
-              // or, in a pathological case, missing entirely — never crash.
-              const product = productById.get(item.productId);
-              if (!product) return null;
-              const threshold = item.lowStockThreshold ?? LOW_STOCK_THRESHOLD;
-              const empty = item.stockPackages === 0;
+            {lowStockItems.map((item) => {
+              const empty = item.stock === 0;
               return (
                 <li key={item.productId} className="flex items-center gap-2.5">
                   <span
@@ -634,13 +537,13 @@ export default async function AdminDashboardPage({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold text-ink">
-                      {productName(product, locale)}
+                      {item.name[locale]}
                     </p>
                     <div className="mt-1 h-[5px] overflow-hidden rounded-full bg-ink/[.06]">
                       <span
                         className={empty ? "block h-full bg-danger" : "block h-full bg-accent"}
                         style={{
-                          width: `${Math.max((item.stockPackages / threshold) * 100, 3)}%`,
+                          width: `${Math.max((item.stock / item.threshold) * 100, 3)}%`,
                         }}
                       />
                     </div>
@@ -649,7 +552,7 @@ export default async function AdminDashboardPage({
                     className="shrink-0 font-mono text-[13px] font-bold tabular-nums text-ink"
                     dir="ltr"
                   >
-                    {item.stockPackages} / {threshold}
+                    {item.stock} / {item.threshold}
                   </span>
                 </li>
               );
@@ -670,40 +573,37 @@ export default async function AdminDashboardPage({
           </Link>
         </CardHeader>
         <div className="divide-y divide-line-hair">
-          {recent.map((order) => {
-            const customer = customerById.get(order.customerId);
-            return (
-              <Link
-                key={order.id}
-                href={`/${locale}/admin/orders/${order.id}`}
-                className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-brand-50/60"
+          {recent.map((order) => (
+            <Link
+              key={order.id}
+              href={`/${locale}/admin/orders/${order.id}`}
+              className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-brand-50/60"
+            >
+              <span
+                className="w-[110px] shrink-0 font-mono text-[13px] font-semibold text-brand-700"
+                dir="ltr"
               >
-                <span
-                  className="w-[110px] shrink-0 font-mono text-[13px] font-semibold text-brand-700"
-                  dir="ltr"
-                >
-                  {order.number}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-                  {/* Guest showcase orders have no customer row — show the
-                      snapshot store name (M8A). */}
-                  {customer?.name ?? order.customerSnapshot?.name ?? "—"}
-                </span>
-                <span className="hidden text-xs text-ink-muted sm:block">
-                  {formatTenantDateTime(order.createdAt, locale, timeZone)} ·{" "}
-                  {interpolate(dict.admin.orders.detail.itemsCount, {
-                    count: order.items.length,
-                  })}
-                </span>
-                <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
-                  {formatCurrency(orderSubtotal(order), locale)}
-                </span>
-                <span className="hidden w-[130px] justify-end sm:flex">
-                  <OrderStatusBadge status={order.status} dict={dict.status} />
-                </span>
-              </Link>
-            );
-          })}
+                {order.number}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+                {/* Guest showcase orders have no customer row — show the
+                    snapshot store name (M8A). */}
+                {order.customerName ?? order.customerSnapshot?.name ?? "—"}
+              </span>
+              <span className="hidden text-xs text-ink-muted sm:block">
+                {formatTenantDateTime(order.createdAt, locale, timeZone)} ·{" "}
+                {interpolate(dict.admin.orders.detail.itemsCount, {
+                  count: order.itemCount,
+                })}
+              </span>
+              <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+                {formatCurrency(order.subtotalAmount, locale)}
+              </span>
+              <span className="hidden w-[130px] justify-end sm:flex">
+                <OrderStatusBadge status={order.status} dict={dict.status} />
+              </span>
+            </Link>
+          ))}
         </div>
       </Card>
     </div>

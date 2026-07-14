@@ -916,6 +916,7 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
     !migrations.some((f) => /m8h3/i.test(f)),
     "M8H.3 must not introduce a migration",
   );
-  // The reviewed M8H.2 migration is still the newest one on this branch.
-  assert.equal(migrations.length, 54);
+  // Snapshot of the migration count: M8H.2 was the last through M8H; Batch C
+  // then adds exactly one (the C1 dashboard-metrics aggregate RPC).
+  assert.equal(migrations.length, 55);
 });
