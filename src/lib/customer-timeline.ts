@@ -62,6 +62,20 @@ export interface TimelinePage {
   hasMore: boolean;
 }
 
+/**
+ * The result of the OPTIONAL initial Customer Timeline read, as it reaches the
+ * client component (PILOT-READINESS-BATCH-A / A3, mirroring M8H.3's
+ * OrderTimelineInitial). The Timeline is a non-critical widget on the Customer
+ * Details page, so its first read is isolated from the REQUIRED customer reads:
+ * a success carries the first page; a failure is explicit ({ ok: false }) so the
+ * card can render a localized, retryable error WITHOUT the surrounding Customer
+ * Details page crashing, and WITHOUT ever faking "no activity" on error. A
+ * failure carries no backend error text — only the boolean.
+ */
+export type CustomerTimelineInitial =
+  | { ok: true; page: TimelinePage }
+  | { ok: false };
+
 /** The decoded keyset position (the last row of the previous page). */
 export interface TimelineCursor {
   createdAt: string;

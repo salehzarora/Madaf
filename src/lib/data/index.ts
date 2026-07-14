@@ -82,6 +82,7 @@ export {
 export {
   getCustomerTimelinePage,
   getTimelineActorLabelsForIds,
+  safeInitialCustomerTimeline,
   type TimelineQuery,
 } from "./customer-timeline";
 export {

@@ -10,12 +10,14 @@ import { CustomerOriginBadge } from "@/components/admin/customer-origin-badge";
 import { CustomerTimeline } from "@/components/admin/customer-timeline";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { loadCustomerTimelineAction } from "@/lib/actions/customer-timeline";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getCustomer,
   getCustomerTimelinePage,
   getDataMode,
   getTenantTimeZone,
+  safeInitialCustomerTimeline,
   searchOrders,
 } from "@/lib/data";
 import { listCustomerLinks } from "@/lib/data/customer-links";
@@ -58,7 +60,13 @@ export default async function AdminCustomerDetailPage({
   // Activity timeline (M8G.3) — the FIRST bounded page of this store's real
   // audit_events (M8G.2). RLS scopes it to accessible customers; a sales_rep
   // only reaches an assigned store here (getCustomer already gated access).
-  const timelinePage = await getCustomerTimelinePage({ customerId: id });
+  // Read-only: viewing records NO audit event. It is an OPTIONAL widget, so its
+  // initial read is ISOLATED (safeInitialCustomerTimeline never throws): a
+  // Timeline failure renders a localized, retryable error INSIDE the card and
+  // never rejects the required Customer Details render above.
+  const timeline = await safeInitialCustomerTimeline(() =>
+    getCustomerTimelinePage({ customerId: id }),
+  );
 
   // M8H.2 — one server-derived tenant zone for this page AND for the client
   // components below (timeline, links), so nothing on the screen is rendered in
@@ -245,8 +253,9 @@ export default async function AdminCustomerDetailPage({
             customerId={id}
             locale={locale}
             dict={dict}
-            initialPage={timelinePage}
+            initial={timeline}
             timeZone={timeZone}
+            loadMore={loadCustomerTimelineAction}
           />
         </CardContent>
       </Card>

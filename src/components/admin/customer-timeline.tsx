@@ -16,14 +16,27 @@ import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { loadCustomerTimelineAction } from "@/lib/actions/customer-timeline";
+import type { TimelineActionResult } from "@/lib/actions/customer-timeline";
 import {
   auditEventLabel,
   renderCustomerAuditDetails,
   resolveCustomerEventKey,
 } from "@/lib/audit-events";
-import type { TimelineActor, TimelineEvent, TimelinePage } from "@/lib/customer-timeline";
+import type {
+  CustomerTimelineInitial,
+  TimelineActor,
+  TimelineEvent,
+} from "@/lib/customer-timeline";
 import { formatTenantDateTime } from "@/lib/time";
+
+/** The "load more" bridge, INJECTED by the server page — matches the
+ * order-timeline / movements-table seam so the mounted tests can drive real
+ * component behavior (initial-failure, retry, transport rejection) without a
+ * server runtime. */
+export type LoadCustomerTimeline = (input: {
+  customerId: string;
+  cursor?: string | null;
+}) => Promise<TimelineActionResult>;
 
 /** Icon per event type — every event ALSO carries a text label, so meaning is
  * never conveyed by icon/color alone. */
@@ -116,35 +129,64 @@ function TimelineRow({
 }
 
 /**
- * Read-only Customer Timeline (M8G.3). Renders the server-fetched initial page
- * and appends older pages via the bounded server action. State is fully
- * Customer-scoped (a fresh component per customer id via the page); overlapping
- * "load more" clicks are guarded; a failed load keeps the rendered events and
- * offers a retry. No edit/delete controls, no raw metadata.
+ * Read-only Customer Timeline (M8G.3; initial-read isolation added in
+ * PILOT-READINESS-BATCH-A / A3, mirroring the M8H.3 Order Timeline). Renders the
+ * server-fetched initial page and appends older pages via the bounded, injected
+ * action. State is Customer-scoped (a fresh component per customer id via the
+ * page); overlapping clicks are guarded by a ref; no edit/delete controls, no
+ * raw metadata, and viewing writes nothing.
+ *
+ * The INITIAL read is optional and isolated on the server (safeInitialCustomerTimeline),
+ * so it arrives as a discriminated `initial`:
+ *   • { ok: true, page } — render the first page (or the calm empty state);
+ *   • { ok: false }      — render a localized, RETRYABLE error IN PLACE, without
+ *                          the Customer Details page ever crashing and WITHOUT
+ *                          faking "no activity". Retry performs a fresh first-page
+ *                          read (no cursor) through the SAME bounded action; on
+ *                          success it replaces the error with the real page, on
+ *                          failure it stays a contained, still-retryable error.
+ * A later Load-More failure instead KEEPS the already-rendered events and offers
+ * a retry, so a Timeline failure never blanks the Customer Details around it.
  */
 export function CustomerTimeline({
   customerId,
   locale,
   dict,
-  initialPage,
+  initial,
   timeZone,
+  loadMore,
 }: {
   customerId: string;
   locale: Locale;
   dict: Dictionary;
-  initialPage: TimelinePage;
+  /** The isolated initial read result (success carries the first page; failure
+   * is explicit so the card can offer a retry instead of crashing the page). */
+  initial: CustomerTimelineInitial;
   /** M8H.2 — the tenant's IANA zone (server-derived). Audit rows are absolute
    * UTC instants; they are DISPLAYED in the business's timezone. */
   timeZone: string;
+  loadMore: LoadCustomerTimeline;
 }) {
   const t = dict.audit.timeline;
-  const [events, setEvents] = useState<TimelineEvent[]>(initialPage.events);
-  const [cursor, setCursor] = useState<string | null>(initialPage.nextCursor);
-  const [hasMore, setHasMore] = useState<boolean>(initialPage.hasMore);
+  const [events, setEvents] = useState<TimelineEvent[]>(
+    initial.ok ? initial.page.events : [],
+  );
+  const [cursor, setCursor] = useState<string | null>(
+    initial.ok ? initial.page.nextCursor : null,
+  );
+  const [hasMore, setHasMore] = useState<boolean>(
+    initial.ok ? initial.page.hasMore : false,
+  );
+  // The initial server read failed → show a retryable error IN PLACE (never the
+  // empty state, which would falsely claim "no activity").
+  const [initialFailed, setInitialFailed] = useState(!initial.ok);
+  // A Load-More failure while events are already shown (distinct from the
+  // initial failure above).
   const [error, setError] = useState(false);
   const [loading, startLoading] = useTransition();
-  // A ref guard so overlapping clicks (or a click while the transition is
-  // pending) never fire a second concurrent request.
+  // A ref guard so overlapping clicks (or a click while the transition is still
+  // pending) can never fire a second concurrent request — which would otherwise
+  // duplicate a page.
   const inFlight = useRef(false);
 
   function onLoadMore() {
@@ -152,18 +194,81 @@ export function CustomerTimeline({
     inFlight.current = true;
     setError(false);
     startLoading(async () => {
-      const res = await loadCustomerTimelineAction({ customerId, cursor });
-      inFlight.current = false;
-      if (!res.ok || !res.page) {
-        setError(true); // keep already-rendered events; offer retry
-        return;
+      try {
+        const res = await loadMore({ customerId, cursor });
+        if (!res.ok || !res.page) {
+          setError(true); // keep the rendered events; offer a retry
+          return;
+        }
+        const page = res.page;
+        setEvents((prev) => {
+          const seen = new Set(prev.map((e) => e.id));
+          return [...prev, ...page.events.filter((e) => !seen.has(e.id))];
+        });
+        setCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+      } catch {
+        // A TRANSPORT-level rejection (network drop, or a Server-Action failure
+        // that never reached the action's own try/catch) rejects the promise
+        // rather than resolving { ok: false }. Treat it identically, and release
+        // the in-flight guard below so the button can never dead-lock.
+        setError(true);
+      } finally {
+        inFlight.current = false;
       }
-      const seen = new Set(events.map((e) => e.id));
-      const fresh = res.page.events.filter((e) => !seen.has(e.id));
-      setEvents((prev) => [...prev, ...fresh]);
-      setCursor(res.page.nextCursor);
-      setHasMore(res.page.hasMore);
     });
+  }
+
+  // Retry the INITIAL read: a fresh FIRST page (no cursor) through the same
+  // bounded action + safe projection the SSR path used. On success it replaces
+  // the error with the real page; on failure it stays a contained error.
+  function onRetryInitial() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    startLoading(async () => {
+      try {
+        const res = await loadMore({ customerId }); // no cursor → first page
+        if (!res.ok || !res.page) {
+          setInitialFailed(true); // still failed; remain retryable
+          return;
+        }
+        const page = res.page;
+        setEvents(page.events);
+        setCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+        setInitialFailed(false);
+      } catch {
+        setInitialFailed(true);
+      } finally {
+        inFlight.current = false;
+      }
+    });
+  }
+
+  // Initial read failed: a localized, retryable error IN PLACE — never the empty
+  // state, and the surrounding Customer Details page is fully rendered around it.
+  if (initialFailed) {
+    return (
+      <div className="flex flex-col">
+        <p
+          role="alert"
+          className="rounded-field bg-surface-sunken px-4 py-6 text-center text-sm font-medium text-danger"
+        >
+          {t.error}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onRetryInitial}
+          disabled={loading}
+          aria-busy={loading}
+          className="mt-3 self-center"
+        >
+          {loading ? t.loading : t.retry}
+        </Button>
+      </div>
+    );
   }
 
   if (events.length === 0) {
@@ -212,6 +317,7 @@ export function CustomerTimeline({
           size="sm"
           onClick={onLoadMore}
           disabled={loading}
+          aria-busy={loading}
           className="mt-3 self-center"
         >
           {loading ? t.loading : t.loadMore}

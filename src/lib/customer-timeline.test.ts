@@ -34,6 +34,7 @@ import {
 import {
   getCustomerTimelinePage,
   getTimelineActorLabelsForIds,
+  safeInitialCustomerTimeline,
 } from "./data/customer-timeline";
 import { auditActors, auditEvents } from "./mock";
 import { getDictionary } from "../i18n/dictionaries";
@@ -740,4 +741,73 @@ test("guard: the M8G.3 index migration is an additive index only (no policy/gran
   assert.ok(/create index/i.test(mig), "creates an index");
   assert.ok(/audit_events \(tenant_id, entity_type, entity_id, created_at desc, id desc\)/i.test(mig));
   assert.ok(!/drop policy|create policy|alter policy|grant |revoke |insert into|update |delete from/i.test(mig), "no policy/grant/data change");
+});
+
+// ══ Isolated initial read (BATCH-A / A3) — a Timeline failure is CONTAINED ══
+// safeInitialCustomerTimeline is the exact wrapper the Customer Details page uses
+// for the OPTIONAL first Timeline read. It must NEVER throw — a failure becomes
+// { ok: false } with no backend text — so the required Customer Details render
+// can never be rejected by a Timeline read (mirrors safeInitialOrderTimeline).
+
+test("safeInitialCustomerTimeline: a THROWING read is contained as { ok:false }", async () => {
+  const res = await safeInitialCustomerTimeline(async () => {
+    throw new Error("PGRST500: relation secret leaked; postgres://u:p@h/db");
+  });
+  assert.deepEqual(res, { ok: false });
+});
+
+test("safeInitialCustomerTimeline: the failure carries NO backend text", async () => {
+  const res = await safeInitialCustomerTimeline(async () => {
+    throw new Error("PGRST500 relation secret; postgres://user:pw@host/db");
+  });
+  assert.equal(JSON.stringify(res), JSON.stringify({ ok: false }));
+  assert.doesNotMatch(JSON.stringify(res), /PGRST|postgres:|secret|host/);
+});
+
+test("safeInitialCustomerTimeline: a synchronously-throwing thunk is contained", async () => {
+  const res = await safeInitialCustomerTimeline(() => {
+    throw new Error("boom");
+  });
+  assert.deepEqual(res, { ok: false });
+});
+
+test("safeInitialCustomerTimeline: a success passes the real first page through", async () => {
+  const page = await getCustomerTimelinePage({ customerId: "c01", pageSize: 3 });
+  const res = await safeInitialCustomerTimeline(() =>
+    getCustomerTimelinePage({ customerId: "c01", pageSize: 3 }),
+  );
+  assert.equal(res.ok, true);
+  assert.ok(res.ok && res.page);
+  assert.deepEqual(
+    res.ok ? res.page.events.map((e) => e.id) : [],
+    page.events.map((e) => e.id),
+  );
+});
+
+test("guard: the customer detail page isolates the timeline but not required reads", () => {
+  const src = stripComments(
+    readSrc("app/[locale]/admin/customers/[id]/page.tsx"),
+  );
+  // The optional timeline goes through the safe wrapper...
+  assert.match(src, /safeInitialCustomerTimeline\(\s*\(\)\s*=>/);
+  assert.match(src, /getCustomerTimelinePage\(\{ customerId: id \}\)/);
+  assert.match(src, /initial=\{timeline\}/);
+  // ...while the REQUIRED reads (getCustomer, searchOrders) are NOT wrapped.
+  assert.doesNotMatch(src, /safeInitialCustomerTimeline\(\s*\(\)\s*=>\s*getCustomer\(/);
+  assert.doesNotMatch(src, /safeInitialCustomerTimeline\(\s*\(\)\s*=>\s*searchOrders\(/);
+});
+
+test("guard: the customer timeline read/action performs NO write and logs NO audit event", () => {
+  for (const rel of [
+    "lib/data/customer-timeline.ts",
+    "lib/actions/customer-timeline.ts",
+  ]) {
+    const src = stripComments(readSrc(rel));
+    assert.doesNotMatch(src, /_log_customer_audit_event/, rel);
+    assert.doesNotMatch(src, /_log_order_audit_event/, rel);
+    assert.doesNotMatch(src, /\.insert\(/, rel);
+    assert.doesNotMatch(src, /\.update\(/, rel);
+    assert.doesNotMatch(src, /\.delete\(/, rel);
+    assert.doesNotMatch(src, /revalidatePath|revalidateTag/, rel);
+  }
 });

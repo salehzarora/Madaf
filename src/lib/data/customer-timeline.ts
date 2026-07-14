@@ -14,6 +14,7 @@ import {
   encodeTimelineCursor,
   resolveTimelineActor,
   timelineRowBeforeCursor,
+  type CustomerTimelineInitial,
   type TimelinePage,
 } from "@/lib/customer-timeline";
 
@@ -63,6 +64,28 @@ function mockActorLabels(ids: string[]): Map<string, string> {
  * existence (mock). Never fetches the full history and never issues an actor
  * N+1 — actors for the page are resolved in one roster lookup.
  */
+/**
+ * Isolate the OPTIONAL initial Customer Timeline read from the REQUIRED Customer
+ * Details reads (PILOT-READINESS-BATCH-A / A3, twin of safeInitialOrderTimeline).
+ * The Timeline is a non-critical widget: if its first read fails, the Customer
+ * Details page must still render, so this NEVER throws — it maps a failure to
+ * `{ ok: false }` (no backend error text) and a success to `{ ok: true, page }`.
+ * It reuses the SAME `getCustomerTimelinePage` data path the client action and
+ * Load-More use (so the safe metadata projection + bounded read still run), and
+ * is directly testable — a test passes a throwing thunk to prove containment.
+ * The required customer reads are NOT routed through this wrapper, so their
+ * failures still propagate and fail the page as before.
+ */
+export async function safeInitialCustomerTimeline(
+  fetchPage: () => Promise<TimelinePage>,
+): Promise<CustomerTimelineInitial> {
+  try {
+    return { ok: true, page: await fetchPage() };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function getCustomerTimelinePage(
   input: TimelineQuery,
 ): Promise<TimelinePage> {
