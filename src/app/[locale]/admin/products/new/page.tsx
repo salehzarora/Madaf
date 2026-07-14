@@ -1,8 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { NewProductForm } from "@/components/admin/new-product-form";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { getSessionContext } from "@/lib/auth/session";
+import { getDataMode } from "@/lib/data";
+
+// Reads the caller's tenant membership under RLS to gate by role, so it must
+// render per request (mirrors the business-settings gate).
+export const dynamic = "force-dynamic";
 
 export default async function NewProductPage({
   params,
@@ -11,6 +17,19 @@ export default async function NewProductPage({
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
+
+  // Creating a product is owner/admin only (enforced server-side by
+  // create_product). Gate the ROUTE too so a sales_rep can't reach the form by
+  // navigating directly — the list already hides the "add" CTA for them (B1).
+  // Mock mode has no auth: it stays the open demo.
+  if (getDataMode() === "supabase") {
+    const { userId, membership } = await getSessionContext();
+    if (!userId) redirect(`/${locale}/login`);
+    if (!membership) redirect(`/${locale}/onboarding`);
+    // Explicit owner/admin allowlist (never default-allow on any other role).
+    if (membership.role !== "owner" && membership.role !== "admin") notFound();
+  }
+
   const dict = getDictionary(locale);
   const t = dict.admin.products.new;
 

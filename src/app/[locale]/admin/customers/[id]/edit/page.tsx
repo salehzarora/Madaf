@@ -1,8 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CustomerForm } from "@/components/admin/customer-form";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { getSessionContext } from "@/lib/auth/session";
 import { getCustomer, getDataMode } from "@/lib/data";
 
 /**
@@ -18,6 +19,15 @@ export default async function EditCustomerPage({
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
   if (getDataMode() !== "supabase") notFound();
+
+  // Editing a store is owner/admin only (enforced server-side by
+  // update_customer). Gate the ROUTE too — deny a sales_rep BEFORE fetching the
+  // customer, so navigating straight here yields a 404, not a form (B1).
+  const { userId, membership } = await getSessionContext();
+  if (!userId) redirect(`/${locale}/login`);
+  if (!membership) redirect(`/${locale}/onboarding`);
+  // Explicit owner/admin allowlist (never default-allow on any other role).
+  if (membership.role !== "owner" && membership.role !== "admin") notFound();
 
   const customer = await getCustomer(id);
   if (!customer) notFound();

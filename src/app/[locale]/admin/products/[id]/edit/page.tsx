@@ -1,8 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ProductForm } from "@/components/admin/product-form";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { getSessionContext } from "@/lib/auth/session";
 import { getDataMode, getInventoryForProduct, getProduct } from "@/lib/data";
 
 /**
@@ -20,6 +21,15 @@ export default async function EditProductPage({
   if (!isLocale(locale)) notFound();
   // Editing only makes sense against a real backend.
   if (getDataMode() !== "supabase") notFound();
+
+  // Editing a product is owner/admin only (enforced server-side by
+  // update_product). Gate the ROUTE too — deny a sales_rep BEFORE fetching any
+  // edit-form data, so navigating straight here yields a 404, not a form (B1).
+  const { userId, membership } = await getSessionContext();
+  if (!userId) redirect(`/${locale}/login`);
+  if (!membership) redirect(`/${locale}/onboarding`);
+  // Explicit owner/admin allowlist (never default-allow on any other role).
+  if (membership.role !== "owner" && membership.role !== "admin") notFound();
 
   const product = await getProduct(id);
   if (!product) notFound();
