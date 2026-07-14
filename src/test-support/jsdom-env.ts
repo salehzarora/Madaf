@@ -37,5 +37,9 @@ g.Node = dom.window.Node;
 g.Event = dom.window.Event;
 g.MouseEvent = dom.window.MouseEvent;
 g.getComputedStyle = dom.window.getComputedStyle;
+// `self` is the browser global-scope reference. `next/link`'s prefetch uses it
+// (via request-idle-callback's `self.setTimeout` fallback — jsdom has no
+// requestIdleCallback), so any mounted test that renders a <Link> needs it.
+g.self = dom.window;
 /** React 19 refuses to run `act` outside a declared act environment. */
 g.IS_REACT_ACT_ENVIRONMENT = true;
