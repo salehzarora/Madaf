@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
+  clampExportLimit,
   collectExportRows,
   hasActiveFilters,
   tenantToday,
@@ -421,12 +422,13 @@ test("export: cap of 0 returns nothing and issues no request", async () => {
   assert.equal(requested.length, 0);
 });
 
-test("export: a stuck reader returning a FULL page of duplicates terminates via maxPages", async () => {
+// ── maxPages FAILS CLOSED (P2): guard exhaustion is never silent success ────
+
+test("export: a stuck FULL-page-of-duplicates reader FAILS CLOSED (throws, no partial success)", async () => {
   // A reader that IGNORES the cursor and always returns a FULL page (length ==
-  // want) of the SAME row. Because rows.length === want the short-page break can
-  // never fire and dedupe keeps out at 1 forever — so ONLY the maxPages backstop
-  // ends the loop. This exercises the true infinite-loop guard (not the short
-  // page). `calls` must equal maxPages exactly.
+  // want) of the SAME row: rows.length === want (never short), the cursor never
+  // makes unique progress, so no natural end and never safeCap. The ONLY way out
+  // is maxPages — which must THROW, not return the 1 accumulated row as success.
   let calls = 0;
   const stuck = async (
     _cursor: { createdAt: string; id: string } | null,
@@ -438,10 +440,77 @@ test("export: a stuck reader returning a FULL page of duplicates terminates via 
       created_at: "2026-06-01T12:00:00.000Z",
     }));
   };
-  const out = await collectExportRows(stuck, ORDERS_EXPORT_CAP + 1);
-  assert.equal(out.length, 1, "the single unique row, once (dedup)");
+  await assert.rejects(
+    () => collectExportRows(stuck, ORDERS_EXPORT_CAP + 1),
+    /paging guard exhausted/,
+  );
   const maxPages = Math.ceil((ORDERS_EXPORT_CAP + 1) / ORDERS_EXPORT_BATCH) + 2;
-  assert.equal(calls, maxPages, "ended via the maxPages backstop, not the short page");
+  assert.equal(calls, maxPages, "it exhausted the backstop before throwing");
+});
+
+test("export: a reader with ONE unique row per stuck full page fails closed (incomplete ≠ success)", async () => {
+  // Each page returns a FULL page but only 1 NEW id (the rest duplicates), so the
+  // set can never be finished within maxPages — partial, so it MUST fail closed
+  // rather than return the handful of unique rows as a complete CSV.
+  let n = 0;
+  const drip = async (
+    _cursor: { createdAt: string; id: string } | null,
+    limit: number,
+  ) => {
+    const fresh = { id: `u${n++}`, created_at: "2026-06-01T12:00:00.000Z" };
+    const dupes = Array.from({ length: limit - 1 }, () => ({
+      id: "dupe",
+      created_at: "2026-06-01T12:00:00.000Z",
+    }));
+    return [fresh, ...dupes];
+  };
+  await assert.rejects(
+    () => collectExportRows(drip, ORDERS_EXPORT_CAP + 1),
+    /paging guard exhausted/,
+  );
+});
+
+test("export: natural EMPTY-page end still succeeds (exact multiple of the batch)", async () => {
+  // 500 rows: page 1 is a FULL page (500), page 2 is EMPTY → completes via the
+  // empty-page branch, not the guard.
+  const out = await collectExportRows(staticReader(500).reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 500);
+});
+
+test("export: natural SHORT-page end still succeeds (no throw)", async () => {
+  const out = await collectExportRows(staticReader(750).reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(out.length, 750); // 500 + 250 (short) → completes
+});
+
+test("export: safeCap completion still succeeds (exact 5000 → capped=false, 5001 → capped=true)", async () => {
+  const at5000 = await collectExportRows(staticReader(5000).reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(at5000.length, 5000);
+  assert.equal(at5000.length > ORDERS_EXPORT_CAP, false, "5000 → capped=false");
+  const at5001 = await collectExportRows(staticReader(5001).reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(at5001.length, ORDERS_EXPORT_CAP + 1);
+  assert.equal(at5001.length > ORDERS_EXPORT_CAP, true, "5001 → capped=true");
+});
+
+test("export: a large dataset (6000) reaches safeCap WITHOUT tripping the guard", async () => {
+  // Regression: the cap+1 probe must complete via the safeCap branch, never via
+  // maxPages — so a genuinely large, healthy dataset never wrongly fails closed.
+  const rows = await collectExportRows(staticReader(6000).reader, ORDERS_EXPORT_CAP + 1);
+  assert.equal(rows.length, ORDERS_EXPORT_CAP + 1);
+});
+
+test("guard: the export action converts a collector throw to a safe { ok:false }", () => {
+  // The collector fails closed by THROWING; the action must catch it and return
+  // its existing safe failure (no partial CSV, no raw error to the browser).
+  const src = readSrc("lib/actions/orders.ts");
+  const start = src.indexOf("export async function exportOrdersAction");
+  assert.ok(start >= 0, "exportOrdersAction exists");
+  const body = src.slice(start, start + 2000);
+  assert.match(body, /try \{/);
+  assert.match(body, /catch \(error\)/);
+  // The catch returns the safe flag and logs server-side only — never the message.
+  assert.match(body, /return \{ ok: false \}/);
+  assert.match(body, /console\.error/);
+  assert.doesNotMatch(body, /error\.message/);
 });
 
 // ── Concurrency: keyset protects against the offset-shift omission ──────────
@@ -562,16 +631,58 @@ test("guard: sbListOrdersForExport pages by KEYSET (no offset), never one big ra
   const src = readSrc("lib/data/supabase-reads.ts");
   const reader = src.slice(src.indexOf("export function buildOrdersExportPageReader"));
   const readerBody = reader.slice(0, reader.indexOf("\nexport ", 1));
-  // Keyset cursor predicate + a bounded .limit(), never .range()/offset.
+  // Keyset cursor predicate + a HARD-BOUND .limit(), never .range()/offset.
   assert.match(readerBody, /created_at\.lt\.\$\{cursor\.createdAt\}/);
   assert.match(readerBody, /and\(created_at\.eq\.\$\{cursor\.createdAt\},id\.lt\.\$\{cursor\.id\}\)/);
-  assert.match(readerBody, /\.limit\(limit\)/);
+  // The request size is clamped at the reader boundary, not passed through raw.
+  assert.match(readerBody, /\.limit\(clampExportLimit\(limit\)\)/);
+  assert.doesNotMatch(readerBody, /\.limit\(limit\)/);
   assert.doesNotMatch(readerBody, /\.range\(/);
   assert.doesNotMatch(readerBody, /offset/);
   const fn = src.slice(src.indexOf("export async function sbListOrdersForExport"));
   const body = fn.slice(0, fn.indexOf("\nexport ", 1));
   assert.match(body, /buildOrdersExportPageReader\(client, tenantId, query, timeZone\)/);
   assert.match(body, /collectExportRows<OrderListDbRow>\(reader, cap\)/);
+});
+
+// ── Reader request-size hard bound (P3): clampExportLimit ───────────────────
+
+test("clampExportLimit hard-bounds every request into [1, 500]", () => {
+  assert.equal(clampExportLimit(1), 1);
+  assert.equal(clampExportLimit(499), 499);
+  assert.equal(clampExportLimit(500), 500);
+  assert.equal(clampExportLimit(501), 500, ">500 can never produce a request >500");
+  assert.equal(clampExportLimit(5000), 500);
+  assert.equal(clampExportLimit(1_000_000), 500);
+  // 0 / negative → the safe minimum.
+  assert.equal(clampExportLimit(0), 1);
+  assert.equal(clampExportLimit(-1), 1);
+  assert.equal(clampExportLimit(-9999), 1);
+  // Fractions truncate toward the integer then clamp.
+  assert.equal(clampExportLimit(500.9), 500);
+  assert.equal(clampExportLimit(0.5), 1);
+  // Non-finite (only reachable at an untyped runtime boundary) → the safe max;
+  // still a bounded request that can never exceed 500.
+  assert.equal(clampExportLimit(Number.NaN), 500);
+  assert.equal(clampExportLimit(Number.POSITIVE_INFINITY), 500);
+  assert.equal(clampExportLimit(Number.NEGATIVE_INFINITY), 500);
+  // The output is ALWAYS a finite integer in [1, 500].
+  for (const v of [1, 500, 501, 0, -3, 5000, 250.7, Number.NaN, Infinity]) {
+    const r = clampExportLimit(v);
+    assert.ok(Number.isInteger(r) && r >= 1 && r <= 500, `clamp(${String(v)})=${r}`);
+  }
+});
+
+test("the reader's ACTUAL request bound: whatever the caller asks, the DB sees ≤500", () => {
+  // Prove the bound at the reader BOUNDARY, not just the collector: a caller that
+  // passes 501/5000/NaN through the reader still issues a `.limit()` ≤ 500. We
+  // model the reader's contract — the request size the DB receives is
+  // clampExportLimit(limit) — and assert it never exceeds the batch.
+  for (const asked of [1, 500, 501, 5000, 1_000_000, 0, -5, Number.NaN, Infinity]) {
+    const requested = clampExportLimit(asked); // what buildOrdersExportPageReader passes to .limit()
+    assert.ok(requested <= ORDERS_EXPORT_BATCH, `asked ${String(asked)} → ${requested} ≤ 500`);
+    assert.ok(requested >= 1);
+  }
 });
 
 test("guard: the PGRST103 over-range hack is GONE (keyset never over-ranges)", () => {

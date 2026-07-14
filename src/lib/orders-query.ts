@@ -58,6 +58,25 @@ export interface ExportCursorRow {
 }
 
 /**
+ * Hard-bound an export page-request size into `[1, ORDERS_EXPORT_BATCH]`, at the
+ * ACTUAL HTTP/PostgREST reader boundary — not only in the collector. The
+ * production collector already asks for ≤500, but the exported page reader is a
+ * reusable server-side function, so ANY caller invoking it directly must still be
+ * unable to issue a request larger than the batch (which PostgREST could then
+ * silently clamp to `max_rows`, reintroducing the truncation class). Every output
+ * is a finite integer in [1, 500]: `>500 → 500`, `<1 → 1`, and a non-finite
+ * (NaN / ±Infinity — possible only at an untyped runtime boundary) → the safe max
+ * (still a bounded request that can never exceed 500). Not a substitute for the
+ * TS types; a runtime guarantee.
+ */
+export function clampExportLimit(limit: number): number {
+  if (!Number.isFinite(limit)) return ORDERS_EXPORT_BATCH;
+  const n = Math.trunc(limit);
+  if (n < 1) return 1;
+  return Math.min(n, ORDERS_EXPORT_BATCH);
+}
+
+/**
  * Collect up to `cap` export rows with STABLE KEYSET pagination (not offset).
  *
  * Offset/range paging skipped rows under an ordinary concurrent filter change:
@@ -70,13 +89,21 @@ export interface ExportCursorRow {
  * ordered `created_at DESC, id DESC` — so removing an earlier row cannot move the
  * window; the next page always continues exactly after the last returned row.
  *
- * Termination is a SHORT or EMPTY page (the keyset naturally returns nothing past
- * the end — no over-range request, so no PostgREST 416/PGRST103 special case is
- * needed) or reaching `cap`; `maxPages` is a defensive backstop. Dedupe by id
- * remains as DEFENCE-IN-DEPTH only — with a unique (created_at, id) key a stable
- * keyset cannot re-emit a returned row — and it never drives progression: the
- * cursor always advances to the DB's actual last row, even if that row was a
- * duplicate, so a deduped row can never stall the traversal.
+ * TERMINATION IS EXPLICIT AND FAILS CLOSED. The loop ends successfully ONLY when
+ * a natural end is PROVEN — an empty page or a short page (the filtered set is
+ * exhausted; the keyset returns nothing past the end, so there is no over-range
+ * request and no PostgREST 416/PGRST103 case) — OR when the logical `cap` is
+ * reached. `maxPages` is a corruption/invariant backstop, NOT a completion path:
+ * if it is exhausted before a proven end, the collector THROWS rather than
+ * returning a silently-incomplete set (which the action would otherwise present
+ * as a complete, `capped=false` CSV). Reaching maxPages means the reader stopped
+ * making progress (e.g. duplicate-only pages / a non-advancing cursor) — an
+ * invariant violation, not evidence that more rows exist.
+ *
+ * Dedupe by id remains as DEFENCE-IN-DEPTH only — with a unique (created_at, id)
+ * key a stable keyset cannot re-emit a returned row — and it never drives
+ * progression: the cursor always advances to the DB's actual last row, even if
+ * that row was a duplicate, so a deduped row can never stall the traversal.
  *
  * PURE + INJECTABLE: the real Supabase export and its tests run this SAME
  * algorithm (tests pass a fake keyset page reader), so there is no test-only
@@ -103,22 +130,44 @@ export async function collectExportRows<T extends ExportCursorRow>(
   const step = Math.max(1, Math.min(batchSize, ORDERS_EXPORT_BATCH));
   const maxPages = Math.ceil(safeCap / step) + 2;
   let cursor: OrdersExportCursor | null = null;
-  for (let page = 0; page < maxPages && out.length < safeCap; page += 1) {
+  // Only a PROVEN natural end (empty/short page) or reaching the logical cap sets
+  // this. If the loop falls out of `maxPages` with it still false, we fail closed.
+  let completed = false;
+  for (let page = 0; page < maxPages; page += 1) {
     const want = Math.min(step, safeCap - out.length);
     const rows = await fetchPage(cursor, want);
-    if (rows.length === 0) break; // no rows past the cursor ⇒ exhausted
+    if (rows.length === 0) {
+      completed = true; // natural end: no rows past the cursor
+      break;
+    }
     for (const row of rows) {
       if (seen.has(row.id)) continue;
       seen.add(row.id);
       out.push(row);
       if (out.length >= safeCap) break;
     }
+    if (out.length >= safeCap) {
+      completed = true; // the logical cap (cap+1 probe) is satisfied
+      break;
+    }
     // Advance the cursor to the DB's ACTUAL last row of this page (keyset
     // progression), regardless of dedupe — traversal continues from where the
     // query left off, never from the last NEW row.
     const last = rows[rows.length - 1];
     cursor = { createdAt: last.created_at, id: last.id };
-    if (rows.length < want) break; // short page ⇒ the filtered set is exhausted
+    if (rows.length < want) {
+      completed = true; // short page ⇒ the filtered set is exhausted
+      break;
+    }
+  }
+  if (!completed) {
+    // The backstop was hit BEFORE a proven natural end or the cap — the reader is
+    // not progressing. FAIL CLOSED: never hand back a partial set that the action
+    // would present as a complete CSV. The action's catch turns this into its
+    // safe { ok: false }; the message is internal and never reaches the browser.
+    throw new Error(
+      "[madaf/data] order export paging did not terminate naturally (paging guard exhausted)",
+    );
   }
   return out;
 }

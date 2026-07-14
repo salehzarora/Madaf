@@ -39,6 +39,7 @@ import type {
   Supplier,
 } from "@/lib/types";
 import {
+  clampExportLimit,
   collectExportRows,
   ORDERS_MAX_PAGE_SIZE,
   totalPagesFor,
@@ -1311,9 +1312,11 @@ export async function sbSearchOrders(query: OrdersQuery): Promise<OrdersListResu
  *   • orders `created_at DESC, id DESC` and, for a non-first page, adds the keyset
  *     predicate `created_at < c.createdAt OR (created_at = c.createdAt AND id <
  *     c.id)` — the same row-value keyset the Customer Timeline uses;
- *   • requests `.limit(limit)` (≤ ORDERS_EXPORT_BATCH, no offset, no range), so a
- *     single request can never be clamped by PostgREST max_rows and there is no
- *     over-range/PGRST103 case. Any DB error aborts the export via fail().
+ *   • requests `.limit(clampExportLimit(limit))` — the request size is HARD-BOUND
+ *     to [1, ORDERS_EXPORT_BATCH] AT THIS reader boundary (not only in the
+ *     collector), so no caller of this reusable server-side function can issue a
+ *     request >500 that PostgREST could silently clamp to max_rows. No offset, no
+ *     range, no over-range/PGRST103 case. Any DB error aborts the export via fail().
  */
 export function buildOrdersExportPageReader(
   client: Db,
@@ -1331,7 +1334,9 @@ export function buildOrdersExportPageReader(
         `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
       );
     }
-    const { data, error } = await qb.limit(limit);
+    // Hard-bound the request size at the actual HTTP boundary (defence in depth
+    // on top of the collector's own ≤500 `want`).
+    const { data, error } = await qb.limit(clampExportLimit(limit));
     if (error) fail("listOrdersForExport", error.message);
     return (data as unknown as OrderListDbRow[]) ?? [];
   };

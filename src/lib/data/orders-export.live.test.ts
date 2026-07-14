@@ -64,6 +64,62 @@ async function reachable(url: string): Promise<boolean> {
   }
 }
 
+type Cfg = NonNullable<LocalConfig>;
+
+/** Provision a DISPOSABLE owner + tenant + membership on the LOCAL stack and
+ * return an RLS-scoped AUTHENTICATED (owner) client plus a cleanup. The tenant
+ * cascades to its orders + membership on delete. service_role is used ONLY here
+ * for test seeding — never for the export READ, which uses the owner client. */
+async function provisionOwnerTenant(service: Client, cfg: Cfg) {
+  const tenantId = randomUUID();
+  const email = `export-live-${randomUUID()}@madaf.test`;
+  const password = `Pw-${randomUUID()}`;
+  const created = await service.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  assert.ok(!created.error, `createUser: ${created.error?.message ?? ""}`);
+  const userId = created.data.user!.id;
+  const tIns = await service.from("tenants").insert({
+    id: tenantId,
+    name_ar: "تصدير",
+    name_he: "ייצוא",
+    name_en: "Export Live",
+  });
+  assert.ok(!tIns.error, `tenant insert: ${tIns.error?.message ?? ""}`);
+  const mIns = await service
+    .from("tenant_users")
+    .insert({ tenant_id: tenantId, user_id: userId, role: "owner" });
+  assert.ok(!mIns.error, `membership insert: ${mIns.error?.message ?? ""}`);
+  const owner: Client = createClient<Database>(cfg.url, cfg.anon, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const signIn = await owner.auth.signInWithPassword({ email, password });
+  assert.ok(!signIn.error, `signIn: ${signIn.error?.message ?? ""}`);
+  const cleanup = async () => {
+    await service.from("tenants").delete().eq("id", tenantId);
+    try {
+      await service.auth.admin.deleteUser(userId);
+    } catch {
+      /* best-effort */
+    }
+  };
+  return { tenantId, owner, cleanup };
+}
+
+/** Insert `orders` in ≤500-row chunks via the service client (a write; not
+ * subject to the read max_rows). Asserts each chunk succeeds. */
+async function seedOrders(
+  service: Client,
+  orders: Record<string, unknown>[],
+): Promise<void> {
+  for (let i = 0; i < orders.length; i += 500) {
+    const oIns = await service.from("orders").insert(orders.slice(i, i + 500) as never);
+    assert.ok(!oIns.error, `orders insert: ${oIns.error?.message ?? ""}`);
+  }
+}
+
 const SEED_COUNT = 1001; // deliberately > PostgREST max_rows (1000)
 
 test("REAL PostgREST: a 1,001-order export returns them all, ordered, capped=false, ≤500/req", async (t) => {
@@ -76,72 +132,22 @@ test("REAL PostgREST: a 1,001-order export returns them all, ordered, capped=fal
   const service: Client = createClient<Database>(cfg.url, cfg.service, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-
-  // Disposable identifiers for this run.
-  const tenantId = randomUUID();
-  const email = `export-live-${randomUUID()}@madaf.test`;
-  const password = `Pw-${randomUUID()}`;
-  let userId = "";
-
-  async function cleanup() {
-    // Deleting the tenant cascades to tenant_users + orders (FK on delete cascade).
-    await service.from("tenants").delete().eq("id", tenantId);
-    if (userId) {
-      try {
-        await service.auth.admin.deleteUser(userId);
-      } catch {
-        /* best-effort */
-      }
-    }
-  }
+  const { tenantId, owner, cleanup } = await provisionOwnerTenant(service, cfg);
 
   try {
-    // ── Seed: an owner auth user, a tenant, membership, and 1,001 orders ──────
-    const created = await service.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-    assert.ok(!created.error, `createUser: ${created.error?.message ?? ""}`);
-    userId = created.data.user!.id;
-
-    const tIns = await service.from("tenants").insert({
-      id: tenantId,
-      name_ar: "تصدير",
-      name_he: "ייצוא",
-      name_en: "Export Live",
-    });
-    assert.ok(!tIns.error, `tenant insert: ${tIns.error?.message ?? ""}`);
-
-    const mIns = await service
-      .from("tenant_users")
-      .insert({ tenant_id: tenantId, user_id: userId, role: "owner" });
-    assert.ok(!mIns.error, `membership insert: ${mIns.error?.message ?? ""}`);
-
+    // ── Seed 1,001 orders with DISTINCT, strictly-increasing created_at ───────
     const base = Date.parse("2026-06-01T00:00:00.000Z");
-    const orders = Array.from({ length: SEED_COUNT }, (_, i) => ({
-      tenant_id: tenantId,
-      order_number: `EL-${String(i).padStart(5, "0")}`,
-      public_ref: `MDF-EL${String(i).padStart(5, "0")}`,
-      status: "new" as const,
-      source: "sales_visit" as const,
-      // Distinct, strictly-increasing created_at → a total (created_at DESC) order.
-      created_at: new Date(base + i * 60000).toISOString(),
-    }));
-    // Insert in chunks; `returning: minimal` (no .select) avoids a max_rows-capped
-    // response and does not affect the write.
-    for (let i = 0; i < orders.length; i += 500) {
-      const chunk = orders.slice(i, i + 500);
-      const oIns = await service.from("orders").insert(chunk);
-      assert.ok(!oIns.error, `orders insert: ${oIns.error?.message ?? ""}`);
-    }
-
-    // ── Authenticate AS THE OWNER (RLS-scoped), like the real request ─────────
-    const owner: Client = createClient<Database>(cfg.url, cfg.anon, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const signIn = await owner.auth.signInWithPassword({ email, password });
-    assert.ok(!signIn.error, `signIn: ${signIn.error?.message ?? ""}`);
+    await seedOrders(
+      service,
+      Array.from({ length: SEED_COUNT }, (_, i) => ({
+        tenant_id: tenantId,
+        order_number: `EL-${String(i).padStart(5, "0")}`,
+        public_ref: `MDF-EL${String(i).padStart(5, "0")}`,
+        status: "new",
+        source: "sales_visit",
+        created_at: new Date(base + i * 60000).toISOString(),
+      })),
+    );
 
     // ── Drive the PRODUCTION reader over the LIVE HTTP API ────────────────────
     const query = parseOrdersQuery({}); // no filters
@@ -208,6 +214,91 @@ test("REAL PostgREST: a 1,001-order export returns them all, ordered, capped=fal
       !searchRows.some((r) => r.order_number === "EL-01000"),
       "the non-matching EL-01000 is excluded (keyset not defeated by the search .or)",
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("REAL PostgREST: >500 SAME-created_at orders traverse the id tie-break across a page boundary", async (t) => {
+  const cfg = localConfig();
+  if (!cfg || !(await reachable(cfg.url))) {
+    t.skip("local Supabase stack not reachable — run `supabase start`");
+    return;
+  }
+
+  const service: Client = createClient<Database>(cfg.url, cfg.service, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { tenantId, owner, cleanup } = await provisionOwnerTenant(service, cfg);
+
+  try {
+    // ── Seed 600 orders ALL sharing an IDENTICAL created_at, with valid UUIDs ──
+    // 600 > 500 → the export MUST cross at least one keyset page boundary, and
+    // because every created_at is equal the id tie-break is the ONLY thing that
+    // orders them and drives the cursor. Explicit random UUID ids (the real PK
+    // shape) exercise Postgres's byte-wise uuid comparison, not a synthetic label.
+    const SAME_TS = "2026-06-01T00:00:00.000Z";
+    const SAME_COUNT = 600;
+    const orders = Array.from({ length: SAME_COUNT }, (_, i) => ({
+      id: randomUUID(),
+      tenant_id: tenantId,
+      order_number: `TB-${String(i).padStart(5, "0")}`,
+      public_ref: `MDF-TB${String(i).padStart(5, "0")}`,
+      status: "new",
+      source: "sales_visit",
+      created_at: SAME_TS,
+    }));
+    await seedOrders(service, orders);
+
+    // ── AUTHORITATIVE expected order — FROM THE DB, not an invented JS compare ──
+    // A single authed query (600 < max_rows) returns the canonical
+    // `created_at DESC, id DESC` sequence Postgres itself produces. This is the
+    // oracle the export must reproduce; no JavaScript uuid ordering is invented.
+    const expected = await owner
+      .from("orders")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    assert.ok(!expected.error, `expected-order query: ${expected.error?.message ?? ""}`);
+    const expectedIds = (expected.data as { id: string }[]).map((r) => r.id);
+    assert.equal(expectedIds.length, SAME_COUNT, "the DB returns all 600 in canonical order");
+
+    // ── Traverse via the PRODUCTION reader + collector over live HTTP ─────────
+    const requestedLimits: number[] = [];
+    const productionReader = buildOrdersExportPageReader(
+      owner,
+      tenantId,
+      parseOrdersQuery({}),
+      "Asia/Jerusalem",
+    );
+    const reader = (cursor: OrdersExportCursor | null, limit: number) => {
+      requestedLimits.push(limit);
+      return productionReader(cursor, limit);
+    };
+    const rows = await collectExportRows(reader, ORDERS_EXPORT_CAP + 1);
+    const gotIds = rows.map((r) => r.id);
+
+    // The export must reproduce the DB's authoritative order EXACTLY — proving the
+    // keyset id tie-break matches Postgres uuid comparison ACROSS the 500-row seam,
+    // with no skip and no duplicate.
+    assert.deepEqual(
+      gotIds,
+      expectedIds,
+      "export order == Postgres created_at DESC, id DESC (uuid tie-break, across the page boundary)",
+    );
+    assert.equal(new Set(gotIds).size, SAME_COUNT, "no duplicate across the tie-break page boundary");
+    assert.equal(gotIds.length, SAME_COUNT, "no skipped row");
+    // It genuinely crossed a page boundary (600 > 500 → ≥ 2 pages), each ≤ 500.
+    assert.ok(requestedLimits.length >= 2, "traversed at least one keyset page boundary");
+    assert.ok(
+      requestedLimits.every((l) => l <= ORDERS_EXPORT_BATCH),
+      `every request ≤ ${ORDERS_EXPORT_BATCH}: got ${requestedLimits.join(",")}`,
+    );
+    // Every returned id is a valid UUID (real PK shape, not a synthetic label).
+    const UUID =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    assert.ok(gotIds.every((id) => UUID.test(id)), "all returned ids are valid UUIDs");
   } finally {
     await cleanup();
   }
