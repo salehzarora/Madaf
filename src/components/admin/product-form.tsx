@@ -20,6 +20,7 @@ import {
   MAX_PRODUCT_IMAGE_BYTES,
   preValidateImage,
 } from "@/lib/image-upload";
+import { shouldSubmitInventory } from "@/lib/product-inventory-intent";
 import { useShopData } from "@/lib/shop-data-context";
 import { BASE_UNITS, PACKAGE_UNITS, type InventoryItem, type Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,10 @@ export function ProductForm({
   const router = useRouter();
   const { categories, manufacturers } = useShopData();
   const isEdit = Boolean(product);
+  // Whether this product ALREADY has an inventory row. When it doesn't, an
+  // unrelated metadata edit must not implicitly create a 0-stock row (which
+  // would flip availability to Out-of-stock) — see shouldSubmitInventory (B2).
+  const hasExistingInventory = Boolean(inventory);
   const live = getDataMode() === "supabase";
 
   // The VALUE we persist: the raw storage path when the image lives in
@@ -159,6 +164,19 @@ export function ProductForm({
       warehouseLocation: fd.get("warehouseLocation") || undefined,
       expiryDate: fd.get("expiryDate") || undefined,
     };
+    // Only persist inventory when it should be touched: always on create and
+    // for a product that already tracks stock, but for an inventory-LESS
+    // product only when the user actually entered stock data — so an unrelated
+    // metadata edit never creates a 0-stock row (B2).
+    const submitInventory = shouldSubmitInventory({
+      isEdit,
+      hasExistingInventory,
+      fields: {
+        quantityAvailable: String(fd.get("quantityAvailable") ?? ""),
+        warehouseLocation: String(fd.get("warehouseLocation") ?? ""),
+        expiryDate: String(fd.get("expiryDate") ?? ""),
+      },
+    });
 
     setSaving(true);
     try {
@@ -167,7 +185,7 @@ export function ProductForm({
           ? await updateProductAction({
               productId: product.id,
               product: productInput,
-              inventory: inventoryInput,
+              ...(submitInventory ? { inventory: inventoryInput } : {}),
               locale,
             })
           : await createProductAction({
