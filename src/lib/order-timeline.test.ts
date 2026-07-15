@@ -917,6 +917,7 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
     "M8H.3 must not introduce a migration",
   );
   // Snapshot of the migration count: M8H.2 was the last through M8H; Batch C
-  // then adds exactly one (the C1 dashboard-metrics aggregate RPC).
-  assert.equal(migrations.length, 55);
+  // then adds the C1 dashboard-metrics aggregate RPC and the C2 signup-review
+  // concurrency fix (FOR UPDATE lock + terminal-state CHECK).
+  assert.equal(migrations.length, 56);
 });
