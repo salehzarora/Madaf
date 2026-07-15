@@ -13,8 +13,8 @@ import { revalidatePath } from "next/cache";
 
 import {
   approveSignupRequest,
+  getSignupRequestForApproval,
   insertSignupLink,
-  listSignupRequests,
   rejectSignupRequest,
   revokeSignupLink,
   submitSignupRequest,
@@ -174,9 +174,7 @@ export async function approveSignupRequestAction(input: {
     // M8B.3 duplicate guard: approval CREATES a customer, so check the
     // pending request's name/phone against existing stores first.
     if (input.confirmDuplicate !== true) {
-      const request = (await listSignupRequests()).find(
-        (r) => r.id === input.requestId,
-      );
+      const request = await getSignupRequestForApproval(input.requestId);
       if (request) {
         const duplicates = await findCustomerDuplicates({
           name: request.name,

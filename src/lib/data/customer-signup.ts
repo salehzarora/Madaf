@@ -170,6 +170,49 @@ export async function listSignupRequests(): Promise<SignupRequest[]> {
   }));
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Targeted single-request read for the M8B.3 approval duplicate-guard. Replaces
+ * a capped `listSignupRequests().find(...)`: an old request beyond the PostgREST
+ * `max_rows` window could be omitted, silently skipping the duplicate check.
+ * Projects ONLY the fields the guard consumes (name, phone) — no full-row PII.
+ * A non-UUID id returns undefined WITHOUT querying (avoids a uuid-cast error), so
+ * a bad/missing target simply defers to approve_customer_signup_request — the
+ * authoritative tenant/role/state gate.
+ *
+ * Injectable (explicit client + server-derived tenant) so it is live-testable
+ * while staying the single production query; the "signup_requests: owner/admin
+ * read" RLS policy is the authorization boundary. Mirrors sbGetCustomer.
+ */
+export async function sbGetSignupRequestForApproval(
+  client: SupabaseClient<Database>,
+  tenantId: string,
+  requestId: string,
+): Promise<{ id: string; name: string; phone: string | null } | undefined> {
+  if (!UUID_RE.test(requestId)) return undefined;
+  const { data, error } = await client
+    .from("customer_signup_requests")
+    .select("id, name, phone")
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`[madaf/data] getSignupRequestForApproval: ${error.message}`);
+  }
+  return data ? { id: data.id, name: data.name, phone: data.phone } : undefined;
+}
+
+/** App-facing targeted approval read — supplies the server-derived tenant; the
+ * client never chooses it. */
+export async function getSignupRequestForApproval(
+  requestId: string,
+): Promise<{ id: string; name: string; phone: string | null } | undefined> {
+  const { client, tenantId } = await getDataContext();
+  return sbGetSignupRequestForApproval(client, tenantId, requestId);
+}
+
 /**
  * PILOT-C1 (Batch C correction) — the EXACT pending-signup count query, taking
  * an explicit client + server-derived tenant so it is injectable for tests
