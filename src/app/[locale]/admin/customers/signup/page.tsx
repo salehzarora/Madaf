@@ -11,7 +11,7 @@ import { getDataMode, getTenantTimeZone } from "@/lib/data";
 import { listShowcaseLinks } from "@/lib/data/catalog-showcase";
 import {
   listSignupLinks,
-  listSignupRequests,
+  listSignupRequestsPage,
 } from "@/lib/data/customer-signup";
 
 /**
@@ -21,8 +21,11 @@ import {
  */
 export default async function CustomerSignupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  // Next delivers a repeated query key as string[]; type + collapse accordingly.
+  searchParams: Promise<{ page?: string | string[] }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
@@ -34,9 +37,18 @@ export default async function CustomerSignupPage({
   // M8H.2 — link expiries are absolute instants shown in the TENANT's zone.
   const timeZone = await getTenantTimeZone();
   const t = dict.admin.customers.signup;
-  const [links, requests, showcaseLinks] = await Promise.all([
+  // Bounded, newest-first requests page (?page); the data layer clamps an
+  // out-of-range page to the last one, so any positive integer is safe here.
+  // A repeated ?page arrives as string[] — collapse to the first (mirrors the
+  // `first()` helper the orders/products list pages use) before parsing.
+  const { page: rawPage } = await searchParams;
+  const pageParam = Array.isArray(rawPage) ? rawPage[0] : rawPage;
+  const parsedPage = Number.parseInt((pageParam ?? "").trim(), 10);
+  const requestsPageNo =
+    Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const [links, requestsPage, showcaseLinks] = await Promise.all([
     listSignupLinks(),
-    listSignupRequests(),
+    listSignupRequestsPage(requestsPageNo),
     listShowcaseLinks(),
   ]);
 
@@ -60,7 +72,9 @@ export default async function CustomerSignupPage({
         locale={locale}
         dict={dict}
         initialLinks={links}
-        initialRequests={requests}
+        initialRequests={requestsPage.rows}
+        requestsPage={requestsPage.page}
+        requestsTotalPages={requestsPage.totalPages}
         timeZone={timeZone}
       />
       <ShelfRule />

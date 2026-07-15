@@ -739,6 +739,11 @@ export interface Dictionary {
         statusRejected: string;
         viewStore: string;
         noRequests: string;
+        /** Signup-requests pagination controls. */
+        prevPage: string;
+        nextPage: string;
+        /** `{page}` of `{pages}` — signup-requests pagination. */
+        pageLabel: string;
         /** `{count}` pending requests — header badge/CTA */
         pendingBadge: string;
         /** M8B.3 — duplicate-store warning on approval. */

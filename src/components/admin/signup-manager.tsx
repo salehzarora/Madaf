@@ -1,6 +1,16 @@
 "use client";
 
-import { Check, Copy, Link2, Store, Trash2, UserCheck, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Link2,
+  Store,
+  Trash2,
+  UserCheck,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -36,12 +46,19 @@ export function SignupManager({
   dict,
   initialLinks,
   initialRequests,
+  requestsPage,
+  requestsTotalPages,
   timeZone,
 }: {
   locale: Locale;
   dict: Dictionary;
   initialLinks: SignupLink[];
+  /** The CURRENT bounded page of requests (server-paginated, newest-first). */
   initialRequests: SignupRequest[];
+  /** 1-based current requests page (clamped server-side). */
+  requestsPage: number;
+  /** Total requests pages (>= 1). */
+  requestsTotalPages: number;
   /** M8H.2 — the tenant's IANA zone (server-derived). */
   timeZone: string;
 }) {
@@ -159,6 +176,15 @@ export function SignupManager({
       } finally {
         router.refresh();
       }
+    });
+  }
+
+  /** Server-side requests pagination — the URL `?page` is the source of truth;
+   * the server clamps out-of-range pages, and approve/reject refreshes keep the
+   * current page. */
+  function goToRequestsPage(next: number) {
+    startTransition(() => {
+      router.push(`/${locale}/admin/customers/signup?page=${next}`);
     });
   }
 
@@ -461,6 +487,35 @@ export function SignupManager({
             </table>
           </div>
         )}
+
+        {requestsTotalPages > 1 ? (
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => goToRequestsPage(requestsPage - 1)}
+              disabled={requestsPage <= 1 || pending}
+              className="inline-flex h-10 items-center gap-1 rounded-field border border-line-strong px-3 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="size-4 rtl:-scale-x-100" aria-hidden />
+              {t.prevPage}
+            </button>
+            <span className="text-xs font-medium tabular-nums text-ink-muted">
+              {interpolate(t.pageLabel, {
+                page: requestsPage,
+                pages: requestsTotalPages,
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToRequestsPage(requestsPage + 1)}
+              disabled={requestsPage >= requestsTotalPages || pending}
+              className="inline-flex h-10 items-center gap-1 rounded-field border border-line-strong px-3 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t.nextPage}
+              <ChevronRight className="size-4 rtl:-scale-x-100" aria-hidden />
+            </button>
+          </div>
+        ) : null}
       </section>
     </div>
   );
