@@ -18,7 +18,7 @@ import {
   getTenantTimeZone,
   searchCustomers,
 } from "@/lib/data";
-import { listSignupRequests } from "@/lib/data/customer-signup";
+import { countPendingSignupRequests } from "@/lib/data/customer-signup";
 
 /** First-page size — mirrors CUSTOMERS_PAGE in the customers action. */
 const PAGE_SIZE = 50;
@@ -56,10 +56,11 @@ export default async function AdminCustomersPage({
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
   const canAddCustomer = !isSupabase || role === "owner" || role === "admin";
   // New-store signups are owner/admin + Supabase only. Count pending requests
-  // for the header indicator.
+  // for the header indicator via the exact, PII-free, max_rows-safe count query
+  // (never a capped row-list + JS filter).
   const canManageSignups = isSupabase && (role === "owner" || role === "admin");
   const pendingSignups = canManageSignups
-    ? (await listSignupRequests()).filter((r) => r.status === "pending").length
+    ? await countPendingSignupRequests()
     : 0;
 
   // Per-store order stats for ONLY the current page's ids — one bounded
