@@ -1741,6 +1741,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      _log_inventory_audit_event: {
+        Args: {
+          p_event_type: string
+          p_metadata?: Json
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       _log_order_audit_event: {
         Args: {
           p_event_type: string
