@@ -241,6 +241,90 @@ test("deriveProductUpdateEvent: an empty ⇄ null text edit is NOT a change", ()
   assert.equal(deriveProductUpdateEvent(a, b), null);
 });
 
+// ── 14b. Descriptions (Codex P2-1): each locale → the single `description` key ─
+const DESC_BASE: ProductAuditSnapshot = {
+  ...BASE,
+  descriptionAr: "وصف",
+  descriptionHe: "תיאור",
+  descriptionEn: "Desc",
+};
+
+for (const locale of ["Ar", "He", "En"] as const) {
+  test(`deriveProductUpdateEvent: a description_${locale.toLowerCase()}-only change → ["description"]`, () => {
+    const ev = deriveProductUpdateEvent(DESC_BASE, {
+      ...DESC_BASE,
+      [`description${locale}`]: "Changed",
+    });
+    assert.deepEqual(ev!.metadata.changed_fields, ["description"]);
+  });
+}
+
+test("deriveProductUpdateEvent: multiple localized descriptions change → ONE description key", () => {
+  const ev = deriveProductUpdateEvent(DESC_BASE, {
+    ...DESC_BASE,
+    descriptionAr: "جديد",
+    descriptionHe: "חדש",
+    descriptionEn: "New",
+  });
+  assert.deepEqual(ev!.metadata.changed_fields, ["description"]);
+});
+
+test("deriveProductUpdateEvent: unchanged (omitted-preserved) descriptions → no description key", () => {
+  // An omitted-on-update description is modeled as the SAME effective value on
+  // both sides (the SQL preserves it) → never a change.
+  assert.equal(deriveProductUpdateEvent(DESC_BASE, { ...DESC_BASE }), null);
+  // An explicitly EQUAL description is also not a change.
+  const equal = deriveProductUpdateEvent(DESC_BASE, {
+    ...DESC_BASE,
+    descriptionEn: "Desc",
+  });
+  assert.equal(equal, null);
+  // An empty ⇄ null description edit is not a change.
+  const emptyNull = deriveProductUpdateEvent(
+    { ...DESC_BASE, descriptionEn: "" },
+    { ...DESC_BASE, descriptionEn: null },
+  );
+  assert.equal(emptyNull, null);
+});
+
+test("deriveProductUpdateEvent: a description-only change emits ONE product.updated with keys only", () => {
+  const ev = deriveProductUpdateEvent(DESC_BASE, {
+    ...DESC_BASE,
+    descriptionEn: "Secret internal note",
+  });
+  assert.equal(ev!.eventType, "product.updated");
+  // Only the logical key — never the description TEXT.
+  assert.deepEqual(Object.keys(ev!.metadata), ["changed_fields"]);
+  assert.ok(!JSON.stringify(ev!.metadata).includes("Secret internal note"));
+});
+
+test("deriveProductUpdateEvent: name + description change → [\"name\",\"description\"] (order)", () => {
+  const ev = deriveProductUpdateEvent(DESC_BASE, {
+    ...DESC_BASE,
+    nameEn: "Renamed",
+    descriptionEn: "Changed",
+  });
+  assert.deepEqual(ev!.metadata.changed_fields, ["name", "description"]);
+});
+
+// ── 14c. Image (Codex P3): pure derivation now detects image, KEY only ─────
+test("deriveProductUpdateEvent: an image reference change → the `image` key, no URL stored", () => {
+  const before: ProductAuditSnapshot = { ...BASE, imageUrl: null };
+  const after: ProductAuditSnapshot = {
+    ...BASE,
+    imageUrl: "tenant/abc/secret-image.png",
+  };
+  const ev = deriveProductUpdateEvent(before, after);
+  assert.deepEqual(ev!.metadata.changed_fields, ["image"]);
+  assert.ok(!JSON.stringify(ev!.metadata).includes("secret-image"));
+  // An unchanged image (both null, or equal) is not a change.
+  assert.equal(deriveProductUpdateEvent(before, { ...BASE, imageUrl: null }), null);
+  assert.equal(
+    deriveProductUpdateEvent(after, { ...BASE, imageUrl: "tenant/abc/secret-image.png" }),
+    null,
+  );
+});
+
 // ── 15. is_active is a distinct lifecycle event, never a changed_fields key ─
 test("deriveProductActivationEvent: transition → event; same state → null", () => {
   assert.equal(deriveProductActivationEvent(true, true), null);

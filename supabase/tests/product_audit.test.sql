@@ -24,7 +24,7 @@
 -- No real secrets/tokens/PII — controlled local fixtures only.
 -- ═══════════════════════════════════════════════════════════════════════
 begin;
-select plan(53);
+select plan(69);
 
 set local request.jwt.claims = '{"role":"service_role"}';
 
@@ -59,6 +59,12 @@ insert into public.products
 values
   ('cbc00000-0000-4000-8000-000000000009', '22222222-2222-4222-8222-222222222222',
    'c2c00000-0000-4000-8000-000000000009', 'ب', 'ב', 'PB', 5);
+-- P_DESC in C: seeded WITH a description, for the description change-gate tests.
+insert into public.products
+  (id, tenant_id, category_id, name_ar, name_he, name_en, description_en, wholesale_price)
+values
+  ('cbc00000-0000-4000-8000-000000000003', '33333333-3333-4333-8333-333333333333',
+   'c2c00000-0000-4000-8000-000000000001', 'ص', 'צ', 'Desc', 'Old desc', 5);
 
 -- ── 1–4. Helper catalog: exists, INVOKER, empty search_path, returns void ──
 select has_function('public', '_log_product_audit_event',
@@ -224,7 +230,84 @@ select is((select count(*) from public.audit_events
            where event_type='product.deactivated' and entity_id='cbc00000-0000-4000-8000-000000000001'),
   2::bigint, 'the combined edit added exactly one MORE product.deactivated (now 2)');
 
--- ── 40. Explicit ROLLBACK removes the product AND its audit rows ───────────
+-- ── INACTIVE product + explicit is_active=false + an ordinary change (Codex P2-2):
+--    ONE product.updated, NO lifecycle event, stays inactive. P_EXIST is inactive
+--    here (the combined edit above deactivated it).
+select lives_ok(
+  $$ select public.update_product('33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000001',
+       jsonb_build_object('name_ar','أ','name_he','א','name_en','ExistV4',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',6,'is_active',false), null) $$,
+  'owner edits an ordinary field on an INACTIVE product with explicit is_active=false');
+select is((select is_active from public.products where id='cbc00000-0000-4000-8000-000000000001'),
+  false, 'the product stays INACTIVE (explicit false preserved, never reactivated)');
+select is((select count(*) from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000001'),
+  3::bigint, 'the ordinary change → one MORE product.updated (now 3)');
+select is((select count(*) from public.audit_events
+           where event_type in ('product.activated','product.deactivated')
+             and entity_id='cbc00000-0000-4000-8000-000000000001'),
+  3::bigint, 'NO new lifecycle event (still 1 activated + 2 deactivated)');
+
+-- ── INACTIVE product + explicit is_active=true (ordinary unchanged): ONE
+--    product.activated via update_product, NO product.updated.
+select lives_ok(
+  $$ select public.update_product('33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000001',
+       jsonb_build_object('name_ar','أ','name_he','א','name_en','ExistV4',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',6,'is_active',true), null) $$,
+  'owner reactivates an inactive product via update_product (ordinary unchanged)');
+select is((select count(*) from public.audit_events
+           where event_type='product.activated' and entity_id='cbc00000-0000-4000-8000-000000000001'),
+  2::bigint, 'is_active false→true via update_product → one MORE product.activated (now 2)');
+select is((select count(*) from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000001'),
+  3::bigint, 'an active-only reactivation adds NO product.updated (still 3)');
+
+-- ── Descriptions (Codex P2-1): change-gated on KEY presence, KEY-only metadata ─
+select lives_ok(
+  $$ select public.update_product('33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ص','name_he','צ','name_en','Desc',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5,
+         'is_active',true,'description_en','New desc'), null) $$,
+  'owner changes only the English description');
+select is((select count(*) from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000003'),
+  1::bigint, 'a description-only edit → exactly ONE product.updated');
+select is((select metadata->'changed_fields' from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000003'),
+  '["description"]'::jsonb, 'localized descriptions collapse to the single logical key');
+select ok((select not (metadata::text ~* 'New desc|Old desc')
+           from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000003'),
+  'description metadata carries NO description TEXT value');
+-- Re-sending the SAME description is a no-op → no new event.
+select lives_ok(
+  $$ select public.update_product('33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ص','name_he','צ','name_en','Desc',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5,
+         'is_active',true,'description_en','New desc'), null) $$,
+  'owner re-sends the identical description');
+select is((select count(*) from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000003'),
+  1::bigint, 'an unchanged description creates NO additional event');
+-- OMITTING the description key preserves it AND is not a change (M8A intact).
+select lives_ok(
+  $$ select public.update_product('33333333-3333-4333-8333-333333333333',
+       'cbc00000-0000-4000-8000-000000000003',
+       jsonb_build_object('name_ar','ص','name_he','צ','name_en','Desc',
+         'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',5,
+         'is_active',true), null) $$,
+  'owner updates with the description key OMITTED');
+select is((select count(*) from public.audit_events
+           where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000003'),
+  1::bigint, 'an omitted description is NOT a change (no additional event)');
+select is((select description_en from public.products where id='cbc00000-0000-4000-8000-000000000003'),
+  'New desc', 'the omitted description was preserved (M8A behavior intact)');
+
+-- ── Explicit ROLLBACK removes the product AND its audit rows ───────────────
 savepoint before_rollback;
 select public.create_product('33333333-3333-4333-8333-333333333333',
   jsonb_build_object('name_ar','ر','name_he','ר','name_en','RolledBack',
@@ -251,7 +334,7 @@ select throws_ok(
 reset role;
 select is((select count(*) from public.audit_events
            where event_type='product.updated' and entity_id='cbc00000-0000-4000-8000-000000000001'),
-  2::bigint, 'the blocked sales_rep edit wrote NO event (product.updated still 2)');
+  3::bigint, 'the blocked sales_rep edit wrote NO event (product.updated unchanged at 3)');
 
 -- ═══ Cross-tenant: ownerC → tenant B ═══════════════════════════════════════
 set local role authenticated;
