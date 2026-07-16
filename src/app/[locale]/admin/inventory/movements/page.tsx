@@ -12,6 +12,7 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
+  getMovementActorLabels,
   getTenantTimeZone,
   listProducts,
   searchInventoryMovements,
@@ -44,6 +45,9 @@ export default async function InventoryMovementsPage({
     searchInventoryMovements({}, 0, 50),
     listProducts({ includeInactive: true }),
   ]);
+  // M8I.2 — resolve THIS page's distinct movement actors to safe labels once
+  // (bounded, owner/admin only, no N+1). The table merges later pages' labels.
+  const actorLabels = await getMovementActorLabels(movements);
   // Export is owner/admin (mock demo stays open; RLS already limits the data).
   const isSupabase = getDataMode() === "supabase";
   const role = isSupabase ? (await getSessionContext()).membership?.role : null;
@@ -68,6 +72,7 @@ export default async function InventoryMovementsPage({
       <MovementsTable
         timeZone={await getTenantTimeZone()}
         movements={movements}
+        initialActorLabels={actorLabels}
         products={products}
         canExport={canExport}
         locale={locale}

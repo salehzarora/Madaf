@@ -342,6 +342,10 @@ export interface Dictionary {
         uploadFailed: string;
         removeImage: string;
         stockQuantity: string;
+        /** M8I.2 — hint under the read-only quantity for a tracked product. */
+        quantityAdjustHint: string;
+        /** M8I.2 — link label to the existing stock-adjustment page. */
+        quantityAdjustLink: string;
         lowStockThreshold: string;
         warehouseLocation: string;
         expiryDate: string;
@@ -530,6 +534,8 @@ export interface Dictionary {
         colReason: string;
         colOrder: string;
         colNote: string;
+        /** M8I.2 — the movement actor column ("Who performed it"). */
+        colActor: string;
         /** M8D — localized CSV headers for the movements export. */
         csv: {
           date: string;
@@ -1309,6 +1315,33 @@ export interface Dictionary {
       /** Safe detail template (interpolated; never exposes product values). */
       details: {
         changed: string;
+      };
+    };
+    /** M8I.2 — Inventory SETUP/CONFIG audit (a separate compact section on the
+     * owner/admin Product edit page). quantity_available changes stay in the
+     * Inventory Movements ledger, never here. */
+    inventory: {
+      /** Inventory audit category label. */
+      category: string;
+      /** The Inventory Timeline card heading (distinct from the Product one). */
+      timelineHeading: string;
+      /** Closed Inventory event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "inventory.created": string;
+        "inventory.updated": string;
+      };
+      /** Changed-field labels for inventory.updated. `location` is a shelf/aisle
+       * inside the one tenant warehouse — never a branch/another warehouse. */
+      fields: {
+        threshold: string;
+        location: string;
+        expiry: string;
+      };
+      /** Safe detail templates (interpolated; only bounded scalars, never HTML). */
+      details: {
+        created: string;
+        change: string;
+        none: string;
       };
     };
   };

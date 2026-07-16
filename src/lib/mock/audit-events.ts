@@ -337,3 +337,58 @@ export const productAuditEvents: MockProductAuditEvent[] = [
     createdAt: "2026-06-15T09:00:00Z",
   },
 ];
+
+// ── Inventory setup/configuration audit events (M8I.2) ────────────────────
+// Demo rows so the Inventory Timeline renders with the SAME contract as Supabase
+// (bounded page, created_at DESC / id DESC, cursor keyset, actor resolution, safe
+// projection). The Product edit route is Supabase-only, so these serve parity +
+// tests. Only product p01 has recorded inventory activity; illustrative demo rows
+// — NOT a reconstruction. Manual/order stock changes are NOT here (ledger only).
+
+/** A mock inventory audit_events row (mirrors the DB shape the timeline reads). */
+export interface MockInventoryAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  productId: string;
+  eventType: string;
+  /** null → the acting user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo inventory events for p01, newest first (id + created_at both descend). */
+export const inventoryAuditEvents: MockInventoryAuditEvent[] = [
+  {
+    id: "3",
+    productId: "p01",
+    eventType: "inventory.updated",
+    actorUserId: "u-admin",
+    metadata: {
+      changed_fields: ["location", "expiry"],
+      location: { from: "A-03", to: "B-11" },
+      expiry: { from: "2026-12-31", to: "2027-03-15" },
+    },
+    createdAt: "2026-07-05T13:20:00Z",
+  },
+  {
+    id: "2",
+    productId: "p01",
+    eventType: "inventory.updated",
+    // Deleted actor → the timeline shows the explicit "unknown/former" label.
+    actorUserId: null,
+    metadata: {
+      changed_fields: ["threshold"],
+      threshold: { from: 10, to: 24 },
+    },
+    createdAt: "2026-07-01T08:45:00Z",
+  },
+  {
+    id: "1",
+    productId: "p01",
+    eventType: "inventory.created",
+    actorUserId: "u-owner",
+    metadata: { quantity: 120, threshold: 10 },
+    createdAt: "2026-06-15T09:05:00Z",
+  },
+];

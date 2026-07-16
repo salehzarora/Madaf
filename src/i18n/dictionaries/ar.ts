@@ -346,6 +346,8 @@ const ar: Dictionary = {
         uploadFailed: "فشل الرفع — حاول مرة أخرى.",
         removeImage: "إزالة الصورة",
         stockQuantity: "المخزون (عبوات)",
+        quantityAdjustHint: "تُغيَّر الكمية عبر تسويات المخزون، لا من هنا.",
+        quantityAdjustLink: "تعديل المخزون",
         lowStockThreshold: "حد المخزون المنخفض",
         warehouseLocation: "الموقع في المستودع",
         expiryDate: "أقرب تاريخ صلاحية",
@@ -511,6 +513,7 @@ const ar: Dictionary = {
         colReason: "السبب",
         colOrder: "الطلبية",
         colNote: "ملاحظة",
+        colActor: "بواسطة",
         csv: {
           date: "التاريخ",
           product: "المنتج",
@@ -1224,6 +1227,24 @@ const ar: Dictionary = {
       },
       details: {
         changed: "تغيّر: {fields}",
+      },
+    },
+    inventory: {
+      category: "المخزون",
+      timelineHeading: "نشاط المخزون",
+      events: {
+        "inventory.created": "بدأ تتبّع المخزون",
+        "inventory.updated": "تم تحديث إعدادات المخزون",
+      },
+      fields: {
+        threshold: "حدّ المخزون المنخفض",
+        location: "الموقع في المستودع",
+        expiry: "تاريخ الصلاحية",
+      },
+      details: {
+        created: "البداية: {quantity} في المخزون، تنبيه عند {threshold}",
+        change: "{field}: {from} ← {to}",
+        none: "—",
       },
     },
   },

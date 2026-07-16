@@ -346,6 +346,8 @@ const en: Dictionary = {
         uploadFailed: "Upload failed — please try again.",
         removeImage: "Remove image",
         stockQuantity: "Stock (packages)",
+        quantityAdjustHint: "Quantity is changed through stock adjustments, not here.",
+        quantityAdjustLink: "Adjust stock",
         lowStockThreshold: "Low-stock threshold",
         warehouseLocation: "Warehouse location",
         expiryDate: "Nearest expiry date",
@@ -512,6 +514,7 @@ const en: Dictionary = {
         colReason: "Reason",
         colOrder: "Order",
         colNote: "Note",
+        colActor: "Who",
         csv: {
           date: "Date",
           product: "Product",
@@ -1234,6 +1237,24 @@ const en: Dictionary = {
       },
       details: {
         changed: "Changed: {fields}",
+      },
+    },
+    inventory: {
+      category: "Inventory",
+      timelineHeading: "Inventory activity",
+      events: {
+        "inventory.created": "Stock tracking started",
+        "inventory.updated": "Stock settings updated",
+      },
+      fields: {
+        threshold: "Low-stock threshold",
+        location: "Warehouse shelf",
+        expiry: "Expiry date",
+      },
+      details: {
+        created: "Initial: {quantity} in stock, low-stock at {threshold}",
+        change: "{field}: {from} → {to}",
+        none: "—",
       },
     },
   },

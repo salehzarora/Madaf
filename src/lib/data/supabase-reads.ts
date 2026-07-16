@@ -82,6 +82,10 @@ import {
   buildProductTimelineEvent,
   type ProductTimelinePage,
 } from "@/lib/product-timeline";
+import {
+  buildInventoryTimelineEvent,
+  type InventoryTimelinePage,
+} from "@/lib/inventory-timeline";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -995,6 +999,73 @@ export async function sbGetProductTimelinePage(input: {
   return { events, nextCursor, hasMore };
 }
 
+// ── Inventory Timeline (M8I.2) ────────────────────────────────────────────
+// The SAME bounded, cursor-paginated audit read as the Product timeline, with
+// entity_type fixed to 'inventory'. RLS is the authorization boundary: the M8I.2
+// SELECT clause requires has_tenant_role(owner/admin) for inventory rows, so a
+// sales_rep reads NO inventory audit history and a foreign tenant's rows yield
+// zero. Reuses the M8G.3 generic (tenant_id, entity_type, entity_id, created_at
+// desc, id desc) index. Actors resolved in ONE bounded RPC; metadata client-safe.
+export async function sbGetInventoryTimelinePage(input: {
+  productId: string;
+  cursor: string | null;
+  pageSize: number;
+}): Promise<InventoryTimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId) || !isUuid(input.productId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "inventory")
+    .eq("entity_id", input.productId);
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getInventoryTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // Inventory audit rows are owner/admin-only by RLS, so the viewer is always
+  // owner/admin here; resolve names via the one bounded lookup (no N+1).
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
+
+  const events = page.map((r) =>
+    buildInventoryTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
+}
+
 export async function sbListCustomers(): Promise<Customer[]> {
   const { client, tenantId } = await getReadContext();
   if (isTenantless(tenantId)) return [];
@@ -1190,7 +1261,7 @@ export async function sbSearchInventoryMovements(
 
   let query = client
     .from("order_inventory_movements")
-    .select("id, product_id, order_id, quantity_delta, reason, note, created_at")
+    .select("id, product_id, order_id, quantity_delta, reason, note, created_at, created_by")
     .eq("tenant_id", tenantId);
 
   if (gteIso) query = query.gte("created_at", gteIso);
@@ -1214,6 +1285,10 @@ export async function sbSearchInventoryMovements(
     reason: r.reason,
     note: r.note ?? undefined,
     createdAt: r.created_at,
+    // M8I.2 — the acting user id (owner/admin who adjusted or drove the Order
+    // transition), for page-scoped actor-label resolution in the movements UI.
+    // The CSV export does NOT include it (unchanged export contract).
+    createdBy: r.created_by ?? null,
   }));
   // Batch C — hydrate the order reference for ONLY the orders THIS page's
   // movements point at (distinct ids, chunked, RLS-scoped). This replaces the
@@ -1232,6 +1307,21 @@ export async function sbSearchInventoryMovements(
       orderPublicRef: ref?.publicRef ?? undefined,
     };
   });
+}
+
+// ── Movement actor labels (M8I.2) ─────────────────────────────────────────
+// Page-scoped, owner/admin-only display labels for the DISTINCT created_by ids on
+// a movements page. Reuses the bounded timeline actor-label RPC (≤50 ids, one
+// query, no N+1, no full roster; a sales_rep / non-member gets an empty map with
+// NO query). A null / deleted / non-member actor simply has no entry — the UI
+// then shows a safe fallback rather than a raw UUID.
+export async function sbGetMovementActorLabels(
+  movements: ReadonlyArray<{ createdBy?: string | null }>,
+): Promise<Record<string, string>> {
+  const ids = distinctActorIds(movements.map((m) => m.createdBy ?? null));
+  if (ids.length === 0) return {};
+  const map = await sbGetTimelineActorLabels(ids);
+  return Object.fromEntries(map);
 }
 
 export async function sbListInventory(): Promise<InventoryItem[]> {

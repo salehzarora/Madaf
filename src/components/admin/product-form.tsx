@@ -61,6 +61,13 @@ export function ProductForm({
   // tracking" opt-in. Create and already-tracked products submit inventory as
   // before, so their behaviour is unchanged.
   const showInventoryToggle = isEdit && !hasExistingInventory;
+  // M8I.2 — quantity integrity: for a product that ALREADY tracks stock, the
+  // current balance is maintained by the Inventory Movements ledger (manual
+  // adjustments + Order reserve/restore). The Product form must NOT re-set it, so
+  // quantity is read-only here and changes go through the existing stock-adjustment
+  // action on /admin/inventory. The database (upsert_inventory_item) preserves the
+  // quantity regardless — this UI is the honest surface, not the enforcement.
+  const quantityReadOnly = isEdit && hasExistingInventory;
   const live = getDataMode() === "supabase";
 
   // The VALUE we persist: the raw storage path when the image lives in
@@ -483,7 +490,20 @@ export function ProductForm({
             <Input id="np-qty" name="quantityAvailable" type="number" min={0}
               dir="ltr" className="tabular-nums"
               disabled={showInventoryToggle && !trackInventory}
+              readOnly={quantityReadOnly}
+              aria-readonly={quantityReadOnly || undefined}
               defaultValue={inventory?.stockPackages ?? 0} />
+            {quantityReadOnly ? (
+              <p className="mt-1 text-xs text-ink-muted">
+                {t.quantityAdjustHint}{" "}
+                <Link
+                  href={`/${locale}/admin/inventory`}
+                  className="font-semibold text-brand-700 underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                >
+                  {t.quantityAdjustLink}
+                </Link>
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="np-thr">{t.lowStockThreshold}</Label>

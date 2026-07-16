@@ -1,18 +1,22 @@
 import { notFound, redirect } from "next/navigation";
 import { ProductForm } from "@/components/admin/product-form";
 import { ProductTimeline } from "@/components/admin/product-timeline";
+import { InventoryTimeline } from "@/components/admin/inventory-timeline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { loadProductTimelineAction } from "@/lib/actions/product-timeline";
+import { loadInventoryTimelineAction } from "@/lib/actions/inventory-timeline";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   getDataMode,
   getInventoryForProduct,
+  getInventoryTimelinePage,
   getProduct,
   getProductTimelinePage,
   getTenantTimeZone,
+  safeInitialInventoryTimeline,
   safeInitialProductTimeline,
 } from "@/lib/data";
 
@@ -54,11 +58,20 @@ export default async function EditProductPage({
   const timelinePromise = safeInitialProductTimeline(() =>
     getProductTimelinePage({ productId: product.id }),
   );
+  // M8I.2 — a SEPARATE, isolated Inventory Timeline read (entity_type=inventory).
+  // Same owner/admin RLS + isolation contract as the Product Timeline; loaded
+  // concurrently and never blocks the Product edit render.
+  const inventoryTimelinePromise = safeInitialInventoryTimeline(() =>
+    getInventoryTimelinePage({ productId: product.id }),
+  );
   const [inventory, timeZone] = await Promise.all([
     getInventoryForProduct(id),
     getTenantTimeZone(),
   ]);
-  const timeline = await timelinePromise;
+  const [timeline, inventoryTimeline] = await Promise.all([
+    timelinePromise,
+    inventoryTimelinePromise,
+  ]);
   const dict = getDictionary(locale);
   const t = dict.admin.products.new;
 
@@ -96,6 +109,27 @@ export default async function EditProductPage({
             initial={timeline}
             timeZone={timeZone}
             loadMore={loadProductTimelineAction}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Inventory activity (M8I.2) — read-only inventory SETUP/CONFIG audit
+          events (tracking started, threshold/location/expiry changes) for THIS
+          product. Owner/admin only (route-gated + RLS); separate from the Product
+          Timeline; post-creation quantity changes live in the Inventory Movements
+          ledger, not here. */}
+      <Card>
+        <CardHeader variant="strip">
+          <CardTitle>{dict.audit.inventory.timelineHeading}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InventoryTimeline
+            productId={product.id}
+            locale={locale}
+            dict={dict}
+            initial={inventoryTimeline}
+            timeZone={timeZone}
+            loadMore={loadInventoryTimelineAction}
           />
         </CardContent>
       </Card>

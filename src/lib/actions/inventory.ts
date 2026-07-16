@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   adjustInventoryStock,
+  getMovementActorLabels,
   getTenantTimeZone,
   searchInventoryMovements,
 } from "@/lib/data";
@@ -134,6 +135,11 @@ export type MovementSearchResult =
       /** …and the AUTHORITATIVE tenant timezone it was resolved under. REQUIRED: the
        * client binds the session to it and re-sends it on every later request. */
       resolvedTimeZone: string;
+      /** M8I.2 — page-scoped { actorId → safe label } for THIS page's distinct
+       * movement actors (owner/admin only, bounded, no N+1). Never a raw UUID; a
+       * missing/deleted actor simply has no entry. Optional so a test builder may
+       * omit it — the client always reads it as `?? {}`. */
+      actorLabels?: Record<string, string>;
       error?: undefined;
     }
   | {
@@ -144,6 +150,7 @@ export type MovementSearchResult =
       resolvedFrom?: undefined;
       resolvedTo?: undefined;
       resolvedTimeZone?: undefined;
+      actorLabels?: undefined;
     };
 
 /** A filter payload the server has fully validated + anchored. */
@@ -249,6 +256,9 @@ export async function searchMovementsAction(
       offset,
       MOVEMENTS_PAGE,
     );
+    // M8I.2 — resolve THIS page's distinct actors once (bounded, owner/admin only,
+    // no N+1). The client merges these labels; a raw UUID is never sent.
+    const actorLabels = await getMovementActorLabels(movements);
     return {
       ok: true,
       movements,
@@ -259,6 +269,7 @@ export async function searchMovementsAction(
       resolvedFrom: resolved.anchors.from,
       resolvedTo: resolved.anchors.to,
       resolvedTimeZone: resolved.timeZone,
+      actorLabels,
     };
   } catch (error) {
     console.error("[madaf/actions] searchMovementsAction failed:", error);

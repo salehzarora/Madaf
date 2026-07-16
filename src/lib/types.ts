@@ -281,6 +281,10 @@ export interface InventoryMovement {
   /** Free-text note (manual adjustments only). */
   note?: string;
   createdAt: string;
+  /** The acting user id (owner/admin) — resolved to a safe label in the movements
+   * UI via a page-scoped lookup (M8I.2). NULL when the actor was deleted. Internal:
+   * never rendered raw and never part of the CSV export. */
+  createdBy?: string | null;
 }
 
 export interface CartItem {

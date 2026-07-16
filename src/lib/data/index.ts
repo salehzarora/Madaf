@@ -67,6 +67,7 @@ export {
 export {
   adjustInventoryStock,
   getInventoryForProduct,
+  getMovementActorLabels,
   listInventory,
   listInventoryMovements,
   searchInventoryMovements,
@@ -95,6 +96,11 @@ export {
   safeInitialProductTimeline,
   type ProductTimelineQuery,
 } from "./product-timeline";
+export {
+  getInventoryTimelinePage,
+  safeInitialInventoryTimeline,
+  type InventoryTimelineQuery,
+} from "./inventory-timeline";
 export {
   computeDashboardMetrics,
   getDashboardMetrics,

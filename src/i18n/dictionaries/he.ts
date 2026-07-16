@@ -346,6 +346,8 @@ const he: Dictionary = {
         uploadFailed: "ההעלאה נכשלה — נסו שוב.",
         removeImage: "הסרת תמונה",
         stockQuantity: "מלאי (אריזות)",
+        quantityAdjustHint: "הכמות משתנה דרך תנועות מלאי, לא כאן.",
+        quantityAdjustLink: "עדכון מלאי",
         lowStockThreshold: "סף מלאי נמוך",
         warehouseLocation: "מיקום במחסן",
         expiryDate: "תאריך תפוגה קרוב",
@@ -511,6 +513,7 @@ const he: Dictionary = {
         colReason: "סיבה",
         colOrder: "הזמנה",
         colNote: "הערה",
+        colActor: "מי",
         csv: {
           date: "תאריך",
           product: "מוצר",
@@ -1225,6 +1228,24 @@ const he: Dictionary = {
       },
       details: {
         changed: "שונה: {fields}",
+      },
+    },
+    inventory: {
+      category: "מלאי",
+      timelineHeading: "פעילות מלאי",
+      events: {
+        "inventory.created": "מעקב מלאי הוחל",
+        "inventory.updated": "הגדרות מלאי עודכנו",
+      },
+      fields: {
+        threshold: "סף מלאי נמוך",
+        location: "מיקום במחסן",
+        expiry: "תאריך תפוגה",
+      },
+      details: {
+        created: "התחלה: {quantity} במלאי, התראה ב-{threshold}",
+        change: "{field}: {from} ← {to}",
+        none: "—",
       },
     },
   },

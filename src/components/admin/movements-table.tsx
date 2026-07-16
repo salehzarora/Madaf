@@ -79,6 +79,7 @@ function productMatches(p: Product, q: string): boolean {
  */
 export function MovementsTable({
   movements: initialMovements,
+  initialActorLabels = {},
   products,
   canExport = false,
   locale,
@@ -89,6 +90,9 @@ export function MovementsTable({
   download = downloadCsv,
 }: {
   movements: InventoryMovement[];
+  /** M8I.2 — page-scoped { actorId → safe label } for the initial rows' actors
+   * (owner/admin only, bounded). Merged with each later page's labels. */
+  initialActorLabels?: Record<string, string>;
   products: Product[];
   /** Owner/admin (RLS gives others zero rows anyway) — shows CSV export. */
   canExport?: boolean;
@@ -116,6 +120,13 @@ export function MovementsTable({
   download?: (filename: string, csv: string) => void;
 }) {
   const t = dict.admin.inventory.movements;
+
+  // M8I.2 — accumulated { actorId → safe label } across the initial page and every
+  // loaded/searched page. A new session (filter change) reseeds from the initial
+  // page's labels; each successful page merges its own. Never holds a raw UUID.
+  const [actorLabels, setActorLabels] = useState<Record<string, string>>(
+    initialActorLabels,
+  );
 
   /**
    * THE SESSION — and EVERY SELECTED FILTER, including the search text, in one reducer.
@@ -256,6 +267,8 @@ export function MovementsTable({
           // The SERVER's zone owns this session's rows. There is no fallback.
           timeZone: result.resolvedTimeZone,
         });
+        // A new session's first page carries its own actor labels — reseed.
+        setActorLabels(result.actorLabels ?? {});
       });
     };
 
@@ -304,6 +317,8 @@ export function MovementsTable({
         rows: result.movements,
         hasMore: result.hasMore,
       });
+      // Merge the appended page's actor labels (the accumulated map spans all pages).
+      setActorLabels((prev) => ({ ...prev, ...(result.actorLabels ?? {}) }));
     });
   }
 
@@ -575,6 +590,7 @@ export function MovementsTable({
                 <th className="px-4 py-3 text-start">{t.colReason}</th>
                 <th className="px-4 py-3 text-start">{t.colOrder}</th>
                 <th className="px-4 py-3 text-start">{t.colNote}</th>
+                <th className="px-4 py-3 text-start">{t.colActor}</th>
               </tr>
             </thead>
             <tbody>
@@ -637,6 +653,32 @@ export function MovementsTable({
                     </td>
                     <td className="max-w-64 px-4 py-3 text-ink-soft">
                       <span className="line-clamp-2">{m.note ?? "—"}</span>
+                    </td>
+                    {/* M8I.2 — who performed it. A resolved current member shows a
+                        bidi-isolated email; a deleted actor → "unknown user"; a
+                        non-current member → "former team member". Never a raw UUID.
+                        Order-driven rows carry the human owner/admin who drove the
+                        transition (the Reason/Order columns explain the workflow),
+                        so they are attributed honestly — never mislabeled "System". */}
+                    <td className="px-4 py-3 text-ink-soft">
+                      {m.createdBy ? (
+                        actorLabels[m.createdBy] ? (
+                          <span
+                            dir="ltr"
+                            className="font-mono text-xs break-all text-ink"
+                          >
+                            {actorLabels[m.createdBy]}
+                          </span>
+                        ) : (
+                          <span className="text-ink-muted">
+                            {dict.audit.timeline.actorFormer}
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-ink-muted">
+                          {dict.audit.timeline.actorUnknown}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

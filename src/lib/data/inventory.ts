@@ -62,6 +62,20 @@ export async function searchInventoryMovements(
   return [];
 }
 
+/**
+ * M8I.2 — page-scoped movement actor labels (owner/admin only). Resolves the
+ * DISTINCT created_by ids on the given movements to safe display labels via the
+ * bounded timeline actor-label RPC (no N+1, no full roster). Mock has no ledger
+ * → {}. A missing/deleted actor has no entry (the UI shows a safe fallback). Used
+ * by the movements UI reads ONLY — never by the CSV export, which is unchanged.
+ */
+export async function getMovementActorLabels(
+  movements: InventoryMovement[],
+): Promise<Record<string, string>> {
+  if (getDataMode() !== "supabase" || movements.length === 0) return {};
+  return (await import("./supabase-reads")).sbGetMovementActorLabels(movements);
+}
+
 /** M8B.2 — owner/admin manual stock correction. Supabase-only write. */
 export async function adjustInventoryStock(
   productId: string,
