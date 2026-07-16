@@ -1210,6 +1210,7 @@ const ar: Dictionary = {
       },
       fields: {
         name: "الاسم",
+        description: "الوصف",
         sku: "SKU",
         barcode: "الباركود",
         manufacturer: "الشركة المصنّعة",

@@ -34,8 +34,10 @@
 -- METADATA SAFETY. No event carries a product name, localized name/description,
 -- price, VAT, SKU, barcode, image_url, storage path, token, raw row or raw JSON.
 -- product.updated stores ONLY the changed-field KEY array (localized name columns
--- normalize to the single key `name`; the package tuple to `package`; image_url to
--- `image`). Lifecycle events store ONLY the safe {before_active, after_active}
+-- normalize to the single key `name`; the localized descriptions to `description`
+-- and gated on key presence so an omitted description is never a change; the
+-- package tuple to `package`; image_url to `image`). Lifecycle events store ONLY
+-- the safe {before_active, after_active}
 -- booleans. The DB helper enforces a per-event key allowlist so no producer — and
 -- certainly no client — can smuggle a value-bearing key in.
 --
@@ -289,11 +291,20 @@ begin
 
   -- M8I.1: derive the ORDINARY changed_fields (KEY allowlist only; VALUES are
   -- never stored). Localized name columns normalize to the single key `name`; the
-  -- package tuple to `package`; image_url to `image`. is_active is intentionally
-  -- EXCLUDED here — it maps to a distinct lifecycle event below.
+  -- localized descriptions to `description`; the package tuple to `package`;
+  -- image_url to `image`. is_active is intentionally EXCLUDED here — it maps to a
+  -- distinct lifecycle event below.
   if v_old.name_ar is distinct from v.name_ar
      or v_old.name_he is distinct from v.name_he
      or v_old.name_en is distinct from v.name_en then v_changed := array_append(v_changed, 'name'); end if;
+  -- Descriptions are change-gated on KEY PRESENCE: the UPDATE preserves an omitted
+  -- description (M8A), so an omitted key is never a change, an explicitly-supplied
+  -- different value IS, and several localized descriptions changing collapse to the
+  -- single logical key `description`. The VALUE/text is never recorded.
+  if (p_product ? 'description_ar' and v_old.description_ar is distinct from v.description_ar)
+     or (p_product ? 'description_he' and v_old.description_he is distinct from v.description_he)
+     or (p_product ? 'description_en' and v_old.description_en is distinct from v.description_en)
+     then v_changed := array_append(v_changed, 'description'); end if;
   if v_old.sku is distinct from v.sku then v_changed := array_append(v_changed, 'sku'); end if;
   if v_old.barcode is distinct from v.barcode then v_changed := array_append(v_changed, 'barcode'); end if;
   if v_old.manufacturer_id is distinct from v.manufacturer_id then v_changed := array_append(v_changed, 'manufacturer'); end if;

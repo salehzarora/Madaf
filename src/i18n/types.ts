@@ -1294,6 +1294,7 @@ export interface Dictionary {
       /** Changed-field labels for product.updated (the VALUES are never shown). */
       fields: {
         name: string;
+        description: string;
         sku: string;
         barcode: string;
         manufacturer: string;

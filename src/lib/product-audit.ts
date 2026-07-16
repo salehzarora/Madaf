@@ -96,6 +96,7 @@ export function productAuditCategoryLabel(dict: Dictionary): string {
  * lifecycle event, never a changed field. */
 export const PRODUCT_AUDIT_FIELD_KEYS = [
   "name",
+  "description",
   "sku",
   "barcode",
   "manufacturer",
@@ -173,6 +174,12 @@ export interface ProductAuditSnapshot {
   nameAr: string;
   nameHe: string;
   nameEn: string;
+  /** The EFFECTIVE localized descriptions (an omitted-on-update field is modeled
+   * by passing the same value on both sides — the SQL preserves it, so it is not a
+   * change). The VALUE is never recorded — only the logical `description` key. */
+  descriptionAr?: string | null;
+  descriptionHe?: string | null;
+  descriptionEn?: string | null;
   sku?: string | null;
   barcode?: string | null;
   manufacturerId?: string | null;
@@ -184,6 +191,9 @@ export interface ProductAuditSnapshot {
   wholesalePrice: number;
   vatRate: number;
   trackExpiry: boolean;
+  /** The effective image reference. Compared for change only — the URL/path VALUE
+   * is never recorded (only the logical `image` key). */
+  imageUrl?: string | null;
 }
 
 /** Normalize an optional text field the way the SQL producers do (trim + empty →
@@ -211,6 +221,15 @@ export function deriveProductUpdateEvent(
     norm(before.nameEn) !== norm(after.nameEn)
   )
     changed.push("name");
+  // Localized descriptions collapse to the single logical key. An omitted-on-update
+  // description is modeled as an unchanged value on both sides (the SQL preserves
+  // it), so it never registers as a change; the text itself is never recorded.
+  if (
+    norm(before.descriptionAr) !== norm(after.descriptionAr) ||
+    norm(before.descriptionHe) !== norm(after.descriptionHe) ||
+    norm(before.descriptionEn) !== norm(after.descriptionEn)
+  )
+    changed.push("description");
   if (norm(before.sku) !== norm(after.sku)) changed.push("sku");
   if (norm(before.barcode) !== norm(after.barcode)) changed.push("barcode");
   if (norm(before.manufacturerId) !== norm(after.manufacturerId))
@@ -228,6 +247,9 @@ export function deriveProductUpdateEvent(
     changed.push("wholesale_price");
   if (before.vatRate !== after.vatRate) changed.push("vat_rate");
   if (before.trackExpiry !== after.trackExpiry) changed.push("track_expiry");
+  // A changed image reference → the logical `image` key (mirrors the SQL, which
+  // already diffs image_url). The URL/path VALUE is never recorded.
+  if (norm(before.imageUrl) !== norm(after.imageUrl)) changed.push("image");
 
   if (changed.length === 0) return null;
   return {

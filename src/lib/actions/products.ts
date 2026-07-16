@@ -109,8 +109,20 @@ function revalidateCatalog(locale: string): void {
   revalidatePath(`/${locale}/admin`);
 }
 
-/** Raw product fields from the admin form → validated ProductWriteInput. */
-function readProductInput(raw: Record<string, unknown>): ProductWriteInput | null {
+/**
+ * Raw product fields from the admin form → validated ProductWriteInput.
+ *
+ * `requireExplicitIsActive` (UPDATE only): the active state must be an EXPLICIT
+ * boolean. An omitted value is REJECTED here — before the mutation RPC — so an
+ * otherwise-valid update that omits it can never silently reactivate an inactive
+ * product (Codex P2-2). CREATE keeps the historical default (an omitted value
+ * means active). The Product form always sends a boolean, so this never changes
+ * the form path; it only closes the forged / non-form update boundary.
+ */
+function readProductInput(
+  raw: Record<string, unknown>,
+  opts: { requireExplicitIsActive?: boolean } = {},
+): ProductWriteInput | null {
   const nameAr = str(raw.nameAr, MAX_TEXT);
   const nameHe = str(raw.nameHe, MAX_TEXT);
   const nameEn = str(raw.nameEn, MAX_TEXT);
@@ -133,6 +145,17 @@ function readProductInput(raw: Record<string, unknown>): ProductWriteInput | nul
   const packageQuantity = num(raw.packageQuantity) ?? 1;
   const vatRate = num(raw.vatRate);
 
+  // UPDATE requires an explicit boolean; an omitted/malformed value fails safely
+  // (return null → the action returns its localized { ok: false }, no RPC call,
+  // no mutation, no audit event). CREATE keeps the historical omitted→active default.
+  let isActive: boolean;
+  if (opts.requireExplicitIsActive) {
+    if (typeof raw.isActive !== "boolean") return null;
+    isActive = raw.isActive;
+  } else {
+    isActive = raw.isActive !== false;
+  }
+
   return {
     nameAr,
     nameHe,
@@ -152,7 +175,7 @@ function readProductInput(raw: Record<string, unknown>): ProductWriteInput | nul
     vatRate: vatRate !== undefined && vatRate >= 0 && vatRate < 1 ? vatRate : undefined,
     imageUrl: str(raw.imageUrl, MAX_URL),
     trackExpiry: raw.trackExpiry === true,
-    isActive: raw.isActive !== false,
+    isActive,
   };
 }
 
@@ -206,7 +229,11 @@ export async function updateProductAction(input: {
 }): Promise<ProductWriteResult> {
   try {
     if (!isPlausibleId(input.productId)) return { ok: false };
-    const product = readProductInput(input.product);
+    // UPDATE requires an explicit isActive — an omitted value must never
+    // reactivate an inactive product (Codex P2-2).
+    const product = readProductInput(input.product, {
+      requireExplicitIsActive: true,
+    });
     if (!product) return { ok: false };
     const inventory = readInventoryInput(input.inventory);
     const result = await updateProduct(input.productId, product, inventory);

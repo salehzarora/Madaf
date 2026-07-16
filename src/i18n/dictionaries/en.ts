@@ -1220,6 +1220,7 @@ const en: Dictionary = {
       },
       fields: {
         name: "Name",
+        description: "Description",
         sku: "SKU",
         barcode: "Barcode",
         manufacturer: "Manufacturer",

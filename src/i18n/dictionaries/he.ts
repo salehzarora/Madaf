@@ -1211,6 +1211,7 @@ const he: Dictionary = {
       },
       fields: {
         name: "שם",
+        description: "תיאור",
         sku: "מק״ט",
         barcode: "ברקוד",
         manufacturer: "יצרן",
