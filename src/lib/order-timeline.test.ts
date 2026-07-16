@@ -918,8 +918,9 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   );
   // Snapshot of the migration count: M8H.2 was the last through M8H; Batch C
   // then adds the C1 dashboard-metrics aggregate RPC and the C2 signup-review
-  // concurrency fix (FOR UPDATE lock + terminal-state CHECK); PILOT-OPS-AUDIT-001
-  // then adds the product-audit foundation (20260806100000). This snapshot only
-  // guards that M8H.3 itself added none — see the m8h3 check above.
-  assert.equal(migrations.length, 57);
+  // concurrency fix; PILOT-OPS-AUDIT-001 adds the product-audit foundation
+  // (20260806100000); PILOT-OPS-AUDIT-002 adds the inventory integrity+audit
+  // migration (20260807100000). This snapshot only guards that M8H.3 itself added
+  // none — see the m8h3 check above.
+  assert.equal(migrations.length, 58);
 });

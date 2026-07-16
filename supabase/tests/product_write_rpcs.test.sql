@@ -143,7 +143,11 @@ select is(
   (select quantity_available from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000002'),
   7, 'preserve: the existing inventory row is untouched by a NULL-inventory edit');
 
--- ── 14–15. Intentional zero-stock edit persists (explicit qty 0) ───────────
+-- ── 14–15. QUANTITY INTEGRITY (M8I.2): a tracked product's quantity is
+-- PRESERVED by a Product-form/upsert edit — it is changed only through the
+-- stock-adjustment ledger, so a submitted quantity here is safely ignored while
+-- the configuration edit still succeeds. (Pre-M8I.2 this SET the quantity; the
+-- quantity change now lives on /admin/inventory adjustments.)
 select lives_ok(
   $$ select public.update_product(
        '33333333-3333-4333-8333-333333333333',
@@ -151,10 +155,10 @@ select lives_ok(
        jsonb_build_object('name_ar','ب','name_he','ב','name_en','HasInvX',
          'category_id','c2c00000-0000-4000-8000-000000000001','wholesale_price',6),
        jsonb_build_object('quantity_available',0,'low_stock_threshold',10)) $$,
-  'owner can set stock to 0 explicitly on a tracked product');
+  'owner edits a tracked product with a submitted quantity (config edit succeeds)');
 select is(
   (select quantity_available from public.inventory_items where product_id = 'cbc00000-0000-4000-8000-000000000002'),
-  0, 'an intentional zero-stock edit persists (would derive Out-of-stock)');
+  7, 'the tracked quantity is PRESERVED (still 7) — a submitted 0 never overwrites the ledger balance');
 
 -- ── P2: EXPLICIT tracking-ON with quantity 0 creates a zero-stock row ──────
 -- The form's "Track inventory" toggle → p_inventory {quantity 0}. A row is

@@ -141,7 +141,10 @@ select ok((select a.entity_id is not null from public.audit_events a
 select ok((select bool_and(created_at is not null) from public.audit_events where entity_type='product'),
   'created_at is database-generated on every product event');
 
--- ── 21–23. Create WITH inventory → still ONE product event, NO inventory event ─
+-- ── 21–23. Create WITH inventory → exactly ONE product event + (M8I.2) exactly
+-- ONE inventory.created (distinct entity). This product phase writes exactly one
+-- PRODUCT-entity event; the inventory.created comes from upsert_inventory_item
+-- (M8I.2) — asserted here as a distinct entity, not a duplicate product event.
 select lives_ok(
   $$ select public.create_product('33333333-3333-4333-8333-333333333333',
        jsonb_build_object('name_ar','و','name_he','ו','name_en','WithInv',
@@ -151,9 +154,11 @@ select lives_ok(
 select is((select count(*) from public.audit_events a
              join public.products p on p.id = a.entity_id
            where a.entity_type='product' and p.name_en='WithInv'),
-  1::bigint, 'creating a product with inventory writes exactly ONE product event');
-select is((select count(*) from public.audit_events where event_type like 'inventory%'),
-  0::bigint, 'NO inventory audit event is emitted in Phase 1');
+  1::bigint, 'creating a product with inventory writes exactly ONE product-entity event');
+select is((select count(*) from public.audit_events a
+             join public.products p on p.id = a.entity_id
+           where a.entity_type='inventory' and p.name_en='WithInv'),
+  1::bigint, 'M8I.2: the same creation writes exactly ONE inventory.created (distinct entity)');
 
 -- ── 24–28. Ordinary edit → ONE change-gated product.updated (KEYS only) ────
 select lives_ok(

@@ -123,6 +123,7 @@ let harnesses: Harness[] = [];
 
 function mount(opts: {
   initial?: InventoryMovement[];
+  initialActorLabels?: Record<string, string>;
   timeZone?: string;
   locale?: "ar" | "he" | "en";
 }): Harness {
@@ -154,6 +155,7 @@ function mount(opts: {
     root.render(
       React.createElement(MovementsTable, {
         movements: opts.initial ?? [],
+        initialActorLabels: opts.initialActorLabels,
         products: [product],
         canExport: true,
         locale,
@@ -1211,5 +1213,75 @@ describe("architecture (what a render cannot show)", () => {
       "BOTH checks precede reading the returned rows",
     );
     assert.ok(readsRows < buildsCsv && buildsCsv < writesFile, "…and the CSV/file");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+describe("M8I.2 — the movement ACTOR is shown safely (Who column)", () => {
+  /** The 7th cell is the actor column (Date, Product, Delta, Reason, Order, Note, Who). */
+  const actorCells = (h: Harness) =>
+    $$(h, "tbody tr td:nth-child(7)").map((td) => td.textContent?.trim() ?? "");
+
+  const withActor = (id: string, createdBy: string | null): InventoryMovement => ({
+    ...movement(id),
+    createdBy,
+  });
+
+  it("resolves a current member to a bidi-isolated email — never a raw UUID", () => {
+    const uuid = "11111111-1111-4111-8111-111111111111";
+    const h = mount({
+      initial: [withActor("a", uuid)],
+      initialActorLabels: { [uuid]: "owner@madaf.local" },
+    });
+    assert.ok(actorCells(h)[0].includes("owner@madaf.local"));
+    // The raw UUID never appears; the email is dir=ltr isolated.
+    assert.doesNotMatch(text(h), /11111111-1111/);
+    const mono = $$(h, 'td:nth-child(7) span[dir="ltr"]').map((s) => s.textContent);
+    assert.ok(mono.includes("owner@madaf.local"));
+  });
+
+  it("a created_by NOT in the label map → the localized 'former member' fallback", () => {
+    const uuid = "22222222-2222-4222-8222-222222222222";
+    const h = mount({ initial: [withActor("a", uuid)], initialActorLabels: {} });
+    assert.ok(actorCells(h)[0].includes(getDictionary("en").audit.timeline.actorFormer));
+    assert.doesNotMatch(text(h), /22222222-2222/);
+  });
+
+  it("a NULL created_by (deleted actor) → the localized 'unknown user' fallback", () => {
+    const h = mount({ initial: [withActor("a", null)] });
+    assert.ok(actorCells(h)[0].includes(getDictionary("en").audit.timeline.actorUnknown));
+  });
+
+  it("an order-driven movement's human actor is shown — not mislabeled 'System'", () => {
+    const uuid = "33333333-3333-4333-8333-333333333333";
+    const om: InventoryMovement = {
+      ...orderMovement("a", "MDF-1042", "MDF-XY01"),
+      createdBy: uuid,
+      reason: "order_reserved",
+    };
+    const h = mount({
+      initial: [om],
+      initialActorLabels: { [uuid]: "admin@madaf.local" },
+    });
+    const body = text(h);
+    assert.ok(body.includes("admin@madaf.local"));
+    assert.doesNotMatch(body, /system/i);
+    // The reason/order columns still convey the order-driven workflow.
+    assert.ok(body.includes("MDF-1042"));
+  });
+
+  it("the CSV export does NOT include the actor (export contract unchanged)", async () => {
+    const uuid = "44444444-4444-4444-8444-444444444444";
+    const h = mount({ initial: [], timeZone: JLM });
+    selectOption(presetSelect(h), "today");
+    await h.answerSearch(0, ok([withActor("a", uuid)], { actorLabels: { [uuid]: "owner@madaf.local" } }));
+    click(exportButton(h)!);
+    await h.answerExport(
+      0,
+      okExport([withActor("a", uuid)], { resolvedTimeZone: JLM }),
+    );
+    assert.equal(h.csv.length, 1, "a CSV was written");
+    // The exported CSV never contains the actor email or the raw id.
+    assert.doesNotMatch(h.csv[0].body, /owner@madaf.local|44444444-4444/);
   });
 });
