@@ -1279,5 +1279,36 @@ export interface Dictionary {
         linkedGuestConversion: string;
       };
     };
+    /** M8I.1 — Product lifecycle audit (the read-only Product Timeline lives on
+     * the owner/admin Product edit page; there is no global activity browser). */
+    product: {
+      /** Product audit category label. */
+      category: string;
+      /** Closed Product event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "product.created": string;
+        "product.updated": string;
+        "product.activated": string;
+        "product.deactivated": string;
+      };
+      /** Changed-field labels for product.updated (the VALUES are never shown). */
+      fields: {
+        name: string;
+        sku: string;
+        barcode: string;
+        manufacturer: string;
+        category: string;
+        package: string;
+        unit_size: string;
+        wholesale_price: string;
+        vat_rate: string;
+        track_expiry: string;
+        image: string;
+      };
+      /** Safe detail template (interpolated; never exposes product values). */
+      details: {
+        changed: string;
+      };
+    };
   };
 }

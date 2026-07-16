@@ -1200,6 +1200,31 @@ const ar: Dictionary = {
         linkedGuestConversion: "تمت ترقية متجر الزائر إلى عميل",
       },
     },
+    product: {
+      category: "المنتجات",
+      events: {
+        "product.created": "تم إنشاء منتج",
+        "product.updated": "تم تحديث منتج",
+        "product.activated": "تم تفعيل المنتج",
+        "product.deactivated": "تم تعطيل المنتج",
+      },
+      fields: {
+        name: "الاسم",
+        sku: "SKU",
+        barcode: "الباركود",
+        manufacturer: "الشركة المصنّعة",
+        category: "الفئة",
+        package: "التعبئة",
+        unit_size: "حجم الوحدة",
+        wholesale_price: "سعر الجملة",
+        vat_rate: "نسبة الضريبة",
+        track_expiry: "تتبّع الصلاحية",
+        image: "الصورة",
+      },
+      details: {
+        changed: "تغيّر: {fields}",
+      },
+    },
   },
 };
 

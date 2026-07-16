@@ -1201,6 +1201,31 @@ const he: Dictionary = {
         linkedGuestConversion: "חנות אורח הומרה ללקוח",
       },
     },
+    product: {
+      category: "מוצרים",
+      events: {
+        "product.created": "מוצר נוצר",
+        "product.updated": "מוצר עודכן",
+        "product.activated": "מוצר הופעל",
+        "product.deactivated": "מוצר הושבת",
+      },
+      fields: {
+        name: "שם",
+        sku: "מק״ט",
+        barcode: "ברקוד",
+        manufacturer: "יצרן",
+        category: "קטגוריה",
+        package: "אריזה",
+        unit_size: "גודל יחידה",
+        wholesale_price: "מחיר סיטונאי",
+        vat_rate: "שיעור מע״מ",
+        track_expiry: "מעקב תוקף",
+        image: "תמונה",
+      },
+      details: {
+        changed: "שונה: {fields}",
+      },
+    },
   },
 };
 

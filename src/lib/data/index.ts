@@ -91,6 +91,11 @@ export {
   type OrderTimelineQuery,
 } from "./order-timeline";
 export {
+  getProductTimelinePage,
+  safeInitialProductTimeline,
+  type ProductTimelineQuery,
+} from "./product-timeline";
+export {
   computeDashboardMetrics,
   getDashboardMetrics,
   type DashboardMetrics,

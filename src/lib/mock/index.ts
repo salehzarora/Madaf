@@ -17,6 +17,8 @@ export {
   auditEvents,
   auditActors,
   orderAuditEvents,
+  productAuditEvents,
   type MockAuditEvent,
   type MockOrderAuditEvent,
+  type MockProductAuditEvent,
 } from "./audit-events";

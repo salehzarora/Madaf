@@ -78,6 +78,10 @@ import {
   buildOrderTimelineEvent,
   type OrderTimelinePage,
 } from "@/lib/order-timeline";
+import {
+  buildProductTimelineEvent,
+  type ProductTimelinePage,
+} from "@/lib/product-timeline";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -901,6 +905,80 @@ export async function sbGetOrderTimelinePage(input: {
 
   const events = page.map((r) =>
     buildOrderTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
+}
+
+// ── Product Timeline (M8I.1) ──────────────────────────────────────────────
+// The SAME bounded, cursor-paginated audit read as the Customer/Order timelines,
+// with entity_type fixed to 'product'. RLS is the authorization boundary: the
+// M8I.1 SELECT clause requires has_tenant_role(owner/admin) for product rows, so
+// a sales_rep reads NO product audit history and a foreign tenant's rows yield
+// zero — this function adds no authorization of its own and must not be asked to.
+// It reuses the M8G.3 generic (tenant_id, entity_type, entity_id, created_at desc,
+// id desc) index — no migration and no new index is needed. Actors are resolved
+// in ONE bounded RPC (never per row), and metadata is client-safe-projected.
+export async function sbGetProductTimelinePage(input: {
+  productId: string;
+  cursor: string | null;
+  pageSize: number;
+}): Promise<ProductTimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId) || !isUuid(input.productId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "product")
+    .eq("entity_id", input.productId);
+
+  // Keyset predicate: rows strictly OLDER than the cursor in (created_at DESC,
+  // id DESC) order — the row-value comparison (created_at, id) < (c_ts, c_id),
+  // expanded for PostgREST. Row-value (not id-only) so it stays correct even if
+  // id and created_at ever diverge (backfill / clock skew).
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getProductTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // One bounded lookup for this page's DISTINCT actors — never per row, never the
+  // whole roster. Product audit rows are owner/admin-only by RLS, so the viewer
+  // is always owner/admin here; resolve names accordingly.
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
+
+  const events = page.map((r) =>
+    buildProductTimelineEvent({
       id: String(r.id),
       eventType: r.event_type,
       createdAt: r.created_at,

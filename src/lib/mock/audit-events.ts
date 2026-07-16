@@ -280,3 +280,60 @@ export const orderAuditEvents: MockOrderAuditEvent[] = [
     createdAt: "2026-06-27T10:10:00Z",
   },
 ];
+
+// ── Product lifecycle audit events (M8I.1) ────────────────────────────────
+// Demo rows so the Product Timeline renders with the SAME contract as Supabase
+// (bounded page, created_at DESC / id DESC, cursor keyset, actor resolution, safe
+// projection). The Product edit route is Supabase-only, so these serve parity +
+// tests rather than an in-app mock surface. Only product p01 has recorded
+// activity; every other mock product shows the honest empty state. Illustrative
+// demo rows — NOT a reconstruction inferred from other mock state.
+
+/** A mock product audit_events row (mirrors the DB shape the timeline reads). */
+export interface MockProductAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  productId: string;
+  eventType: string;
+  /** null → the acting user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo product events for p01, newest first (id + created_at both descend). */
+export const productAuditEvents: MockProductAuditEvent[] = [
+  {
+    id: "4",
+    productId: "p01",
+    eventType: "product.activated",
+    actorUserId: "u-admin",
+    metadata: { before_active: false, after_active: true },
+    createdAt: "2026-07-06T10:00:00Z",
+  },
+  {
+    id: "3",
+    productId: "p01",
+    eventType: "product.deactivated",
+    // Deleted actor → the timeline shows the explicit "unknown/former" label.
+    actorUserId: null,
+    metadata: { before_active: true, after_active: false },
+    createdAt: "2026-07-04T16:20:00Z",
+  },
+  {
+    id: "2",
+    productId: "p01",
+    eventType: "product.updated",
+    actorUserId: "u-admin",
+    metadata: { changed_fields: ["wholesale_price", "package"] },
+    createdAt: "2026-07-02T12:00:00Z",
+  },
+  {
+    id: "1",
+    productId: "p01",
+    eventType: "product.created",
+    actorUserId: "u-owner",
+    metadata: {},
+    createdAt: "2026-06-15T09:00:00Z",
+  },
+];

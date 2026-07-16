@@ -1,10 +1,20 @@
 import { notFound, redirect } from "next/navigation";
 import { ProductForm } from "@/components/admin/product-form";
+import { ProductTimeline } from "@/components/admin/product-timeline";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { loadProductTimelineAction } from "@/lib/actions/product-timeline";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, getInventoryForProduct, getProduct } from "@/lib/data";
+import {
+  getDataMode,
+  getInventoryForProduct,
+  getProduct,
+  getProductTimelinePage,
+  getTenantTimeZone,
+  safeInitialProductTimeline,
+} from "@/lib/data";
 
 /**
  * Edit an existing product. Supabase mode only — in mock mode there is
@@ -33,7 +43,22 @@ export default async function EditProductPage({
 
   const product = await getProduct(id);
   if (!product) notFound();
-  const inventory = await getInventoryForProduct(id);
+
+  // Activity timeline (M8I.1) — the FIRST bounded page of this product's real
+  // audit_events. RLS scopes it (owner/admin only); the route above already
+  // gated a sales_rep out. Read-only: viewing records NO audit event. It is an
+  // OPTIONAL section, so its initial read is ISOLATED (safeInitialProductTimeline
+  // never throws): a Timeline failure renders a localized, retryable error INSIDE
+  // its card and never rejects the required Product edit render. Kicked off
+  // before the remaining reads so it still loads concurrently.
+  const timelinePromise = safeInitialProductTimeline(() =>
+    getProductTimelinePage({ productId: product.id }),
+  );
+  const [inventory, timeZone] = await Promise.all([
+    getInventoryForProduct(id),
+    getTenantTimeZone(),
+  ]);
+  const timeline = await timelinePromise;
   const dict = getDictionary(locale);
   const t = dict.admin.products.new;
 
@@ -55,6 +80,25 @@ export default async function EditProductPage({
         product={product}
         inventory={inventory}
       />
+
+      {/* Activity timeline (M8I.1) — read-only Product audit events for THIS
+          product. Owner/admin only (route-gated + RLS); no controls, no
+          mutations, and opening it records nothing. */}
+      <Card>
+        <CardHeader variant="strip">
+          <CardTitle>{dict.audit.timeline.heading}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProductTimeline
+            productId={product.id}
+            locale={locale}
+            dict={dict}
+            initial={timeline}
+            timeZone={timeZone}
+            loadMore={loadProductTimelineAction}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

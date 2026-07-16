@@ -1210,6 +1210,31 @@ const en: Dictionary = {
         linkedGuestConversion: "Guest store promoted to a customer",
       },
     },
+    product: {
+      category: "Products",
+      events: {
+        "product.created": "Product created",
+        "product.updated": "Product updated",
+        "product.activated": "Product activated",
+        "product.deactivated": "Product deactivated",
+      },
+      fields: {
+        name: "Name",
+        sku: "SKU",
+        barcode: "Barcode",
+        manufacturer: "Manufacturer",
+        category: "Category",
+        package: "Packaging",
+        unit_size: "Unit size",
+        wholesale_price: "Wholesale price",
+        vat_rate: "VAT rate",
+        track_expiry: "Expiry tracking",
+        image: "Image",
+      },
+      details: {
+        changed: "Changed: {fields}",
+      },
+    },
   },
 };
 
