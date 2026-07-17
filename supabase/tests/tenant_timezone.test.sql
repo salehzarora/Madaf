@@ -220,15 +220,22 @@ set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000001","r
 select throws_ok(
   $$ select public._is_valid_timezone('UTC') $$,
   '42501', NULL, 'an authenticated owner CANNOT call the private validator directly');
+-- M8I.4 (PILOT-OPS-AUDIT-004): the direct authenticated tenants UPDATE grant +
+-- policy were REMOVED so the owner/admin timezone RPC is the only write path (the
+-- settings audit is non-bypassable). An owner can therefore no longer write the
+-- column directly — BOTH a bad and a valid value are refused at the privilege
+-- layer (42501). The trigger still guards the table (superuser tests above), and
+-- a valid zone still saves through the RPC (tests 20-21 below).
 select throws_ok(
   $$ update public.tenants set timezone = '+03:00'
        where id = '33333333-3333-4333-8333-333333333333' $$,
-  '22023', NULL,
-  'yet the TRIGGER still refuses a fixed offset on a direct table UPDATE by that owner');
-select lives_ok(
+  '42501', NULL,
+  'a direct authenticated tenants UPDATE (bad value) is denied — RPC-only after M8I.4');
+select throws_ok(
   $$ update public.tenants set timezone = 'Pacific/Chatham'
        where id = '33333333-3333-4333-8333-333333333333' $$,
-  'and a VALID zone still saves — the revoke broke no legitimate path');
+  '42501', NULL,
+  'a direct authenticated tenants UPDATE (valid value) is also denied — RPC-only after M8I.4');
 
 -- ── 20–21. owner can update; only the timezone changes ───────────────────
 select is(
