@@ -86,6 +86,10 @@ import {
   buildInventoryTimelineEvent,
   type InventoryTimelinePage,
 } from "@/lib/inventory-timeline";
+import {
+  buildTeamTimelineEvent,
+  type TeamTimelinePage,
+} from "@/lib/team-timeline";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -1050,6 +1054,74 @@ export async function sbGetInventoryTimelinePage(input: {
 
   const events = page.map((r) =>
     buildInventoryTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
+}
+
+// ── Team Timeline (M8I.3) ─────────────────────────────────────────────────
+// A TENANT-WIDE bounded, cursor-paginated audit read with entity_type fixed to
+// 'team' (no entity_id filter — the stream spans invitations AND memberships).
+// RLS is the authorization boundary: the M8I.3 SELECT clause requires
+// has_tenant_role(owner/admin) for team rows, so a sales_rep reads NO Team
+// activity and a foreign tenant's rows yield zero. Served by the M8I.3
+// (tenant_id, entity_type, created_at desc, id desc) index. Actors resolved in
+// ONE bounded RPC; the affected member is carried inline as target_email
+// (client-safe projection) so there is NO second identity lookup.
+export async function sbGetTeamTimelinePage(input: {
+  cursor: string | null;
+  pageSize: number;
+}): Promise<TeamTimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "team");
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getTeamTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // Team audit rows are owner/admin-only by RLS, so the viewer is always
+  // owner/admin here; resolve names via the one bounded lookup (no N+1). The
+  // affected member is NOT looked up — it is the client-safe target_email snapshot.
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
+
+  const events = page.map((r) =>
+    buildTeamTimelineEvent({
       id: String(r.id),
       eventType: r.event_type,
       createdAt: r.created_at,

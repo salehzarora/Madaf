@@ -1344,5 +1344,31 @@ export interface Dictionary {
         none: string;
       };
     };
+    /** M8I.3 — Team/Access audit (a compact owner/admin Team Activity stream on
+     * the existing Team page). The affected member is the bounded target_email
+     * snapshot; role values reuse access.session.roles. */
+    team: {
+      /** Team audit category label. */
+      category: string;
+      /** The Team Activity section heading. */
+      timelineHeading: string;
+      /** Label preceding the affected member's email. */
+      targetMember: string;
+      /** Closed Team event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "team.member_invited": string;
+        "team.invitation_revoked": string;
+        "team.member_joined": string;
+        "team.role_changed": string;
+        "team.member_removed": string;
+      };
+      /** Safe detail templates (interpolated; only localized role enums). */
+      details: {
+        /** Single role line — invited/joined/revoked/removed. */
+        role: string;
+        /** Role transition — role_changed ("{from} → {to}"). */
+        roleChange: string;
+      };
+    };
   };
 }

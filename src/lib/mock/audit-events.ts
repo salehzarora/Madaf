@@ -392,3 +392,80 @@ export const inventoryAuditEvents: MockInventoryAuditEvent[] = [
     createdAt: "2026-06-15T09:05:00Z",
   },
 ];
+
+// ── Team / Access audit events (M8I.3) ────────────────────────────────────
+// Demo rows so the Team Activity stream renders with the SAME contract as
+// Supabase (bounded page, created_at DESC / id DESC, cursor keyset, actor
+// resolution, safe projection). The Team page is Supabase-only, so these serve
+// parity + tests. Tenant-WIDE (no per-entity filter): every event carries a
+// normalized `target_email` snapshot so a row stays legible after the member is
+// removed. Illustrative demo rows — NOT a reconstruction inferred from other
+// mock state; no invite/membership workflow is simulated.
+
+/** A mock team audit_events row (mirrors the DB shape the timeline reads). */
+export interface MockTeamAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  eventType: string;
+  /** null → the acting user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo team events, newest first (id + created_at both descend). */
+export const teamAuditEvents: MockTeamAuditEvent[] = [
+  {
+    id: "6",
+    eventType: "team.member_removed",
+    actorUserId: "u-owner",
+    metadata: { target_email: "rep-old@madaf.local", role: "sales_rep" },
+    createdAt: "2026-07-12T10:15:00Z",
+  },
+  {
+    id: "5",
+    eventType: "team.role_changed",
+    actorUserId: "u-owner",
+    // Owner grant → high sensitivity in the taxonomy.
+    metadata: {
+      target_email: "manager@madaf.local",
+      from_role: "admin",
+      to_role: "owner",
+    },
+    createdAt: "2026-07-10T14:30:00Z",
+  },
+  {
+    id: "4",
+    eventType: "team.role_changed",
+    // Deleted actor → the timeline shows the explicit "unknown" label.
+    actorUserId: null,
+    metadata: {
+      target_email: "rep@madaf.local",
+      from_role: "sales_rep",
+      to_role: "admin",
+    },
+    createdAt: "2026-07-08T09:20:00Z",
+  },
+  {
+    id: "3",
+    eventType: "team.member_joined",
+    // u-admin is absent from the roster → owner/admin viewer sees "former member".
+    actorUserId: "u-admin",
+    metadata: { target_email: "rep@madaf.local", role: "sales_rep" },
+    createdAt: "2026-07-05T11:00:00Z",
+  },
+  {
+    id: "2",
+    eventType: "team.invitation_revoked",
+    actorUserId: "u-owner",
+    metadata: { target_email: "spam@madaf.local", role: "admin" },
+    createdAt: "2026-07-03T16:45:00Z",
+  },
+  {
+    id: "1",
+    eventType: "team.member_invited",
+    actorUserId: "u-owner",
+    metadata: { target_email: "rep@madaf.local", role: "sales_rep" },
+    createdAt: "2026-07-01T09:00:00Z",
+  },
+];

@@ -1248,6 +1248,22 @@ const he: Dictionary = {
         none: "—",
       },
     },
+    team: {
+      category: "צוות",
+      timelineHeading: "פעילות הצוות",
+      targetMember: "חבר",
+      events: {
+        "team.member_invited": "חבר הוזמן",
+        "team.invitation_revoked": "ההזמנה בוטלה",
+        "team.member_joined": "חבר הצטרף",
+        "team.role_changed": "התפקיד שונה",
+        "team.member_removed": "חבר הוסר",
+      },
+      details: {
+        role: "תפקיד: {role}",
+        roleChange: "{from} ← {to}",
+      },
+    },
   },
 };
 

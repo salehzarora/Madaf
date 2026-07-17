@@ -1257,6 +1257,22 @@ const en: Dictionary = {
         none: "—",
       },
     },
+    team: {
+      category: "Team",
+      timelineHeading: "Team activity",
+      targetMember: "Member",
+      events: {
+        "team.member_invited": "Member invited",
+        "team.invitation_revoked": "Invitation revoked",
+        "team.member_joined": "Member joined",
+        "team.role_changed": "Role changed",
+        "team.member_removed": "Member removed",
+      },
+      details: {
+        role: "Role: {role}",
+        roleChange: "{from} → {to}",
+      },
+    },
   },
 };
 

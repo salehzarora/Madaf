@@ -1247,6 +1247,22 @@ const ar: Dictionary = {
         none: "—",
       },
     },
+    team: {
+      category: "الفريق",
+      timelineHeading: "نشاط الفريق",
+      targetMember: "العضو",
+      events: {
+        "team.member_invited": "تمت دعوة عضو",
+        "team.invitation_revoked": "أُلغيت الدعوة",
+        "team.member_joined": "انضمّ عضو",
+        "team.role_changed": "تغيّر الدور",
+        "team.member_removed": "تمت إزالة عضو",
+      },
+      details: {
+        role: "الدور: {role}",
+        roleChange: "{from} ← {to}",
+      },
+    },
   },
 };
 
