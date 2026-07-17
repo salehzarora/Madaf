@@ -1,11 +1,20 @@
 import { notFound, redirect } from "next/navigation";
 import { BusinessProfileForm } from "@/components/admin/business-profile-form";
+import { SettingsTimeline } from "@/components/admin/settings-timeline";
 import { TimezoneSettings } from "@/components/admin/timezone-settings";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { loadSettingsTimelineAction } from "@/lib/actions/settings-timeline";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, getSupplier } from "@/lib/data";
+import {
+  getDataMode,
+  getSettingsTimelinePage,
+  getSupplier,
+  getTenantTimeZone,
+  safeInitialSettingsTimeline,
+} from "@/lib/data";
 import { TIME_ZONE_OPTIONS } from "@/lib/time-catalog";
 
 /**
@@ -38,6 +47,14 @@ export default async function AdminBusinessSettingsPage({
   const initial = await getSupplier();
   const t = dict.admin.settings.business;
 
+  // The Settings Activity read is OPTIONAL + isolated (owner/admin RLS): if it
+  // fails, Settings editing must still render. Supabase mode only. Started
+  // concurrently, never blocks the settings forms.
+  const settingsTimeline = live
+    ? await safeInitialSettingsTimeline(() => getSettingsTimelinePage())
+    : null;
+  const timeZone = await getTenantTimeZone();
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
       <div>
@@ -69,6 +86,22 @@ export default async function AdminBusinessSettingsPage({
         options={TIME_ZONE_OPTIONS}
         live={live}
       />
+      {live && settingsTimeline ? (
+        <Card className="overflow-hidden">
+          <CardHeader variant="strip">
+            <CardTitle>{dict.audit.settings.timelineHeading}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SettingsTimeline
+              locale={locale}
+              dict={dict}
+              initial={settingsTimeline}
+              timeZone={timeZone}
+              loadMore={loadSettingsTimelineAction}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

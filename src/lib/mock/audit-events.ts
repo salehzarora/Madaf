@@ -469,3 +469,71 @@ export const teamAuditEvents: MockTeamAuditEvent[] = [
     createdAt: "2026-07-01T09:00:00Z",
   },
 ];
+
+// ── Tenant Settings / Timezone audit events (M8I.4) ───────────────────────
+// Demo rows so the Settings Activity stream renders with the SAME contract as
+// Supabase (bounded page, created_at DESC / id DESC, cursor keyset, actor
+// resolution, safe projection). The Settings page is Supabase-only, so these serve
+// parity + tests. Tenant-WIDE (no per-entity filter): safe scalar/enum + timezone
+// carry before/after; sensitive fields are changed-field KEYS only.
+
+/** A mock settings audit_events row (mirrors the DB shape the timeline reads). */
+export interface MockSettingsAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  eventType: string;
+  /** null → the acting user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo settings events, newest first (id + created_at both descend). */
+export const settingsAuditEvents: MockSettingsAuditEvent[] = [
+  {
+    id: "4",
+    eventType: "settings.tax_updated",
+    actorUserId: "u-owner",
+    // legal_name is sensitive (keys-only); default_vat_rate is a safe scalar.
+    metadata: {
+      changed_fields: ["legal_name", "default_vat_rate"],
+      default_vat_rate: { from: 0.17, to: 0.18 },
+    },
+    createdAt: "2026-07-11T12:00:00Z",
+  },
+  {
+    id: "3",
+    eventType: "settings.timezone_changed",
+    // Deleted actor → the timeline shows the explicit "unknown" label.
+    actorUserId: null,
+    metadata: {
+      changed_fields: ["timezone"],
+      timezone: { from: "Asia/Jerusalem", to: "Europe/London" },
+    },
+    createdAt: "2026-07-08T14:30:00Z",
+  },
+  {
+    id: "2",
+    eventType: "settings.tax_updated",
+    // u-admin is absent from the roster → owner/admin viewer sees "former member".
+    actorUserId: "u-admin",
+    metadata: {
+      changed_fields: ["country_code", "default_vat_rate", "legal_invoicing_ready"],
+      country_code: { from: null, to: "IL" },
+      default_vat_rate: { from: null, to: 0.17 },
+      legal_invoicing_ready: { from: null, to: false },
+    },
+    createdAt: "2026-07-05T09:15:00Z",
+  },
+  {
+    id: "1",
+    eventType: "settings.business_updated",
+    actorUserId: "u-owner",
+    // name_en is sensitive (keys-only); display_vat_rate is a safe scalar.
+    metadata: {
+      changed_fields: ["name_en", "display_vat_rate"],
+      display_vat_rate: { from: null, to: 0.18 },
+    },
+    createdAt: "2026-07-01T10:00:00Z",
+  },
+];

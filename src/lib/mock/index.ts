@@ -20,9 +20,11 @@ export {
   productAuditEvents,
   inventoryAuditEvents,
   teamAuditEvents,
+  settingsAuditEvents,
   type MockAuditEvent,
   type MockOrderAuditEvent,
   type MockProductAuditEvent,
   type MockInventoryAuditEvent,
   type MockTeamAuditEvent,
+  type MockSettingsAuditEvent,
 } from "./audit-events";

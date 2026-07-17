@@ -1370,5 +1370,69 @@ export interface Dictionary {
         roleChange: string;
       };
     };
+    /** M8I.4 — Tenant Settings / Timezone audit (a compact owner/admin Settings
+     * Activity stream on the existing business settings page). Safe scalar/enum +
+     * timezone values are shown; sensitive fields are changed-labels only. */
+    settings: {
+      /** Settings audit category label. */
+      category: string;
+      /** The Settings Activity section heading. */
+      timelineHeading: string;
+      /** Closed Settings event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "settings.business_updated": string;
+        "settings.timezone_changed": string;
+        "settings.tax_updated": string;
+      };
+      /** Localized field labels (never a raw DB column name reaches the UI). */
+      fields: {
+        name_ar: string;
+        name_he: string;
+        name_en: string;
+        phone: string;
+        email: string;
+        address_ar: string;
+        address_he: string;
+        address_en: string;
+        legal_name: string;
+        company_id: string;
+        display_vat_rate: string;
+        logo_url: string;
+        business_registration_number: string;
+        vat_registration_number: string;
+        vat_registration_type: string;
+        country_code: string;
+        default_vat_rate: string;
+        invoice_language: string;
+        street: string;
+        city: string;
+        postal_code: string;
+        country: string;
+        contact_email: string;
+        contact_phone: string;
+        legal_invoicing_ready: string;
+        readiness_notes: string;
+        timezone: string;
+      };
+      /** Safe detail templates + value labels. */
+      details: {
+        /** Safe field transition — "{field}: {from} → {to}". */
+        change: string;
+        /** Sensitive fields collapsed — "Changed: {fields}". */
+        changed: string;
+        /** Localized empty/not-set value. */
+        notSet: string;
+        /** legal_invoicing_ready = true. */
+        ready: string;
+        /** legal_invoicing_ready = false. */
+        notReady: string;
+      };
+      /** Localized invoice-language values (ar/he/en). */
+      langValues: {
+        ar: string;
+        he: string;
+        en: string;
+      };
+    };
   };
 }
