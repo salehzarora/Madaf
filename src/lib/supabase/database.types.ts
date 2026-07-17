@@ -1768,6 +1768,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      _log_team_audit_event: {
+        Args: {
+          p_entity_id: string
+          p_event_type: string
+          p_metadata?: Json
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       _order_create_core: {
         Args: {
           p_customer_id: string
