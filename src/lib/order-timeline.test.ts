@@ -922,7 +922,8 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   // (20260806100000); PILOT-OPS-AUDIT-002 adds the inventory integrity+audit
   // migration (20260807100000); PILOT-OPS-AUDIT-003 adds the team-access-audit
   // migration (20260808100000); PILOT-OPS-AUDIT-004 adds the tenant-settings-audit
-  // migration (20260809100000). This snapshot only guards that M8H.3 itself added
-  // none — see the m8h3 check above.
-  assert.equal(migrations.length, 60);
+  // migration (20260809100000); PILOT-OPS-AUDIT-005 adds the sales-rep-assignment
+  // audit migration (20260810100000). This snapshot only guards that M8H.3 itself
+  // added none — see the m8h3 check above.
+  assert.equal(migrations.length, 61);
 });
