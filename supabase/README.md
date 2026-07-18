@@ -1,9 +1,23 @@
-# Madaf — local Supabase backend (M1)
+# Madaf — local Supabase backend
 
-The M1 backend foundation: schema, Row Level Security, storage bucket and
-demo seed for the Madaf B2B catalog. **Local development only — there is
-no hosted/production project in this phase, and the UI still runs on mock
-data** (`NEXT_PUBLIC_MADAF_DATA_MODE=mock`, the default).
+The backend foundation: schema, Row Level Security, storage bucket and demo
+seed for the Madaf B2B catalog. **This README is the LOCAL development stack
+authority** — the source of truth for `migrations/`, `seed.sql`, RLS and the
+RPC surface. The UI still defaults to mock data
+(`NEXT_PUBLIC_MADAF_DATA_MODE=mock`).
+
+> **Hosted status (monitored Pilot):** a hosted Supabase **staging** project
+> (`madaf-staging-frankfurt`, `eu-central-1`) now backs the monitored Pilot;
+> migrations are applied to it with `supabase db push --linked` in the deploy
+> order documented in the runbook. **The runbook — `docs/pilot/
+> MONITORED-PILOT-LAUNCH-RUNBOOK.md` — is the authority for hosted state**
+> (verified commit, migration parity, backup/PITR). Do not infer hosted state
+> from this file; verify it live (`supabase migration list --linked`). No
+> secrets or hosted credentials live in the repo.
+>
+> The local stack applies **all** of `migrations/` — currently **63 migrations**
+> (latest `20260812100000_operational_hardening.sql`: deterministic inventory
+> lock order + audit unknown-entity default-deny).
 
 ## Required tools
 
