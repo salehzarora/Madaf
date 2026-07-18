@@ -17,7 +17,9 @@ RPC surface. The UI still defaults to mock data
 >
 > The local stack applies **all** of `migrations/` — currently **63 migrations**
 > (latest `20260812100000_operational_hardening.sql`: deterministic inventory
-> lock order + audit unknown-entity default-deny).
+> lock order + audit unknown-entity default-deny, plus the FIX1 correction —
+> DB-backed order-submission idempotency and per-`auth.users`-row onboarding
+> serialization).
 
 ## Required tools
 
