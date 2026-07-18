@@ -375,6 +375,7 @@ test("mock: a successful create records exactly ONE order.created", async () => 
     customerId: "c01",
     items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 1 }],
     source: "sales_visit",
+    submissionKey: "11110000-0000-4000-8000-000000000001",
   });
   const log = readMockOrderAuditLog();
   assert.equal(log.length, 1);
@@ -389,6 +390,7 @@ test("mock: a guest-less create records customer_kind none", async () => {
     customerId: null,
     items: [{ productId: "p1", quantity: 1 }],
     source: "admin",
+    submissionKey: "11110000-0000-4000-8000-000000000002",
   });
   assert.equal(readMockOrderAuditLog()[0].metadata.customer_kind, "none");
 });
@@ -439,9 +441,12 @@ test("mock: recorded metadata never contains PII, items, prices or tokens", asyn
     items: [{ productId: "p1", quantity: 2 }],
     notes: "secret delivery instructions",
     source: "sales_visit",
+    submissionKey: "11110000-0000-4000-8000-000000000003",
   });
   const json = JSON.stringify(readMockOrderAuditLog());
   assert.ok(!/secret|delivery instructions|p1|price|total/i.test(json), json);
+  // FIX1: the submission key must NEVER enter audit metadata.
+  assert.ok(!json.includes("11110000-0000-4000-8000-000000000003"), json);
 });
 
 // ── 30. The Customer-link decision matches the Supabase contract ───────────

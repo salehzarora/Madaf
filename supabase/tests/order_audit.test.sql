@@ -120,7 +120,7 @@ set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000001","r
 select lives_ok(
   $$ select public.create_order_request('33333333-3333-4333-8333-333333333333',
        '[{"product_id":"40000000-0000-4000-8000-000000000001","quantity":3}]'::jsonb,
-       'ca000000-0000-4000-8000-000000000001') $$,
+       'ca000000-0000-4000-8000-000000000001', p_submission_key => gen_random_uuid()) $$,
   'authenticated owner creates an order');
 select is((select count(*) from public.audit_events where entity_type='order' and event_type='order.created'),
   1::bigint, 'authenticated creation → exactly ONE order.created');
@@ -253,7 +253,7 @@ select throws_ok(
 savepoint before_rollback;
 select public.create_order_request('33333333-3333-4333-8333-333333333333',
   '[{"product_id":"40000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb,
-  'ca000000-0000-4000-8000-000000000002');
+  'ca000000-0000-4000-8000-000000000002', p_submission_key => gen_random_uuid());
 rollback to savepoint before_rollback;
 select is((select count(*) from public.audit_events where event_type='order.created'),
   1::bigint, 'a rolled-back creation leaves NO audit event (transactional)');
@@ -263,7 +263,7 @@ select is((select count(*) from public.audit_events where event_type='order.crea
 -- MDF30 and leave NO status change, NO movement and NO audit event.
 select public.create_order_request('33333333-3333-4333-8333-333333333333',
   '[{"product_id":"40000000-0000-4000-8000-000000000001","quantity":200}]'::jsonb,
-  'ca000000-0000-4000-8000-000000000002');
+  'ca000000-0000-4000-8000-000000000002', p_submission_key => gen_random_uuid());
 savepoint before_stockfail;
 select throws_ok(
   $$ select public.update_order_status('33333333-3333-4333-8333-333333333333',
@@ -278,7 +278,8 @@ select is((select count(*) from public.audit_events where event_type='order.stat
 -- A guest order (no customer) created through the showcase token (see below)
 -- is linked to an existing customer here.
 select public.create_order_request('33333333-3333-4333-8333-333333333333',
-  '[{"product_id":"40000000-0000-4000-8000-000000000003","quantity":1}]'::jsonb);  -- no customer
+  '[{"product_id":"40000000-0000-4000-8000-000000000003","quantity":1}]'::jsonb,
+  p_submission_key => gen_random_uuid());  -- no customer
 select lives_ok(
   $$ select public.link_order_to_customer('33333333-3333-4333-8333-333333333333',
        (select id from public.orders where customer_id is null limit 1),
@@ -317,7 +318,8 @@ set local request.jwt.claims = '{"role":"anon"}';
 -- ── 56. Private Shop token creation (anon) ────────────────────────────────
 select lives_ok(
   $$ select public.create_order_request_from_token('shoptoken-fixture-0000000001',
-       '[{"product_id":"40000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb) $$,
+       '[{"product_id":"40000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb,
+       p_submission_key => gen_random_uuid()) $$,
   'an anonymous private-shop-link order succeeds');
 
 -- ── 57. Showcase guest creation (anon), with deliberate PII in the payload ─
@@ -325,7 +327,8 @@ select lives_ok(
   $$ select public.create_order_from_showcase_token('showcasetoken-fixture-000001',
        '[{"product_id":"40000000-0000-4000-8000-000000000002","quantity":2}]'::jsonb,
        'Guest Shop Ltd', 'Guest Contact', '050-secret', 'guest@example.com',
-       null, null, null, '1 Secret Street', 'guest notes') $$,
+       null, null, null, '1 Secret Street', 'guest notes',
+       p_submission_key => gen_random_uuid()) $$,
   'an anonymous showcase guest order succeeds');
 
 -- ── 58. anon cannot read audit_events at all (no grant → permission denied) ─

@@ -52,7 +52,7 @@ set local request.jwt.claims = '{"sub":"b0b00000-0000-4000-8000-000000000001","r
 select lives_ok(
   $$ select public.create_order_request('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
        '[{"product_id":"40000000-0000-4000-8000-0000000000b1","quantity":2}]'::jsonb,
-       'cb000000-0000-4000-8000-0000000000b1') $$,
+       'cb000000-0000-4000-8000-0000000000b1', p_submission_key => gen_random_uuid()) $$,
   'ownerB creates a legitimate order in tenant B');
 
 -- ═══ ownerA attempts to reach across the tenant boundary ═══════════════════
@@ -64,21 +64,21 @@ set local request.jwt.claims = '{"sub":"a0a00000-0000-4000-8000-000000000001","r
 select lives_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
        '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb,
-       'ca000000-0000-4000-8000-0000000000a1') $$,
+       'ca000000-0000-4000-8000-0000000000a1', p_submission_key => gen_random_uuid()) $$,
   'ownerA creates a legitimate order in tenant A');
 
 -- ── 3. Order in A using B's CUSTOMER → rejected ───────────────────────────
 select throws_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
        '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb,
-       'cb000000-0000-4000-8000-0000000000b1') $$,
+       'cb000000-0000-4000-8000-0000000000b1', p_submission_key => gen_random_uuid()) $$,
   '22023', NULL, 'ownerA cannot order in A for B''s customer');
 
 -- ── 4. Order in A using B's PRODUCT → rejected ────────────────────────────
 select throws_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
        '[{"product_id":"40000000-0000-4000-8000-0000000000b1","quantity":1}]'::jsonb,
-       'ca000000-0000-4000-8000-0000000000a1') $$,
+       'ca000000-0000-4000-8000-0000000000a1', p_submission_key => gen_random_uuid()) $$,
   '22023', NULL, 'ownerA cannot order in A using B''s product');
 
 -- ── 5. Order in A MIXING A's and B's products → fully rejected ────────────
@@ -86,20 +86,21 @@ select throws_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
        '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1},
          {"product_id":"40000000-0000-4000-8000-0000000000b1","quantity":1}]'::jsonb,
-       'ca000000-0000-4000-8000-0000000000a1') $$,
+       'ca000000-0000-4000-8000-0000000000a1', p_submission_key => gen_random_uuid()) $$,
   '22023', NULL, 'a mixed-tenant item list is rejected as a whole (no partial order)');
 
 -- ── 6. Order naming tenant B (ownerA is NOT a member) → authorize denies ──
 select throws_ok(
   $$ select public.create_order_request('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
        '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb,
-       'ca000000-0000-4000-8000-0000000000a1') $$,
+       'ca000000-0000-4000-8000-0000000000a1', p_submission_key => gen_random_uuid()) $$,
   '42501', NULL, 'ownerA cannot create an order under a tenant they do not belong to');
 
 -- ── 7. ownerA creates a GUEST order in A (for the link attempt below) ──────
 select lives_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-       '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb) $$,
+       '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb,
+       p_submission_key => gen_random_uuid()) $$,
   'ownerA creates an unlinked guest order in tenant A');
 
 -- ── 8. Link A's guest order to B's customer → rejected ────────────────────

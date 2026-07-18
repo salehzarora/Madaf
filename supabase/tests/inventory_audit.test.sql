@@ -196,7 +196,8 @@ select ok((select count(*) from public.order_inventory_movements
 
 -- ── 34–36. Stale quantity cannot overwrite an ORDER-RESERVED balance ───────
 select public.create_order_request('33333333-3333-4333-8333-333333333333',
-  '[{"product_id":"cbc00000-0000-4000-8000-000000000003","quantity":30}]'::jsonb);
+  '[{"product_id":"cbc00000-0000-4000-8000-000000000003","quantity":30}]'::jsonb,
+  p_submission_key => gen_random_uuid());
 select public.update_order_status('33333333-3333-4333-8333-333333333333',
   (select id from public.orders where tenant_id='33333333-3333-4333-8333-333333333333' limit 1), 'confirmed');  -- reserves 30 → 70
 select is((select quantity_available from public.inventory_items where product_id='cbc00000-0000-4000-8000-000000000003'),

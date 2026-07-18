@@ -142,9 +142,10 @@ async function createOrder(
     { product_id: ctx.p1, quantity: q1 },
     { product_id: ctx.p2, quantity: q2 },
   ]);
+  // A fresh submission key per call — each is a distinct logical order (FIX1).
   const r = await admin.query(
-    "select order_id from public.create_order_request($1,$2::jsonb,null)",
-    [ctx.tenant, items],
+    "select order_id from public.create_order_request($1,$2::jsonb, p_submission_key => $3::uuid)",
+    [ctx.tenant, items, randomUUID()],
   );
   return r.rows[0].order_id as string;
 }

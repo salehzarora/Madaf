@@ -90,7 +90,7 @@ select lives_ok(
   $$ select public.create_order_request('44444444-4444-4444-8444-444444444444',
        '[{"product_id":"4d000000-0000-4000-8000-000000000001","quantity":3},
          {"product_id":"4d000000-0000-4000-8000-000000000002","quantity":5}]'::jsonb,
-       'da000000-0000-4000-8000-000000000001') $$,
+       'da000000-0000-4000-8000-000000000001', p_submission_key => gen_random_uuid()) $$,
   'owner creates a two-product order');
 
 -- ── 16–19. Confirm reserves BOTH products (ascending loop touches each) ────
