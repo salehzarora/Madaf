@@ -776,6 +776,11 @@ export interface Dictionary {
       colDate: string;
       open: string;
       legalBanner: string;
+      /** Bounded index (M8I.7): empty state + pagination chrome. */
+      empty: string;
+      prevPage: string;
+      nextPage: string;
+      pageLabel: string;
     };
     /** M6B: tenant tax settings (INERT — no legal invoice issuing exists). */
     settings: {

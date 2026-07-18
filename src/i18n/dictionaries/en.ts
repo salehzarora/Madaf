@@ -731,6 +731,10 @@ const en: Dictionary = {
       open: "Open",
       legalBanner:
         "Documents here are previews. Tax invoices remain drafts until tax settings and an invoicing provider are configured.",
+      empty: "No documents yet.",
+      prevPage: "Previous",
+      nextPage: "Next",
+      pageLabel: "Page {page} of {pages}",
     },
     settings: {
       title: "Tax settings",

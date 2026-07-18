@@ -728,6 +728,10 @@ const he: Dictionary = {
       open: "פתיחה",
       legalBanner:
         "המסמכים כאן הם תצוגה מקדימה. חשבוניות מס נשארות טיוטות עד להגדרת מסי וספק הפקת חשבוניות.",
+      empty: "אין עדיין מסמכים.",
+      prevPage: "הקודם",
+      nextPage: "הבא",
+      pageLabel: "עמוד {page} מתוך {pages}",
     },
     settings: {
       title: "הגדרות מס",

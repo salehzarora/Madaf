@@ -60,6 +60,7 @@ import { resolveTenantTimeZone } from "@/lib/time";
 import type { Db } from "./supabase-context";
 import type { CustomerRowStat } from "./customers";
 import type { DashboardMetrics } from "./dashboard";
+import type { DocumentListRow, DocumentsListResult } from "./orders";
 import {
   getDataContext,
   getSessionContext,
@@ -2028,6 +2029,95 @@ export async function sbListDocuments(): Promise<OrderDocument[]> {
         b.date.localeCompare(a.date) ||
         (a.orderId === b.orderId ? byDocumentLifecycle(a, b) : 0),
     );
+}
+
+// ── Bounded Documents index page (M8I.7) ──────────────────────────────────
+// One page-bounded document read (created_at DESC, id DESC keyset via range +
+// exact count) enriched by TWO bounded lookups for ONLY the orders/customers
+// referenced on THIS page — never the previous "load ALL orders + ALL customers"
+// pattern that silently dropped rows at PostgREST's 1000-row cap. Tenant is
+// server-derived; owner/admin is enforced by the route + RLS.
+export async function sbListDocumentsPage(
+  page: number,
+  pageSize: number,
+): Promise<DocumentsListResult> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) {
+    return { rows: [], total: 0, page: 1, pageSize, totalPages: 0 };
+  }
+
+  const { count, error: cErr } = await client
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId);
+  if (cErr) fail("listDocumentsPage.count", cErr.message);
+  const total = count ?? 0;
+  const totalPages = totalPagesFor(total, pageSize);
+  const p = Math.min(Math.max(1, page), Math.max(1, totalPages));
+  const offset = (p - 1) * pageSize;
+
+  const { data: docs, error } = await client
+    .from("documents")
+    .select("id, document_type, document_number, created_at, order_id")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  if (error) fail("listDocumentsPage", error.message);
+  const rows0 = (docs ?? []) as Array<{
+    id: string;
+    document_type: Row<"documents">["document_type"];
+    document_number: string;
+    created_at: string;
+    order_id: string;
+  }>;
+
+  // Page-scoped enrichment: only the orders (and their customers) on THIS page.
+  const orderIds = [...new Set(rows0.map((d) => d.order_id))];
+  const orderMap = new Map<string, { number: string; customerId: string | null }>();
+  const customerName = new Map<string, string>();
+  if (orderIds.length > 0) {
+    const { data: ords, error: oErr } = await client
+      .from("orders")
+      .select("id, order_number, customer_id")
+      .eq("tenant_id", tenantId)
+      .in("id", orderIds);
+    if (oErr) fail("listDocumentsPage.orders", oErr.message);
+    for (const o of ords ?? []) {
+      orderMap.set(o.id, { number: o.order_number, customerId: o.customer_id });
+    }
+    const custIds = [
+      ...new Set(
+        (ords ?? [])
+          .map((o) => o.customer_id)
+          .filter((c): c is string => typeof c === "string"),
+      ),
+    ];
+    if (custIds.length > 0) {
+      const { data: custs, error: kErr } = await client
+        .from("customers")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .in("id", custIds);
+      if (kErr) fail("listDocumentsPage.customers", kErr.message);
+      for (const c of custs ?? []) customerName.set(c.id, c.name);
+    }
+  }
+
+  const rows: DocumentListRow[] = rows0.map((d) => {
+    const ord = orderMap.get(d.order_id);
+    return {
+      id: d.id,
+      type: DOCUMENT_TYPE_FROM_DB[d.document_type],
+      number: d.document_number,
+      date: d.created_at,
+      orderNumber: ord?.number ?? null,
+      customerName: ord?.customerId
+        ? customerName.get(ord.customerId) ?? null
+        : null,
+    };
+  });
+  return { rows, total, page: p, pageSize, totalPages };
 }
 
 export async function sbGetDocument(

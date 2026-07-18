@@ -14,6 +14,7 @@
  * created by these writes — document generation is M5.
  */
 import {
+  customerById,
   customers as mockCustomers,
   documentById,
   documents,
@@ -233,6 +234,72 @@ export async function listDocuments(): Promise<OrderDocument[]> {
     return (await import("./supabase-reads")).sbListDocuments();
   }
   return documents;
+}
+
+/** Default/max Documents index page size (M8I.7 — bounded, no unbounded read). */
+export const DOCUMENTS_PAGE_SIZE = 25;
+export const DOCUMENTS_PAGE_SIZE_MAX = 100;
+
+/** One page-bounded Documents row: the document + its order number + the order's
+ * customer name, resolved page-scoped (never a full orders/customers load). */
+export interface DocumentListRow {
+  id: string;
+  type: OrderDocument["type"];
+  number: string;
+  date: string;
+  orderNumber: string | null;
+  customerName: string | null;
+}
+
+export interface DocumentsListResult {
+  rows: DocumentListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * A bounded, newest-first Documents page (M8I.7). Replaces the previous
+ * "load ALL documents + ALL orders + ALL customers" index read — which silently
+ * dropped rows at the PostgREST 1000-row cap — with a single page-bounded document
+ * read enriched by TWO bounded lookups for ONLY the referenced orders/customers.
+ * Tenant is server-derived; owner/admin is enforced by the route + RLS.
+ */
+export async function listDocumentsPage(
+  page: number,
+  pageSize: number = DOCUMENTS_PAGE_SIZE,
+): Promise<DocumentsListResult> {
+  const size = Math.min(Math.max(1, pageSize), DOCUMENTS_PAGE_SIZE_MAX);
+  if (getDataMode() === "supabase") {
+    return (await import("./supabase-reads")).sbListDocumentsPage(page, size);
+  }
+  return mockDocumentsPage(page, size);
+}
+
+/** Mock model of the exact Supabase contract (bounded, deterministic order,
+ * page-scoped enrichment). */
+function mockDocumentsPage(page: number, size: number): DocumentsListResult {
+  const sorted = [...documents].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
+  );
+  const total = sorted.length;
+  const totalPages = totalPagesFor(total, size);
+  const p = Math.min(Math.max(1, page), totalPages);
+  const offset = (p - 1) * size;
+  const rows: DocumentListRow[] = sorted.slice(offset, offset + size).map((doc) => {
+    const order = orderById.get(doc.orderId);
+    const customer = order ? customerById.get(order.customerId) : undefined;
+    return {
+      id: doc.id,
+      type: doc.type,
+      number: doc.number,
+      date: doc.date,
+      orderNumber: order?.number ?? null,
+      customerName: customer?.name ?? null,
+    };
+  });
+  return { rows, total, page: p, pageSize: size, totalPages };
 }
 
 export async function getDocument(
