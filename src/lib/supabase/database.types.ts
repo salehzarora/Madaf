@@ -1768,6 +1768,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      _log_sales_rep_assignment_audit_event: {
+        Args: {
+          p_entity_id: string
+          p_event_type: string
+          p_metadata: Json
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       _log_settings_audit_event: {
         Args: {
           p_entity_id: string
@@ -1798,6 +1807,15 @@ export type Database = {
           order_id: string
           order_number: string
         }[]
+      }
+      _purge_rep_assignments: {
+        Args: {
+          p_rep_email: string
+          p_source: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: undefined
       }
       _record_token_failure: {
         Args: { p_fingerprint: string; p_purpose: string }
