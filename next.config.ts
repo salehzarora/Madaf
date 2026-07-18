@@ -1,10 +1,19 @@
 import type { NextConfig } from "next";
+// HTTP security headers + CSP (M8I.7) live in a pure, env-parameterized module so
+// they can be unit-tested (dev vs production, with/without a Supabase origin)
+// independently of build-time NODE_ENV. See src/lib/config/security-headers.ts.
+import { securityHeaders } from "./src/lib/config/security-headers";
 
 const nextConfig: NextConfig = {
   // Pin the workspace root — a stray lockfile exists in the user home dir
   // and would otherwise be inferred as the workspace root.
   turbopack: {
     root: __dirname,
+  },
+  // HTTP security headers on every route (HSTS is left to Vercel's platform
+  // management on *.vercel.app / custom domains — not duplicated here).
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders() }];
   },
   // M5A PDF generation (src/lib/pdf): keep pdfkit/fontkit as external Node
   // packages so their fs-based font/AFM reads keep working (bundling breaks
