@@ -24,6 +24,11 @@ import {
 } from "@/lib/catalog-filter";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { submitShopOrderAction } from "@/lib/actions/shop";
+import {
+  clearTokenSubmissionKey,
+  getOrCreateTokenSubmissionKey,
+  rotateTokenSubmissionKey,
+} from "@/lib/client/order-submission-key";
 import type { TokenCatalog } from "@/lib/data/token";
 import type { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -60,10 +65,11 @@ export function ShopView({
   // Customer-facing PUBLIC ref (MDF-XXXXXXXX), never the internal number.
   const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
-  // FIX1: one DB-backed idempotency key per logical order, stable across renders
-  // and retries; rotated on success or an explicit new attempt.
-  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
   const [conflict, setConflict] = useState(false);
+  // FIX2: could not safely prepare a persistent submission key (browser storage
+  // unavailable) — fail closed, do NOT submit (a volatile key would risk a
+  // duplicate order after refresh).
+  const [prepFailed, setPrepFailed] = useState(false);
   const [filters, setFilters] = useState(emptyCatalogFilters);
 
   const categoryById = useMemo(
@@ -101,36 +107,52 @@ export function ShopView({
   function onSubmit() {
     setError(false);
     setConflict(false);
+    setPrepFailed(false);
     const items = [...cart.entries()].map(([productId, quantity]) => ({
       productId,
       quantity,
     }));
     if (items.length === 0) return;
     startTransition(async () => {
-      const result = await submitShopOrderAction({
-        token,
-        items,
-        notes: notes.trim() || undefined,
-        submissionKey,
-      });
-      if (result.ok && result.publicRef) {
-        setPublicRef(result.publicRef);
-        setCart(new Map());
-        setNotes("");
-        setSubmissionKey(crypto.randomUUID()); // next order is a new logical one
-      } else if (result.reason === "conflict") {
-        setConflict(true); // key reused with a changed order; keep the cart
-      } else {
+      // FIX2: one submission key per logical order, PERSISTED in sessionStorage
+      // (scoped to this token) so a refresh/remount retry reuses it. Fail closed
+      // if storage is unavailable — do NOT submit with a volatile key.
+      const keyResult = await getOrCreateTokenSubmissionKey("shop_token", token);
+      if (!keyResult.ok) {
+        setPrepFailed(true);
+        return;
+      }
+      try {
+        const result = await submitShopOrderAction({
+          token,
+          items,
+          notes: notes.trim() || undefined,
+          submissionKey: keyResult.key,
+        });
+        if (result.ok && result.publicRef) {
+          setPublicRef(result.publicRef);
+          setCart(new Map());
+          setNotes("");
+          await clearTokenSubmissionKey("shop_token", token); // next order = new key
+        } else if (result.reason === "conflict") {
+          setConflict(true); // key reused with a changed order; keep the cart + key
+        } else {
+          setError(true); // keep the key — a retry reuses it
+        }
+      } catch {
+        // Ambiguous transport/server-action failure: KEEP the persisted key so the
+        // retry is the same logical order (the DB returns the original if it committed).
         setError(true);
       }
     });
   }
 
-  // Explicit new attempt after a conflict: rotate the key, keep the cart.
+  // Explicit new attempt after a conflict: rotate the persisted key, keep the cart.
   function startNewAttempt() {
-    setSubmissionKey(crypto.randomUUID());
+    void rotateTokenSubmissionKey("shop_token", token);
     setConflict(false);
     setError(false);
+    setPrepFailed(false);
   }
 
   const tenantName = catalog.tenantName[locale] || catalog.tenantName.he;
@@ -335,6 +357,16 @@ export function ShopView({
                 className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
               >
                 {t.error}
+              </p>
+            </div>
+          ) : null}
+          {prepFailed ? (
+            <div className="mx-auto max-w-5xl px-4 pt-2 sm:px-6">
+              <p
+                role="alert"
+                className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+              >
+                {t.prepError}
               </p>
             </div>
           ) : null}

@@ -25,6 +25,11 @@ import {
 } from "@/lib/catalog-filter";
 import type { ShowcaseCatalog } from "@/lib/data/catalog-showcase";
 import { submitShowcaseOrderAction } from "@/lib/actions/catalog-showcase";
+import {
+  clearTokenSubmissionKey,
+  getOrCreateTokenSubmissionKey,
+  rotateTokenSubmissionKey,
+} from "@/lib/client/order-submission-key";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -63,10 +68,10 @@ export function ShowcaseView({
   const [pending, startTransition] = useTransition();
   const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
-  // FIX1: one DB-backed idempotency key per logical order — stable across renders,
-  // the browse↔checkout step change, and retries; rotated on success / new attempt.
-  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
   const [conflict, setConflict] = useState(false);
+  // FIX2: browser storage unavailable → could not prepare a persistent submission
+  // key; fail closed rather than submit with a volatile key.
+  const [prepFailed, setPrepFailed] = useState(false);
 
   const categoryById = useMemo(
     () => new Map(catalog.categories.map((c) => [c.id, c])),
@@ -111,6 +116,7 @@ export function ShowcaseView({
     event.preventDefault();
     setError(false);
     setConflict(false);
+    setPrepFailed(false);
     const items = [...cart.entries()].map(([productId, quantity]) => ({
       productId,
       quantity,
@@ -120,39 +126,55 @@ export function ShowcaseView({
     const city = ((fd.get("city") as string) || "").trim() || undefined;
     const cityKey =
       locale === "ar" ? "cityAr" : locale === "en" ? "cityEn" : "cityHe";
+    const store = {
+      name: fd.get("name"),
+      contactName: fd.get("contactName") || undefined,
+      phone: fd.get("phone") || undefined,
+      email: fd.get("email") || undefined,
+      [cityKey]: city,
+      address: fd.get("address") || undefined,
+    };
     startTransition(async () => {
-      const result = await submitShowcaseOrderAction({
-        token,
-        items,
-        store: {
-          name: fd.get("name"),
-          contactName: fd.get("contactName") || undefined,
-          phone: fd.get("phone") || undefined,
-          email: fd.get("email") || undefined,
-          [cityKey]: city,
-          address: fd.get("address") || undefined,
-        },
-        notes: notes.trim() || undefined,
-        submissionKey,
-      });
-      if (result.ok && result.publicRef) {
-        setPublicRef(result.publicRef);
-        setCart(new Map());
-        setNotes("");
-        setSubmissionKey(crypto.randomUUID()); // next order is a new logical one
-      } else if (result.reason === "conflict") {
-        setConflict(true); // key reused with a changed order; keep the cart + form
-      } else {
+      // FIX2: one submission key per logical order, PERSISTED in sessionStorage
+      // (scoped to this showcase token) so a refresh/remount retry reuses it.
+      // Fail closed if storage is unavailable.
+      const keyResult = await getOrCreateTokenSubmissionKey("showcase", token);
+      if (!keyResult.ok) {
+        setPrepFailed(true);
+        return;
+      }
+      try {
+        const result = await submitShowcaseOrderAction({
+          token,
+          items,
+          store,
+          notes: notes.trim() || undefined,
+          submissionKey: keyResult.key,
+        });
+        if (result.ok && result.publicRef) {
+          setPublicRef(result.publicRef);
+          setCart(new Map());
+          setNotes("");
+          await clearTokenSubmissionKey("showcase", token); // next order = new key
+        } else if (result.reason === "conflict") {
+          setConflict(true); // key reused with a changed order; keep the cart + form
+        } else {
+          setError(true); // keep the key — a retry reuses it
+        }
+      } catch {
+        // Ambiguous transport/server-action failure: KEEP the persisted key so the
+        // retry is the same logical order.
         setError(true);
       }
     });
   }
 
-  // Explicit new attempt after a conflict: rotate the key, keep the cart + form.
+  // Explicit new attempt after a conflict: rotate the persisted key, keep the form.
   function startNewAttempt() {
-    setSubmissionKey(crypto.randomUUID());
+    void rotateTokenSubmissionKey("showcase", token);
     setConflict(false);
     setError(false);
+    setPrepFailed(false);
   }
 
   // ── Success ──────────────────────────────────────────────────────────────
@@ -310,6 +332,14 @@ export function ShowcaseView({
                 className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
               >
                 {t.error}
+              </p>
+            ) : null}
+            {prepFailed ? (
+              <p
+                role="alert"
+                className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+              >
+                {t.prepError}
               </p>
             ) : null}
             {conflict ? (

@@ -1021,6 +1021,8 @@ const en: Dictionary = {
       conflictError:
         "This order looks different from your last attempt. Your cart is kept — start a new attempt to send it.",
       conflictRetry: "Start a new attempt",
+      prepError:
+        "Your order couldn't be prepared safely — nothing was sent. Enable browser storage (turn off private mode) and try again; your cart is kept.",
       invalidTitle: "Link no longer valid",
       invalidBody: "This order link has expired or been revoked. Ask the supplier for a new one.",
       vatNote: "Prices exclude VAT. Final VAT and totals appear on the supplier's document.",
@@ -1046,6 +1048,8 @@ const en: Dictionary = {
       conflictError:
         "This request looks different from your last attempt. Your order is kept — start a new attempt to send it.",
       conflictRetry: "Start a new attempt",
+      prepError:
+        "Your request couldn't be prepared safely — nothing was sent. Enable browser storage (turn off private mode) and try again; your order is kept.",
       successTitle: "Order request sent",
       successBody:
         "The supplier received your request and will get in touch to confirm.",

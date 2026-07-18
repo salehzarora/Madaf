@@ -1082,6 +1082,9 @@ export interface Dictionary {
       /** Idempotency conflict (FIX1): the key was reused with a changed order. */
       conflictError: string;
       conflictRetry: string;
+      /** FIX2: browser storage unavailable — the order could not be safely
+       * prepared (no submission was sent). */
+      prepError: string;
       invalidTitle: string;
       invalidBody: string;
       vatNote: string;
@@ -1105,6 +1108,8 @@ export interface Dictionary {
       /** Idempotency conflict (FIX1): the key was reused with a changed order. */
       conflictError: string;
       conflictRetry: string;
+      /** FIX2: browser storage unavailable — the order could not be safely prepared. */
+      prepError: string;
       successTitle: string;
       successBody: string;
       orderNumberLabel: string;
