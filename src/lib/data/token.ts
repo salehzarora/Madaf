@@ -497,6 +497,7 @@ export async function getTokenCatalog(
 export async function submitTokenOrder(
   rawToken: string,
   items: { productId: string; quantity: number }[],
+  submissionKey: string,
   notes?: string,
 ): Promise<string | null> {
   const client = await createServerAuthClient();
@@ -506,8 +507,15 @@ export async function submitTokenOrder(
       p_token: rawToken,
       p_items: items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
       ...(notes ? { p_notes: notes } : {}),
+      p_submission_key: submissionKey,
     })
     .single();
+  // FIX1: a reused key with a changed payload conflicts (MDF40) — surface it as a
+  // recognizable error so the shop UI can offer a new attempt (a null-return here
+  // would be indistinguishable from an ordinary failure).
+  if (error?.code === "MDF40") {
+    throw new Error("[madaf/data] order submission key reused with a different request");
+  }
   if (error || !data) return null;
   return data.order_number;
 }

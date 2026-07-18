@@ -201,6 +201,9 @@ const en: Dictionary = {
       "This sends an order request to the supplier. It is not an invoice and no payment happens here.",
     itemsCount: "{count} lines",
     sendError: "Sending the order failed — please try again.",
+    conflictError:
+      "This order looks different from your last attempt. Your cart is kept — start a new attempt to send it.",
+    conflictRetry: "Start a new attempt",
   },
   orderSuccess: {
     title: "Order request sent!",
@@ -1015,6 +1018,9 @@ const en: Dictionary = {
       inactiveTitle: "This store is currently deactivated",
       inactiveBody: "Ordering from this link is paused. Please contact your supplier.",
       error: "Sending the order failed — please try again.",
+      conflictError:
+        "This order looks different from your last attempt. Your cart is kept — start a new attempt to send it.",
+      conflictRetry: "Start a new attempt",
       invalidTitle: "Link no longer valid",
       invalidBody: "This order link has expired or been revoked. Ask the supplier for a new one.",
       vatNote: "Prices exclude VAT. Final VAT and totals appear on the supplier's document.",
@@ -1037,6 +1043,9 @@ const en: Dictionary = {
       disclaimer:
         "This is an order request, not a confirmed order. The supplier reviews every request before it's fulfilled.",
       error: "Couldn't send the request — check the details and try again.",
+      conflictError:
+        "This request looks different from your last attempt. Your order is kept — start a new attempt to send it.",
+      conflictRetry: "Start a new attempt",
       successTitle: "Order request sent",
       successBody:
         "The supplier received your request and will get in touch to confirm.",

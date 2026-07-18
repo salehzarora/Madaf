@@ -42,6 +42,8 @@ export async function sbCreateOrderRequest(input: {
   items: { productId: string; quantity: number }[];
   notes?: string;
   source: OrderSource;
+  /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
+  submissionKey: string;
 }): Promise<{ orderId: string; orderNumber: string; publicRef: string }> {
   const { client, tenantId } = await getDataContext();
   const { data, error } = await client
@@ -54,6 +56,7 @@ export async function sbCreateOrderRequest(input: {
       ...(input.customerId ? { p_customer_id: input.customerId } : {}),
       ...(input.notes ? { p_notes: input.notes } : {}),
       p_source: input.source,
+      p_submission_key: input.submissionKey,
     })
     .single();
   if (error) fail("createOrderRequest", error.message);

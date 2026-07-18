@@ -2032,11 +2032,15 @@ export async function sbListDocuments(): Promise<OrderDocument[]> {
 }
 
 // ── Bounded Documents index page (M8I.7) ──────────────────────────────────
-// One page-bounded document read (created_at DESC, id DESC keyset via range +
-// exact count) enriched by TWO bounded lookups for ONLY the orders/customers
-// referenced on THIS page — never the previous "load ALL orders + ALL customers"
-// pattern that silently dropped rows at PostgREST's 1000-row cap. Tenant is
-// server-derived; owner/admin is enforced by the route + RLS.
+// One page-bounded document read — BOUNDED OFFSET pagination (a stable
+// created_at DESC, id DESC ordering + an exact head-count + a `range()` window),
+// NOT keyset — enriched by TWO bounded lookups for ONLY the orders/customers
+// referenced on THIS page. This replaced the previous "load ALL orders + ALL
+// customers" pattern that silently dropped rows at PostgREST's 1000-row cap; the
+// bound is what removes the truncation. Because it is offset-based, a concurrent
+// insert/delete can shift a row by one between adjacent pages (a refresh restores
+// the current view) — an accepted trade-off; keyset is a separate future change.
+// Tenant is server-derived; owner/admin is enforced by the route + RLS.
 export async function sbListDocumentsPage(
   page: number,
   pageSize: number,

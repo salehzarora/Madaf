@@ -270,6 +270,7 @@ export async function submitShowcaseGuestOrder(
   rawToken: string,
   items: { productId: string; quantity: number }[],
   store: GuestStoreInput,
+  submissionKey: string,
   notes?: string,
 ): Promise<string | null> {
   const client = await createServerAuthClient();
@@ -286,8 +287,14 @@ export async function submitShowcaseGuestOrder(
       ...(store.cityEn ? { p_city_en: store.cityEn } : {}),
       ...(store.address ? { p_address: store.address } : {}),
       ...(notes ? { p_notes: notes } : {}),
+      p_submission_key: submissionKey,
     })
     .single();
+  // FIX1: a reused key with a changed payload conflicts (MDF40) — surface it so the
+  // showcase UI can offer a new attempt (distinct from an ordinary null failure).
+  if (error?.code === "MDF40") {
+    throw new Error("[madaf/data] order submission key reused with a different request");
+  }
   if (error || !data) return null;
   return data.order_number;
 }

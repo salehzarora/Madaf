@@ -188,6 +188,11 @@ export interface Dictionary {
     itemsCount: string;
     /** Shown when a real (Supabase-mode) order submission fails. */
     sendError: string;
+    /** Shown when the submission key was reused with a changed order (idempotency
+     * conflict) — the cart is kept and the user starts a fresh attempt. */
+    conflictError: string;
+    /** Button that starts a fresh submission attempt after a conflict. */
+    conflictRetry: string;
   };
   orderSuccess: {
     title: string;
@@ -1074,6 +1079,9 @@ export interface Dictionary {
       inactiveTitle: string;
       inactiveBody: string;
       error: string;
+      /** Idempotency conflict (FIX1): the key was reused with a changed order. */
+      conflictError: string;
+      conflictRetry: string;
       invalidTitle: string;
       invalidBody: string;
       vatNote: string;
@@ -1094,6 +1102,9 @@ export interface Dictionary {
       vatNote: string;
       disclaimer: string;
       error: string;
+      /** Idempotency conflict (FIX1): the key was reused with a changed order. */
+      conflictError: string;
+      conflictRetry: string;
       successTitle: string;
       successBody: string;
       orderNumberLabel: string;

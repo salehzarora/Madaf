@@ -6,6 +6,10 @@
  * is the credential; the DB derives tenant+customer from the token and
  * computes all money server-side (source = remote_customer).
  */
+import {
+  isSubmissionConflict,
+  isSubmissionKey,
+} from "@/lib/actions/order-submission";
 import { submitTokenOrder } from "@/lib/data/token";
 
 const MAX_LINES = 200;
@@ -26,12 +30,16 @@ export interface ShopOrderResult {
   /** Customer-facing public order ref (MDF-XXXXXXXX) — never the internal
    * sequential number (the token RPC returns public_ref). */
   publicRef?: string;
+  /** "conflict" when the submission key was reused with a changed cart (MDF40). */
+  reason?: "conflict";
 }
 
 export async function submitShopOrderAction(input: {
   token: string;
   items: { productId: string; quantity: number }[];
   notes?: string;
+  /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
+  submissionKey: string;
 }): Promise<ShopOrderResult> {
   try {
     if (typeof input.token !== "string" || input.token.length < 16) {
@@ -49,6 +57,7 @@ export async function submitShopOrderAction(input: {
         return { ok: false };
       }
     }
+    if (!isSubmissionKey(input.submissionKey)) return { ok: false };
     const notes =
       typeof input.notes === "string" && input.notes.trim()
         ? input.notes.slice(0, MAX_NOTES)
@@ -57,11 +66,13 @@ export async function submitShopOrderAction(input: {
     const publicRef = await submitTokenOrder(
       input.token,
       items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      input.submissionKey,
       notes,
     );
     if (!publicRef) return { ok: false };
     return { ok: true, publicRef };
   } catch (error) {
+    if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitShopOrderAction failed:", error);
     return { ok: false };
   }

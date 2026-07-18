@@ -9,6 +9,10 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  isSubmissionConflict,
+  isSubmissionKey,
+} from "@/lib/actions/order-submission";
+import {
   insertShowcaseLink,
   revokeShowcaseLink,
   submitShowcaseGuestOrder,
@@ -105,6 +109,8 @@ export interface GuestOrderResult {
   ok: boolean;
   /** Customer-facing public ref (MDF-XXXXXXXX). */
   publicRef?: string;
+  /** "conflict" when the submission key was reused with a changed order (MDF40). */
+  reason?: "conflict";
 }
 
 /** Anon guest order from a showcase link (M7I.1). Tenant + store snapshot are
@@ -114,6 +120,8 @@ export async function submitShowcaseOrderAction(input: {
   items: { productId: string; quantity: number }[];
   store: Record<string, unknown>;
   notes?: string;
+  /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
+  submissionKey: string;
 }): Promise<GuestOrderResult> {
   try {
     if (typeof input.token !== "string" || input.token.length < 16) {
@@ -131,6 +139,7 @@ export async function submitShowcaseOrderAction(input: {
         return { ok: false };
       }
     }
+    if (!isSubmissionKey(input.submissionKey)) return { ok: false };
     const raw = input.store ?? {};
     const name = str(raw.name, MAX_NAME);
     if (!name) return { ok: false };
@@ -147,11 +156,13 @@ export async function submitShowcaseOrderAction(input: {
         cityEn: str(raw.cityEn, MAX_CITY),
         address: str(raw.address, MAX_ADDRESS),
       },
+      input.submissionKey,
       str(input.notes, MAX_NOTES),
     );
     if (!publicRef) return { ok: false };
     return { ok: true, publicRef };
   } catch (error) {
+    if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitShowcaseOrderAction failed:", error);
     return { ok: false };
   }

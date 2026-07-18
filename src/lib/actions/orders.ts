@@ -18,6 +18,10 @@
  */
 import { revalidatePath } from "next/cache";
 
+import {
+  isSubmissionConflict,
+  isSubmissionKey,
+} from "@/lib/actions/order-submission";
 import { getSessionContext } from "@/lib/auth/session";
 import {
   createCustomerFromOrder,
@@ -64,6 +68,8 @@ export interface SubmitOrderResult {
   ok: boolean;
   /** Customer-facing public ref (MDF-XXXXXXXX) — shown on the success page. */
   publicRef?: string;
+  /** "conflict" when the submission key was reused with a changed cart (MDF40). */
+  reason?: "conflict";
 }
 
 export async function submitOrderAction(input: {
@@ -71,6 +77,8 @@ export async function submitOrderAction(input: {
   items: { productId: string; quantity: number }[];
   notes?: string;
   locale: string;
+  /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
+  submissionKey: string;
 }): Promise<SubmitOrderResult> {
   try {
     const items = Array.isArray(input.items) ? input.items : [];
@@ -86,6 +94,7 @@ export async function submitOrderAction(input: {
         return { ok: false };
       }
     }
+    if (!isSubmissionKey(input.submissionKey)) return { ok: false };
     const customerId =
       typeof input.customerId === "string" && isPlausibleId(input.customerId)
         ? input.customerId
@@ -105,6 +114,7 @@ export async function submitOrderAction(input: {
       // The M3A checkout is the sales/shop flow; remote_customer/admin
       // sources arrive with tokenized links and admin tooling (M4+).
       source: "sales_visit",
+      submissionKey: input.submissionKey,
     });
 
     if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
@@ -115,6 +125,7 @@ export async function submitOrderAction(input: {
     // sequential number (M7G).
     return { ok: true, publicRef: result.publicRef };
   } catch (error) {
+    if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitOrderAction failed:", error);
     return { ok: false };
   }

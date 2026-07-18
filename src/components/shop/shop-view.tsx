@@ -60,6 +60,10 @@ export function ShopView({
   // Customer-facing PUBLIC ref (MDF-XXXXXXXX), never the internal number.
   const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  // FIX1: one DB-backed idempotency key per logical order, stable across renders
+  // and retries; rotated on success or an explicit new attempt.
+  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
+  const [conflict, setConflict] = useState(false);
   const [filters, setFilters] = useState(emptyCatalogFilters);
 
   const categoryById = useMemo(
@@ -96,6 +100,7 @@ export function ShopView({
 
   function onSubmit() {
     setError(false);
+    setConflict(false);
     const items = [...cart.entries()].map(([productId, quantity]) => ({
       productId,
       quantity,
@@ -106,15 +111,26 @@ export function ShopView({
         token,
         items,
         notes: notes.trim() || undefined,
+        submissionKey,
       });
       if (result.ok && result.publicRef) {
         setPublicRef(result.publicRef);
         setCart(new Map());
         setNotes("");
+        setSubmissionKey(crypto.randomUUID()); // next order is a new logical one
+      } else if (result.reason === "conflict") {
+        setConflict(true); // key reused with a changed order; keep the cart
       } else {
         setError(true);
       }
     });
+  }
+
+  // Explicit new attempt after a conflict: rotate the key, keep the cart.
+  function startNewAttempt() {
+    setSubmissionKey(crypto.randomUUID());
+    setConflict(false);
+    setError(false);
   }
 
   const tenantName = catalog.tenantName[locale] || catalog.tenantName.he;
@@ -322,6 +338,25 @@ export function ShopView({
               </p>
             </div>
           ) : null}
+          {conflict ? (
+            <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 pt-2 sm:px-6">
+              <p
+                role="alert"
+                className="rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-accent-deep"
+              >
+                {t.conflictError}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={startNewAttempt}
+                className="self-start"
+              >
+                {t.conflictRetry}
+              </Button>
+            </div>
+          ) : null}
           <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-xs text-ink-muted">
@@ -335,7 +370,7 @@ export function ShopView({
             <Button
               size="lg"
               onClick={onSubmit}
-              disabled={pending}
+              disabled={pending || conflict}
               className="ms-auto"
             >
               <ShoppingCart className="size-5" aria-hidden />

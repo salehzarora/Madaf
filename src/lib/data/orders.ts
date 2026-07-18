@@ -89,6 +89,9 @@ export interface CreateOrderInput {
   items: { productId: string; quantity: number }[];
   notes?: string;
   source: OrderSource;
+  /** DB-backed idempotency key (FIX1). A per-submission UUID reused across
+   * retries; PostgreSQL is the authoritative dedup gate. */
+  submissionKey: string;
 }
 
 export interface CreateOrderResult {

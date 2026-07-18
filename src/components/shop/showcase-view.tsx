@@ -63,6 +63,10 @@ export function ShowcaseView({
   const [pending, startTransition] = useTransition();
   const [publicRef, setPublicRef] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  // FIX1: one DB-backed idempotency key per logical order — stable across renders,
+  // the browse↔checkout step change, and retries; rotated on success / new attempt.
+  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
+  const [conflict, setConflict] = useState(false);
 
   const categoryById = useMemo(
     () => new Map(catalog.categories.map((c) => [c.id, c])),
@@ -106,6 +110,7 @@ export function ShowcaseView({
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(false);
+    setConflict(false);
     const items = [...cart.entries()].map(([productId, quantity]) => ({
       productId,
       quantity,
@@ -128,15 +133,26 @@ export function ShowcaseView({
           address: fd.get("address") || undefined,
         },
         notes: notes.trim() || undefined,
+        submissionKey,
       });
       if (result.ok && result.publicRef) {
         setPublicRef(result.publicRef);
         setCart(new Map());
         setNotes("");
+        setSubmissionKey(crypto.randomUUID()); // next order is a new logical one
+      } else if (result.reason === "conflict") {
+        setConflict(true); // key reused with a changed order; keep the cart + form
       } else {
         setError(true);
       }
     });
+  }
+
+  // Explicit new attempt after a conflict: rotate the key, keep the cart + form.
+  function startNewAttempt() {
+    setSubmissionKey(crypto.randomUUID());
+    setConflict(false);
+    setError(false);
   }
 
   // ── Success ──────────────────────────────────────────────────────────────
@@ -296,9 +312,31 @@ export function ShowcaseView({
                 {t.error}
               </p>
             ) : null}
+            {conflict ? (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-accent-deep"
+              >
+                <span>{t.conflictError}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={startNewAttempt}
+                  className="self-start"
+                >
+                  {t.conflictRetry}
+                </Button>
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-2 sm:flex-row-reverse">
-              <Button type="submit" size="lg" disabled={pending} className="sm:flex-1">
+              <Button
+                type="submit"
+                size="lg"
+                disabled={pending || conflict}
+                className="sm:flex-1"
+              >
                 <ShoppingCart className="size-5" aria-hidden />
                 {pending ? t.submitting : t.submit}
               </Button>

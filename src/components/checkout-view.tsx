@@ -34,12 +34,21 @@ export function CheckoutView({
   dict: Dictionary;
 }) {
   const router = useRouter();
-  const { items, subtotal, totalPackages, customerId, clear, hydrated } =
-    useCart();
+  const {
+    items,
+    subtotal,
+    totalPackages,
+    customerId,
+    clear,
+    hydrated,
+    ensureSubmissionKey,
+    resetSubmissionKey,
+  } = useCart();
   const { productById, customerById } = useShopData();
   const [delivery, setDelivery] = useState<"asap" | "scheduled">("asap");
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
+  const [conflict, setConflict] = useState(false);
 
   const customer = customerId ? customerById.get(customerId) : undefined;
 
@@ -54,6 +63,7 @@ export function CheckoutView({
     event.preventDefault();
     setSending(true);
     setSendFailed(false);
+    setConflict(false);
 
     if (getDataMode() === "mock") {
       const orderNumber = `MDF-${1048 + Math.floor(Math.random() * 40)}`;
@@ -67,6 +77,9 @@ export function CheckoutView({
 
     const notes = new FormData(event.currentTarget).get("notes");
     try {
+      // FIX1: one submission key for this logical order — reused across retries
+      // (incl. after an ambiguous failure), so a duplicate submit returns the
+      // SAME order rather than creating a second one.
       const result = await submitOrderAction({
         customerId,
         items: items.map((item) => ({
@@ -75,6 +88,7 @@ export function CheckoutView({
         })),
         notes: typeof notes === "string" && notes.trim() ? notes : undefined,
         locale,
+        submissionKey: ensureSubmissionKey(),
       });
       if (result.ok && result.publicRef) {
         clear();
@@ -83,12 +97,27 @@ export function CheckoutView({
         );
         return;
       }
+      if (result.reason === "conflict") {
+        // The key was reused with a changed order. Keep the cart; the user
+        // explicitly starts a fresh attempt (which rotates the key).
+        setSending(false);
+        setConflict(true);
+        return;
+      }
     } catch {
       // Transport-level failure (server unreachable) — same recovery as a
       // rejected order: keep the cart, re-enable the button, show the error.
     }
     setSending(false);
     setSendFailed(true);
+  }
+
+  // Explicit "start a new attempt" after an idempotency conflict: rotate the
+  // submission key so the next submit is a brand-new logical order.
+  function startNewAttempt() {
+    resetSubmissionKey();
+    setConflict(false);
+    setSendFailed(false);
   }
 
   return (
@@ -242,10 +271,27 @@ export function CheckoutView({
                   {dict.checkout.sendError}
                 </p>
               ) : null}
+              {conflict ? (
+                <div
+                  role="alert"
+                  className="flex flex-col gap-2 rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-accent-deep"
+                >
+                  <span>{dict.checkout.conflictError}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={startNewAttempt}
+                    className="self-start"
+                  >
+                    {dict.checkout.conflictRetry}
+                  </Button>
+                </div>
+              ) : null}
               <Button
                 type="submit"
                 size="lg"
-                disabled={sending || items.length === 0}
+                disabled={sending || conflict || items.length === 0}
                 className="mt-1 w-full"
               >
                 <SendHorizontal

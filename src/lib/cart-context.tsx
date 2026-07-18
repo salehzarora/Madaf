@@ -12,6 +12,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,9 @@ const STORAGE_KEY = "madaf.cart.v1";
 interface CartState {
   items: CartItem[];
   customerId: string | null;
+  /** FIX1: DB-backed order idempotency key for the CURRENT logical submission.
+   * Persisted with the cart so a mid-retry refresh reuses the same key. */
+  submissionKey: string | null;
 }
 
 interface CartContextValue extends CartState {
@@ -33,6 +37,12 @@ interface CartContextValue extends CartState {
   removeItem: (productId: string) => void;
   clear: () => void;
   setCustomer: (customerId: string | null) => void;
+  /** Return the current submission key, generating (and persisting) one lazily on
+   * the first submit. Retries of the same attempt reuse it. */
+  ensureSubmissionKey: () => string;
+  /** Drop the current key so the NEXT submit starts a fresh logical attempt —
+   * called after an idempotency conflict when the user deliberately re-submits. */
+  resetSubmissionKey: () => void;
   totalPackages: number;
   /** ILS, excl. VAT — computed from current mock prices. */
   subtotal: number;
@@ -48,8 +58,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CartState>({
     items: [],
     customerId: null,
+    submissionKey: null,
   });
   const [hydrated, setHydrated] = useState(false);
+  // Mirror of the current key so ensureSubmissionKey can read+generate it
+  // synchronously inside a submit handler (state updates are async).
+  const keyRef = useRef<string | null>(null);
+  useEffect(() => {
+    keyRef.current = state.submissionKey;
+  }, [state.submissionKey]);
 
   useEffect(() => {
     // One-time hydration from localStorage. Reading storage in a useState
@@ -69,6 +86,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
               ? prev.items
               : parsed.items.filter((i) => productById.has(i.productId)),
           customerId: prev.customerId ?? parsed.customerId ?? null,
+          submissionKey: prev.submissionKey ?? parsed.submissionKey ?? null,
         }));
       }
     } catch {
@@ -121,11 +139,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clear = useCallback(() => {
-    setState((prev) => ({ items: [], customerId: prev.customerId }));
+    // A successful submit clears the cart AND rotates the key, so the next
+    // (new) logical order deterministically gets a fresh submission key.
+    keyRef.current = null;
+    setState((prev) => ({ items: [], customerId: prev.customerId, submissionKey: null }));
   }, []);
 
   const setCustomer = useCallback((customerId: string | null) => {
     setState((prev) => ({ ...prev, customerId }));
+  }, []);
+
+  const ensureSubmissionKey = useCallback((): string => {
+    if (keyRef.current) return keyRef.current;
+    const fresh = crypto.randomUUID();
+    keyRef.current = fresh;
+    setState((prev) => ({ ...prev, submissionKey: prev.submissionKey ?? fresh }));
+    return fresh;
+  }, []);
+
+  const resetSubmissionKey = useCallback(() => {
+    keyRef.current = null;
+    setState((prev) => ({ ...prev, submissionKey: null }));
   }, []);
 
   const { totalPackages, subtotal } = useMemo(() => {
@@ -154,6 +188,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     removeItem,
     clear,
     setCustomer,
+    ensureSubmissionKey,
+    resetSubmissionKey,
     totalPackages,
     subtotal,
     quantityOf,
