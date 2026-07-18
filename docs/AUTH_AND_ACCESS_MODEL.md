@@ -473,7 +473,7 @@ Flow:
 | Create/replace link | `replace_customer_access_link` | authenticated (owner/admin) | M8E.2: ATOMIC — locks the customer row `FOR UPDATE`, re-checks active state (MDF33), revokes ALL active links + inserts the new hash-only link in ONE transaction. Stores hash + preview. A partial unique index (`one unrevoked link per (tenant_id, customer_id)`) is the DB-level backstop. The obsolete `insert_customer_access_link` / `revoke_customer_access_links_for_customer` have EXECUTE revoked from every role. |
 | Revoke link | `revoke_customer_access_link` | authenticated (owner/admin) | sets `revoked_at` (single link) |
 | Open shop | `get_token_catalog(raw token)` | anon | hashes + validates the token, touches `last_used_at`, returns the tenant-scoped catalog as jsonb |
-| Place order | `create_order_request_from_token(raw token, items, notes)` | anon | derives tenant+customer from the token, prices everything server-side, `source='remote_customer'` |
+| Place order | `create_order_request_from_token(raw token, items, notes, submission key)` | anon | derives tenant+customer from the token, prices everything server-side, `source='remote_customer'`; the required `submission key` (UUID) makes an exact retry idempotent (PILOT-OPS-AUDIT-008-FIX1) |
 
 Token validation raises distinct codes — not found (`P0002`), revoked
 (`P0003`), expired (`P0004`) — which the app collapses into one neutral
