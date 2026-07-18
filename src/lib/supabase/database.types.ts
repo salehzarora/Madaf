@@ -1085,6 +1085,48 @@ export type Database = {
           },
         ]
       }
+      order_submission_claims: {
+        Row: {
+          channel: string
+          created_at: string
+          order_id: string | null
+          request_fingerprint: string
+          submission_key: string
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          order_id?: string | null
+          request_fingerprint: string
+          submission_key: string
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          order_id?: string | null
+          request_fingerprint?: string
+          submission_key?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_submission_claims_order_fk"
+            columns: ["tenant_id", "order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "order_submission_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string
@@ -1729,6 +1771,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _claim_order_submission: {
+        Args: {
+          p_channel: string
+          p_fingerprint: string
+          p_submission_key: string
+          p_tenant: string
+        }
+        Returns: {
+          existing_order_id: string
+          is_new: boolean
+        }[]
+      }
       _gen_order_public_ref: { Args: never; Returns: string }
       _is_valid_timezone: { Args: { p_timezone: string }; Returns: boolean }
       _legal_numbering_enabled: { Args: never; Returns: boolean }
@@ -1804,6 +1858,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      _normalize_order_lines: { Args: { p_items: Json }; Returns: Json }
       _order_create_core: {
         Args: {
           p_customer_id: string
@@ -1816,6 +1871,10 @@ export type Database = {
           order_id: string
           order_number: string
         }[]
+      }
+      _order_submission_fingerprint: {
+        Args: { p_context: Json }
+        Returns: string
       }
       _purge_rep_assignments: {
         Args: {
@@ -1968,6 +2027,7 @@ export type Database = {
           p_notes?: string
           p_phone?: string
           p_store_name: string
+          p_submission_key?: string
           p_token: string
         }
         Returns: {
@@ -1980,6 +2040,7 @@ export type Database = {
           p_items: Json
           p_notes?: string
           p_source?: Database["public"]["Enums"]["order_source"]
+          p_submission_key?: string
           p_tenant_id: string
         }
         Returns: {
@@ -1988,7 +2049,12 @@ export type Database = {
         }[]
       }
       create_order_request_from_token: {
-        Args: { p_items: Json; p_notes?: string; p_token: string }
+        Args: {
+          p_items: Json
+          p_notes?: string
+          p_submission_key?: string
+          p_token: string
+        }
         Returns: {
           order_number: string
         }[]
