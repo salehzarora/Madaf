@@ -3,11 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShowcaseLinkManager } from "@/components/admin/showcase-link-manager";
 import { SignupManager } from "@/components/admin/signup-manager";
+import { SignupTimeline } from "@/components/admin/signup-timeline";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { loadSignupTimelineAction } from "@/lib/actions/signup-timeline";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode, getTenantTimeZone } from "@/lib/data";
+import {
+  getDataMode,
+  getSignupTimelinePage,
+  getTenantTimeZone,
+  safeInitialSignupTimeline,
+} from "@/lib/data";
 import { listShowcaseLinks } from "@/lib/data/catalog-showcase";
 import {
   listSignupLinks,
@@ -46,11 +54,18 @@ export default async function CustomerSignupPage({
   const parsedPage = Number.parseInt((pageParam ?? "").trim(), 10);
   const requestsPageNo =
     Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
-  const [links, requestsPage, showcaseLinks] = await Promise.all([
-    listSignupLinks(),
-    listSignupRequestsPage(requestsPageNo),
-    listShowcaseLinks(),
-  ]);
+  // The Signup Activity read is OPTIONAL + isolated (owner/admin RLS): if it
+  // fails, signup management must still render. Started concurrently.
+  const signupTimelinePromise = safeInitialSignupTimeline(() =>
+    getSignupTimelinePage(),
+  );
+  const [links, requestsPage, showcaseLinks, signupTimeline] =
+    await Promise.all([
+      listSignupLinks(),
+      listSignupRequestsPage(requestsPageNo),
+      listShowcaseLinks(),
+      signupTimelinePromise,
+    ]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
@@ -77,6 +92,20 @@ export default async function CustomerSignupPage({
         requestsTotalPages={requestsPage.totalPages}
         timeZone={timeZone}
       />
+      <Card className="overflow-hidden">
+        <CardHeader variant="strip">
+          <CardTitle>{dict.audit.signup.timelineHeading}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SignupTimeline
+            locale={locale}
+            dict={dict}
+            initial={signupTimeline}
+            timeZone={timeZone}
+            loadMore={loadSignupTimelineAction}
+          />
+        </CardContent>
+      </Card>
       <ShelfRule />
       <ShowcaseLinkManager
         locale={locale}

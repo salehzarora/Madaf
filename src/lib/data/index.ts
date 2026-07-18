@@ -117,6 +117,11 @@ export {
   type AssignmentTimelineQuery,
 } from "./assignment-timeline";
 export {
+  getSignupTimelinePage,
+  safeInitialSignupTimeline,
+  type SignupTimelineQuery,
+} from "./signup-timeline";
+export {
   computeDashboardMetrics,
   getDashboardMetrics,
   type DashboardMetrics,

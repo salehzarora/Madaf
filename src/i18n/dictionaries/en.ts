@@ -1340,6 +1340,16 @@ const en: Dictionary = {
         member_joined: "Previous assignment removed when member joined",
       },
     },
+    signup: {
+      category: "Store signups",
+      timelineHeading: "Store signup activity",
+      business: "Store",
+      resultingCustomer: "Resulting customer",
+      events: {
+        "customer_signup_request.approved": "Store signup request approved",
+        "customer_signup_request.rejected": "Store signup request rejected",
+      },
+    },
   },
 };
 

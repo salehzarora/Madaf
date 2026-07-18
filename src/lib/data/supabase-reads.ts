@@ -98,6 +98,10 @@ import {
   buildSalesRepAssignmentTimelineEvent,
   type SalesRepAssignmentTimelinePage,
 } from "@/lib/sales-rep-assignment-timeline";
+import {
+  buildSignupRequestTimelineEvent,
+  type SignupRequestTimelinePage,
+} from "@/lib/signup-request-timeline";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -1265,6 +1269,73 @@ export async function sbGetAssignmentTimelinePage(input: {
 
   const events = page.map((r) =>
     buildSalesRepAssignmentTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
+}
+
+// ── Customer Signup Activity Timeline (M8I.6) ─────────────────────────────
+// A TENANT-WIDE bounded, cursor-paginated audit read with entity_type fixed to
+// 'customer_signup_request' (no entity_id filter — the stream spans every reviewed
+// request; each row's entity_id is that request id). RLS is the authorization
+// boundary: the M8I.6 SELECT clause requires has_tenant_role(owner/admin) for
+// customer_signup_request rows, so a sales_rep / non-member / other tenant reads
+// NO signup activity. Served by the M8I.6 (tenant_id, created_at desc, id desc)
+// WHERE entity_type='customer_signup_request' partial index. Actors resolved in
+// ONE bounded RPC; the business name is carried inline (client-safe snapshot).
+export async function sbGetSignupTimelinePage(input: {
+  cursor: string | null;
+  pageSize: number;
+}): Promise<SignupRequestTimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "customer_signup_request");
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getSignupTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // Signup audit rows are owner/admin-only by RLS, so the viewer is always
+  // owner/admin here; resolve names via the one bounded lookup (no N+1).
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
+
+  const events = page.map((r) =>
+    buildSignupRequestTimelineEvent({
       id: String(r.id),
       eventType: r.event_type,
       createdAt: r.created_at,

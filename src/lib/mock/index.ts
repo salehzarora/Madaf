@@ -22,6 +22,7 @@ export {
   teamAuditEvents,
   settingsAuditEvents,
   salesRepAssignmentAuditEvents,
+  signupRequestAuditEvents,
   type MockAuditEvent,
   type MockOrderAuditEvent,
   type MockProductAuditEvent,
@@ -29,4 +30,5 @@ export {
   type MockTeamAuditEvent,
   type MockSettingsAuditEvent,
   type MockSalesRepAssignmentAuditEvent,
+  type MockSignupRequestAuditEvent,
 } from "./audit-events";

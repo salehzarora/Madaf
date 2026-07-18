@@ -1331,6 +1331,16 @@ const he: Dictionary = {
         member_joined: "שיוך ישן הוסר בעת הצטרפות החבר",
       },
     },
+    signup: {
+      category: "רישומי חנויות",
+      timelineHeading: "פעילות בקשות רישום חנויות",
+      business: "חנות",
+      resultingCustomer: "הלקוח שנוצר",
+      events: {
+        "customer_signup_request.approved": "בקשת רישום החנות אושרה",
+        "customer_signup_request.rejected": "בקשת רישום החנות נדחתה",
+      },
+    },
   },
 };
 

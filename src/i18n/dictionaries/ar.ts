@@ -1330,6 +1330,16 @@ const ar: Dictionary = {
         member_joined: "تمت إزالة تعيين قديم عند انضمام العضو",
       },
     },
+    signup: {
+      category: "تسجيلات المحلات",
+      timelineHeading: "نشاط طلبات تسجيل المحلات",
+      business: "المحل",
+      resultingCustomer: "الزبون الناتج",
+      events: {
+        "customer_signup_request.approved": "تم قبول طلب تسجيل المحل",
+        "customer_signup_request.rejected": "تم رفض طلب تسجيل المحل",
+      },
+    },
   },
 };
 

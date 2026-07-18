@@ -634,3 +634,54 @@ export const salesRepAssignmentAuditEvents: MockSalesRepAssignmentAuditEvent[] =
     createdAt: "2026-07-01T08:15:00Z",
   },
 ];
+
+// ── Customer signup-request decision audit events (M8I.6) ─────────────────
+// Demo rows so the Customer Signup Activity stream renders with the SAME contract
+// as Supabase (bounded page, created_at DESC / id DESC, cursor keyset, actor
+// resolution, safe projection). The signup page is Supabase-only, so these serve
+// parity + tests. Tenant-WIDE (no per-entity filter): each row carries the bounded
+// business_name snapshot (+ resulting_customer_id for approved); NO applicant PII.
+
+/** A mock customer_signup_request audit_events row (mirrors the DB shape). */
+export interface MockSignupRequestAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  eventType: string;
+  /** null → the reviewing user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo signup decisions, newest first (id + created_at both descend). */
+export const signupRequestAuditEvents: MockSignupRequestAuditEvent[] = [
+  {
+    id: "3",
+    eventType: "customer_signup_request.approved",
+    actorUserId: "u-owner",
+    metadata: {
+      business_name: "بقالة الفجر",
+      resulting_customer_id: "44444444-4444-4444-8444-444444444444",
+    },
+    createdAt: "2026-07-11T12:30:00Z",
+  },
+  {
+    id: "2",
+    eventType: "customer_signup_request.rejected",
+    // Deleted reviewer → the timeline shows the explicit "unknown" label.
+    actorUserId: null,
+    metadata: { business_name: "מכולת הרצל" },
+    createdAt: "2026-07-08T09:45:00Z",
+  },
+  {
+    id: "1",
+    eventType: "customer_signup_request.approved",
+    // u-admin is absent from the roster → owner/admin viewer sees "former member".
+    actorUserId: "u-admin",
+    metadata: {
+      business_name: "Corner Grocery",
+      resulting_customer_id: "55555555-5555-4555-8555-555555555555",
+    },
+    createdAt: "2026-07-03T14:10:00Z",
+  },
+];

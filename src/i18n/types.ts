@@ -1467,5 +1467,25 @@ export interface Dictionary {
         member_joined: string;
       };
     };
+    /** M8I.6 — Customer/store signup-request decision audit (a compact owner/admin
+     * Signup Activity stream on the existing signup-management page). These are
+     * store signup requests INSIDE an existing tenant; approval creates a customer
+     * (no platform/Tenant provisioning). The affected store is a bounded name
+     * snapshot; approved rows may link to the resulting customer. */
+    signup: {
+      /** Signup audit category label. */
+      category: string;
+      /** The Signup Activity section heading. */
+      timelineHeading: string;
+      /** Label preceding the affected store/business name. */
+      business: string;
+      /** Title/aria for the optional link to the created customer. */
+      resultingCustomer: string;
+      /** Closed signup event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "customer_signup_request.approved": string;
+        "customer_signup_request.rejected": string;
+      };
+    };
   };
 }
