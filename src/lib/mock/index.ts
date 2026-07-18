@@ -21,10 +21,12 @@ export {
   inventoryAuditEvents,
   teamAuditEvents,
   settingsAuditEvents,
+  salesRepAssignmentAuditEvents,
   type MockAuditEvent,
   type MockOrderAuditEvent,
   type MockProductAuditEvent,
   type MockInventoryAuditEvent,
   type MockTeamAuditEvent,
   type MockSettingsAuditEvent,
+  type MockSalesRepAssignmentAuditEvent,
 } from "./audit-events";

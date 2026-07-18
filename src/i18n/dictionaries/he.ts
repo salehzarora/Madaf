@@ -1314,6 +1314,23 @@ const he: Dictionary = {
         en: "אנגלית",
       },
     },
+    assignment: {
+      category: "שיוכים",
+      timelineHeading: "פעילות שיוכים",
+      customer: "חנות",
+      representative: "נציג המכירות",
+      events: {
+        "sales_rep_assignment.created": "נציג שויך לחנות",
+        "sales_rep_assignment.removed": "שיוך נציג בוטל",
+      },
+      sources: {
+        createdManual: "שיוך ידני",
+        removedManual: "השיוך הוסר ידנית",
+        member_removed: "השיוך הוסר בעת הסרת החבר",
+        role_changed: "השיוך הוסר בעת שינוי התפקיד",
+        member_joined: "שיוך ישן הוסר בעת הצטרפות החבר",
+      },
+    },
   },
 };
 

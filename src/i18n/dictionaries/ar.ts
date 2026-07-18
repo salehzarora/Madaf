@@ -1313,6 +1313,23 @@ const ar: Dictionary = {
         en: "الإنجليزية",
       },
     },
+    assignment: {
+      category: "التعيينات",
+      timelineHeading: "نشاط التعيينات",
+      customer: "المحل",
+      representative: "مندوب المبيعات",
+      events: {
+        "sales_rep_assignment.created": "تم تعيين مندوب للمحل",
+        "sales_rep_assignment.removed": "أُلغي تعيين مندوب",
+      },
+      sources: {
+        createdManual: "تعيين يدوي",
+        removedManual: "تمت إزالة التعيين يدويًا",
+        member_removed: "تمت إزالة التعيين عند إزالة العضو",
+        role_changed: "تمت إزالة التعيين عند تغيير الدور",
+        member_joined: "تمت إزالة تعيين قديم عند انضمام العضو",
+      },
+    },
   },
 };
 

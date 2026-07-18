@@ -112,6 +112,11 @@ export {
   type SettingsTimelineQuery,
 } from "./settings-timeline";
 export {
+  getAssignmentTimelinePage,
+  safeInitialAssignmentTimeline,
+  type AssignmentTimelineQuery,
+} from "./assignment-timeline";
+export {
   computeDashboardMetrics,
   getDashboardMetrics,
   type DashboardMetrics,

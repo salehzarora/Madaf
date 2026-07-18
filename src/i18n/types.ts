@@ -1434,5 +1434,38 @@ export interface Dictionary {
         en: string;
       };
     };
+    /** M8I.5 — Sales-rep-assignment audit (a compact owner/admin Assignment
+     * Activity stream on the existing Team page, beneath rep assignments). The
+     * affected customer + representative are bounded name/email snapshots; a
+     * localized source line explains WHY an assignment was removed. */
+    assignment: {
+      /** Assignment audit category label. */
+      category: string;
+      /** The Assignment Activity section heading. */
+      timelineHeading: string;
+      /** Label preceding the affected customer name. */
+      customer: string;
+      /** Label preceding the affected representative email. */
+      representative: string;
+      /** Closed assignment event-type → label map (mirrors the DB allowlist). */
+      events: {
+        "sales_rep_assignment.created": string;
+        "sales_rep_assignment.removed": string;
+      };
+      /** Localized source-context lines. created is always `manual`; each removed
+       * source has its own removal-context wording. */
+      sources: {
+        /** created + manual. */
+        createdManual: string;
+        /** removed + manual. */
+        removedManual: string;
+        /** removed + member_removed. */
+        member_removed: string;
+        /** removed + role_changed. */
+        role_changed: string;
+        /** removed + member_joined. */
+        member_joined: string;
+      };
+    };
   };
 }

@@ -1323,6 +1323,23 @@ const en: Dictionary = {
         en: "English",
       },
     },
+    assignment: {
+      category: "Assignments",
+      timelineHeading: "Assignment activity",
+      customer: "Customer",
+      representative: "Sales representative",
+      events: {
+        "sales_rep_assignment.created": "Sales representative assigned",
+        "sales_rep_assignment.removed": "Sales representative removed",
+      },
+      sources: {
+        createdManual: "Manual assignment",
+        removedManual: "Assignment removed manually",
+        member_removed: "Assignment removed when member was removed",
+        role_changed: "Assignment removed when role changed",
+        member_joined: "Previous assignment removed when member joined",
+      },
+    },
   },
 };
 

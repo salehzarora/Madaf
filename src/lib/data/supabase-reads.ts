@@ -94,6 +94,10 @@ import {
   buildSettingsTimelineEvent,
   type SettingsTimelinePage,
 } from "@/lib/settings-timeline";
+import {
+  buildSalesRepAssignmentTimelineEvent,
+  type SalesRepAssignmentTimelinePage,
+} from "@/lib/sales-rep-assignment-timeline";
 
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -1192,6 +1196,75 @@ export async function sbGetSettingsTimelinePage(input: {
 
   const events = page.map((r) =>
     buildSettingsTimelineEvent({
+      id: String(r.id),
+      eventType: r.event_type,
+      createdAt: r.created_at,
+      actor: resolveTimelineActor(r.actor_user_id, { isAdmin, emails }),
+      metadata: r.metadata,
+    }),
+  );
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeTimelineCursor({ createdAt: last.created_at, id: String(last.id) })
+      : null;
+  return { events, nextCursor, hasMore };
+}
+
+// ── Assignment Activity Timeline (M8I.5) ──────────────────────────────────
+// A TENANT-WIDE bounded, cursor-paginated audit read with entity_type fixed to
+// 'sales_rep_assignment' (no entity_id filter — the stream spans every affected
+// customer; each row's entity_id is that customer id). RLS is the authorization
+// boundary: the M8I.5 SELECT clause requires has_tenant_role(owner/admin) for
+// sales_rep_assignment rows, so a sales_rep reads NO assignment activity (incl.
+// its own) and a foreign tenant's rows yield zero. Served by the M8I.5 (tenant_id,
+// created_at desc, id desc) WHERE entity_type='sales_rep_assignment' partial index.
+// Actors resolved in ONE bounded RPC; the affected customer + representative are
+// carried inline as client-safe snapshots (customer_name/rep_email) — no second lookup.
+export async function sbGetAssignmentTimelinePage(input: {
+  cursor: string | null;
+  pageSize: number;
+}): Promise<SalesRepAssignmentTimelinePage> {
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) {
+    return { events: [], nextCursor: null, hasMore: false };
+  }
+  const cursor = decodeTimelineCursor(input.cursor);
+
+  let query = client
+    .from("audit_events")
+    .select("id, event_type, actor_user_id, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("entity_type", "sales_rep_assignment");
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.pageSize + 1);
+  if (error) fail("getAssignmentTimelinePage", error.message);
+
+  const rows = (data as AuditEventRow[] | null) ?? [];
+  const hasMore = rows.length > input.pageSize;
+  const page = rows.slice(0, input.pageSize);
+
+  // Assignment audit rows are owner/admin-only by RLS, so the viewer is always
+  // owner/admin here; resolve names via the one bounded lookup (no N+1). The
+  // affected customer + rep are NOT looked up — they are the client-safe snapshots.
+  const role = (await getSessionContext()).membership?.role ?? null;
+  const isAdmin = role === "owner" || role === "admin";
+  const emails = await sbGetTimelineActorLabels(
+    distinctActorIds(page.map((r) => r.actor_user_id)),
+  );
+
+  const events = page.map((r) =>
+    buildSalesRepAssignmentTimelineEvent({
       id: String(r.id),
       eventType: r.event_type,
       createdAt: r.created_at,

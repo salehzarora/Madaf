@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { AssignmentTimeline } from "@/components/admin/assignment-timeline";
 import { RepAssignments } from "@/components/admin/rep-assignments";
 import { TeamManager } from "@/components/admin/team-manager";
 import { TeamTimeline } from "@/components/admin/team-timeline";
@@ -6,13 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { loadAssignmentTimelineAction } from "@/lib/actions/assignment-timeline";
 import { loadTeamTimelineAction } from "@/lib/actions/team-timeline";
 import { getSessionContext } from "@/lib/auth/session";
 import {
+  getAssignmentTimelinePage,
   getDataMode,
   getTeamTimelinePage,
   getTenantTimeZone,
   listCustomers,
+  safeInitialAssignmentTimeline,
   safeInitialTeamTimeline,
 } from "@/lib/data";
 import { listRepAssignments } from "@/lib/data/rep-assignments";
@@ -38,18 +42,29 @@ export default async function AdminTeamPage({
   const dict = getDictionary(locale);
   const t = dict.access.team;
 
-  // The Team Activity read is OPTIONAL + isolated (owner/admin RLS): if it fails,
-  // Team management must still render. Started concurrently, never blocks it.
+  // The Team + Assignment Activity reads are OPTIONAL + isolated (owner/admin RLS):
+  // if either fails, Team management must still render. Started concurrently.
   const teamTimelinePromise = safeInitialTeamTimeline(() => getTeamTimelinePage());
-  const [members, invites, customers, assignments, timeZone, teamTimeline] =
-    await Promise.all([
-      listTenantMembers(),
-      listTenantInvites(),
-      listCustomers(),
-      listRepAssignments(),
-      getTenantTimeZone(),
-      teamTimelinePromise,
-    ]);
+  const assignmentTimelinePromise = safeInitialAssignmentTimeline(() =>
+    getAssignmentTimelinePage(),
+  );
+  const [
+    members,
+    invites,
+    customers,
+    assignments,
+    timeZone,
+    teamTimeline,
+    assignmentTimeline,
+  ] = await Promise.all([
+    listTenantMembers(),
+    listTenantInvites(),
+    listCustomers(),
+    listRepAssignments(),
+    getTenantTimeZone(),
+    teamTimelinePromise,
+    assignmentTimelinePromise,
+  ]);
 
   const reps = members
     .filter((m) => m.role === "sales_rep")
@@ -84,6 +99,20 @@ export default async function AdminTeamPage({
         customers={customerOptions}
         assignments={assignments}
       />
+      <Card className="overflow-hidden">
+        <CardHeader variant="strip">
+          <CardTitle>{dict.audit.assignment.timelineHeading}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AssignmentTimeline
+            locale={locale}
+            dict={dict}
+            initial={assignmentTimeline}
+            timeZone={timeZone}
+            loadMore={loadAssignmentTimelineAction}
+          />
+        </CardContent>
+      </Card>
       <Card className="overflow-hidden">
         <CardHeader variant="strip">
           <CardTitle>{dict.audit.team.timelineHeading}</CardTitle>

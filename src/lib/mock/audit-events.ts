@@ -537,3 +537,100 @@ export const settingsAuditEvents: MockSettingsAuditEvent[] = [
     createdAt: "2026-07-01T10:00:00Z",
   },
 ];
+
+// ── Sales-rep-assignment audit events (M8I.5) ─────────────────────────────
+// Demo rows so the Assignment Activity stream renders with the SAME contract as
+// Supabase (bounded page, created_at DESC / id DESC, cursor keyset, actor
+// resolution, safe projection). The Team page is Supabase-only, so these serve
+// parity + tests. Tenant-WIDE (no per-entity filter): each row carries bounded
+// rep_email + customer_name snapshots + a safe source; rep_user_id is present for
+// shape parity but is never projected to the client.
+
+/** A mock sales_rep_assignment audit_events row (mirrors the DB shape). */
+export interface MockSalesRepAssignmentAuditEvent {
+  /** bigint id as a string (monotonic; higher = later). */
+  id: string;
+  eventType: string;
+  /** null → the acting user is unattributable (deleted). */
+  actorUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** Demo assignment events, newest first (id + created_at both descend). */
+export const salesRepAssignmentAuditEvents: MockSalesRepAssignmentAuditEvent[] = [
+  {
+    id: "6",
+    eventType: "sales_rep_assignment.created",
+    actorUserId: "u-owner",
+    metadata: {
+      rep_user_id: "11111111-1111-4111-8111-111111111111",
+      rep_email: "rep@madaf.local",
+      customer_name: "بقالة النور",
+      source: "manual",
+    },
+    createdAt: "2026-07-12T09:30:00Z",
+  },
+  {
+    id: "5",
+    eventType: "sales_rep_assignment.removed",
+    actorUserId: "u-owner",
+    metadata: {
+      rep_user_id: "11111111-1111-4111-8111-111111111111",
+      rep_email: "rep@madaf.local",
+      customer_name: "מכולת השדרה",
+      source: "manual",
+    },
+    createdAt: "2026-07-10T15:45:00Z",
+  },
+  {
+    id: "4",
+    eventType: "sales_rep_assignment.removed",
+    // Deleted actor → the timeline shows the explicit "unknown" label.
+    actorUserId: null,
+    metadata: {
+      rep_user_id: "22222222-2222-4222-8222-222222222222",
+      rep_email: "rep-old@madaf.local",
+      customer_name: "Corner Market",
+      source: "role_changed",
+    },
+    createdAt: "2026-07-08T11:20:00Z",
+  },
+  {
+    id: "3",
+    eventType: "sales_rep_assignment.removed",
+    // u-admin is absent from the roster → owner/admin viewer sees "former member".
+    actorUserId: "u-admin",
+    metadata: {
+      rep_user_id: "22222222-2222-4222-8222-222222222222",
+      rep_email: "rep-old@madaf.local",
+      customer_name: "سوبرماركت السلام",
+      source: "member_removed",
+    },
+    createdAt: "2026-07-06T13:05:00Z",
+  },
+  {
+    id: "2",
+    eventType: "sales_rep_assignment.removed",
+    actorUserId: "u-owner",
+    metadata: {
+      rep_user_id: "33333333-3333-4333-8333-333333333333",
+      rep_email: "rejoin@madaf.local",
+      customer_name: "חנות הפינה",
+      source: "member_joined",
+    },
+    createdAt: "2026-07-04T10:00:00Z",
+  },
+  {
+    id: "1",
+    eventType: "sales_rep_assignment.created",
+    actorUserId: "u-owner",
+    metadata: {
+      rep_user_id: "11111111-1111-4111-8111-111111111111",
+      rep_email: "rep@madaf.local",
+      customer_name: "بقالة النور",
+      source: "manual",
+    },
+    createdAt: "2026-07-01T08:15:00Z",
+  },
+];
