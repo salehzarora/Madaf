@@ -924,7 +924,9 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   // migration (20260808100000); PILOT-OPS-AUDIT-004 adds the tenant-settings-audit
   // migration (20260809100000); PILOT-OPS-AUDIT-005 adds the sales-rep-assignment
   // audit migration (20260810100000); PILOT-OPS-AUDIT-006 adds the customer-signup
-  // request decision audit migration (20260811100000). This snapshot only guards
-  // that M8H.3 itself added none — see the m8h3 check above.
-  assert.equal(migrations.length, 62);
+  // request decision audit migration (20260811100000); PILOT-OPS-AUDIT-008 adds the
+  // operational-hardening migration (20260812100000 — deterministic inventory lock
+  // order + audit unknown-entity default-deny). This snapshot only guards that
+  // M8H.3 itself added none — see the m8h3 check above.
+  assert.equal(migrations.length, 63);
 });

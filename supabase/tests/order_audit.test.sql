@@ -387,17 +387,19 @@ select is((select count(*) from public.audit_events
            where tenant_id='33333333-3333-4333-8333-333333333333'),
   0::bigint, 'cross-tenant Order events are invisible (tenant isolation)');
 
--- ── 69. NON-customer / NON-order events keep plain tenant-member visibility ─
--- Both new clauses are vacuous for any other entity_type, so e.g. a document
--- event must remain readable by a plain member exactly as before M8H.1.
+-- ── 69. The M8H.1 customer/order scoping clauses stay VACUOUS for any other
+-- entity_type — a non-scoped (e.g. future 'document') event is not hidden by them,
+-- so the OWNER still reads it. (Under M8I.7 an unknown/non-scoped type is
+-- owner/admin-only by DEFAULT-DENY; the sales_rep denial is proven separately in
+-- audit_unknown_entity_deny.test.sql.)
 reset role;
 insert into public.audit_events (tenant_id, event_type, entity_type, entity_id, metadata)
 values ('33333333-3333-4333-8333-333333333333', 'document.created', 'document',
         '77700000-0000-4000-8000-000000000001', '{}'::jsonb);
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000002","role":"authenticated"}';
+set local request.jwt.claims = '{"sub":"c0c00000-0000-4000-8000-000000000001","role":"authenticated"}';
 select is((select count(*) from public.audit_events where entity_type='document'),
-  1::bigint, 'a non-customer/non-order event stays visible to a plain member (compat preserved)');
+  1::bigint, 'a non-customer/non-order event stays visible to the owner (scoping clauses vacuous for it)');
 
 -- ── 70. An order row with a NULL entity_id FAILS CLOSED (even for the owner) ─
 -- can_access_order short-circuits to true for owner/admin regardless of the id,
