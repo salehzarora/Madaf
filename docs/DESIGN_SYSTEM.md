@@ -1,5 +1,16 @@
 # Madaf Design System (M0.2 → Madaf Ledger refresh)
 
+> ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
+> The "Madaf Ledger visual system" section below is current. The later
+> **"Color tokens"** and **"Typography"** sections still describe the
+> pre-refresh palette and type stack and **contradict it** (e.g. an older
+> background hex and a "shelf teal" brand scale with `brand-200/300`, which the
+> Ledger scale does not define). **When the two disagree, the Ledger section
+> wins, and `src/app/globals.css` is the real source of truth.** The
+> authoritative source for the monitored Pilot is
+> [`pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md`](pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md).
+> Kept unedited below as a historical record.
+
 Tokens live in [`src/app/globals.css`](../src/app/globals.css) as Tailwind v4
 `@theme` variables. **Always use tokens — never raw hex values in components**
 — with TWO deliberate exceptions: the category identity colors below

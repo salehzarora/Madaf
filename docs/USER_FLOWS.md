@@ -1,5 +1,13 @@
 # User Flows
 
+> ⚠️ **HISTORICAL / PARTIALLY STALE — do not use as a Pilot operational source.**
+> This document describes an earlier product stage; parts of it (notably the
+> "Future: tokenized links" note and the "mock, not persisted" admin remarks) no
+> longer match the shipped product. **The authoritative source for the monitored
+> Pilot is [`pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md`](pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md);
+> actual runtime behavior is defined by the current code and migrations.**
+> Kept unedited below as a historical record.
+
 ## 1. Supplier sales-visit flow (primary — tablet in the shop)
 
 ```

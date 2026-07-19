@@ -498,14 +498,23 @@ invites; **no** direct write grants; anon has nothing; no
 All membership changes go through SECURITY DEFINER RPCs (tenant derived
 from membership, never client input):
 
+> **Signatures below reflect the CURRENT effective definitions.** Since M4C every
+> tenant-scoped RPC takes an explicit leading `p_tenant_id`, which
+> `authorize_tenant` accepts only if it is one of the caller's memberships. The
+> pre-M4C keyless forms were dropped. `accept_tenant_invite` is the deliberate
+> exception — it takes only the raw token, because the tenant is derived from the
+> invite itself, not from the caller.
+
 | RPC | Caller | Enforces |
 |---|---|---|
-| `create_tenant_invite(email, role, token_hash, preview, expires_at)` | owner/admin | role ∈ {admin, sales_rep}; valid email |
-| `revoke_tenant_invite(id)` | owner/admin | only pending (unaccepted) invites |
-| `accept_tenant_invite(raw token)` | authenticated | hashes the token server-side; **caller's auth email must equal the invite email**; not revoked/expired/accepted; inserts the membership |
-| `update_tenant_member_role(user, role)` | **owner** | role ∈ {admin, sales_rep}; not self; last-owner protection |
-| `remove_tenant_member(user)` | **owner** | last-owner protection |
-| `list_tenant_members()` | owner/admin | returns the roster **with emails** (authenticated cannot read `auth.users`) |
+| `create_tenant_invite(p_tenant_id, p_email, p_role, p_token_hash, p_token_preview, p_expires_at)` | owner/admin | role ∈ {admin, sales_rep}; valid email |
+| `revoke_tenant_invite(p_tenant_id, p_invite_id)` | owner/admin | only pending (unaccepted) invites |
+| `accept_tenant_invite(p_token)` | authenticated | hashes the token server-side; **caller's auth email must equal the invite email**; not revoked/expired/accepted; inserts the membership. **No `p_tenant_id` by design** — the tenant comes from the invite |
+| `update_tenant_member_role(p_tenant_id, p_user_id, p_new_role)` | **owner** | role ∈ {admin, sales_rep}; not self; last-owner protection |
+| `remove_tenant_member(p_tenant_id, p_user_id)` | **owner** | last-owner protection |
+| `list_tenant_members(p_tenant_id)` | owner/admin | returns the roster **with emails** (authenticated cannot read `auth.users`) |
+| `promote_tenant_owner(p_tenant_id, p_user_id)` | **owner** | the ONLY way to grant `owner` — never via invite (M4D) |
+| `demote_tenant_owner(p_tenant_id, p_user_id, p_new_role)` | **owner** | last-owner protection; not self |
 
 The raw invite token is generated in the Server Action (32 random bytes,
 base64url), shown once, and only its SHA-256 hash is stored — a leaked

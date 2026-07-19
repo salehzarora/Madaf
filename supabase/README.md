@@ -41,6 +41,11 @@ supabase stop         # shut the stack down (data volume is kept)
 `supabase start` applies everything in `migrations/` and `seed.sql`
 automatically on first boot; `db reset` re-runs both from scratch.
 
+> ⛔ **`supabase db reset` is a LOCAL-ONLY command. NEVER run it against a
+> linked or hosted project** — it drops data. It is not a recovery procedure.
+> Hosted recovery goes through backup/PITR or a reviewed forward-fix migration;
+> see [`../docs/pilot/BACKUP_RESTORE_AND_RECOVERY.md`](../docs/pilot/BACKUP_RESTORE_AND_RECOVERY.md).
+
 Madaf binds to the **55xxx port range** (API `55321`, DB `55322`, Studio
 `55323`) so it can run beside other local Supabase projects on the default
 54xxx ports — see `config.toml`.
@@ -366,8 +371,22 @@ read goes through it; mock is the default and needs zero configuration.
 `NEXT_PUBLIC_SUPABASE_URL` + anon key come pre-filled), run
 `bootstrap-auth.sql` once, then `npm run dev` and sign in — the entire UI
 (catalog, product pages, admin, team, documents) renders from the seeded
-database under the signed-in member's tenant. `SUPABASE_SERVICE_ROLE_KEY`
-is NOT needed for the app; it's only for local bootstrap/seed tooling.
+database under the signed-in member's tenant.
+
+**About `SUPABASE_SERVICE_ROLE_KEY` — read the scope carefully.** For the
+**local-dev path described in this paragraph** it is not required; it is used
+by local bootstrap/seed tooling. **That is not a general statement, and it is
+not true of a hosted deployment.** On hosted/Production the server needs a
+correctly configured **server-side** service-role key to sign private
+product-image URLs for the tokenized `/shop` and `/showcase` pages. If it is
+missing there, those pages still render but **every uploaded product image
+degrades to a placeholder** — a silent, easy-to-miss failure. See
+`src/lib/data/product-image-storage.ts`. The trusted document-storage opt-in
+above depends on it too.
+
+> **Never expose this key to browser code, and never prefix it with
+> `NEXT_PUBLIC_`.** It bypasses RLS. It belongs in server-only environment
+> configuration.
 
 **Since M4A this runs on real auth.** Supplier users sign in at `/login`
 (create the demo users with `bootstrap-auth.sql`); the session lives in

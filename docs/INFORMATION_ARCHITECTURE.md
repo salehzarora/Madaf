@@ -1,5 +1,15 @@
 # Information Architecture
 
+> ⚠️ **HISTORICAL / PARTIALLY STALE — do not use as a Pilot operational source.**
+> The route map, the source layout (which still lists `lib/mock/` as the data
+> source) and the data-relationship diagram (which has no tenant/membership
+> entities) predate the multi-tenant, Supabase-backed product. **The
+> authoritative source for the monitored Pilot is
+> [`pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md`](pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md);
+> actual runtime behavior is defined by the current code and migrations** —
+> data access goes through `src/lib/data/`, and UI code must not import
+> `src/lib/mock`. Kept unedited below as a historical record.
+
 ## Route map
 
 All routes live under `/[locale]` (ar | he | en). `src/proxy.ts` redirects

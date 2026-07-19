@@ -1,5 +1,13 @@
 # Staging Runbook (M7C)
 
+> ⚠️ **HISTORICAL / STAGING-ONLY — do not use as a Pilot operational source.**
+> This document covers the M7C **staging** stage and records staging-era values.
+> **The authoritative source for the monitored Pilot is
+> [`../pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md`](../pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md);
+> actual runtime behavior is defined by the current code and migrations.**
+> Kept largely unedited below as a historical record, with the health-endpoint
+> placeholder corrected in place because it would otherwise misdirect an operator.
+
 > Operational companion to [STAGING_DEPLOYMENT_M7C.md](STAGING_DEPLOYMENT_M7C.md).
 > Monitoring setup, failure-mode triage, rollback/incident steps, and a safe
 > demo-data plan for **staging**. No production, no secrets, no legal/payment
@@ -15,8 +23,15 @@ choice; none is committed.
 - **Error reporting** *(placeholder)* — add a crash reporter (e.g. Sentry) via
   its env-based DSN in Vercel server env. Not integrated yet; capture server
   action + route errors and unhandled exceptions.
-- **Uptime monitoring** *(placeholder)* — an external ping on the staging origin
-  (`/he`) + an authenticated health path; alert on non-200 / latency.
+- **Uptime monitoring** *(placeholder)* — an external ping on the origin (`/he`)
+  plus **`/api/health`**; alert on non-200 / latency.
+  **Correction (PILOT-LAUNCH-GATE-009):** the health endpoint is `/api/health`
+  and it is **unauthenticated by design** — the earlier "authenticated health
+  path" wording was a placeholder and is wrong. It returns only safe fields
+  (`status`, `service`, `commit`, `environment`, `timestamp`), sends `no-store`,
+  and is **liveness-only**: it performs no database access, so a `200 ok`
+  **does not prove** Supabase connectivity. `commit` is a **7-character
+  lowercase** prefix. See the Pilot runbook's baseline procedure.
 - **Auth / SMS delivery monitoring** — watch Supabase **Auth logs** for OTP send
   failures and the **SMS provider dashboard** for delivery/spend. Alert on a
   spike in `sms_send_failed` or verification failures.
