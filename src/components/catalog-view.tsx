@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowRight, PackageSearch, ShoppingCart } from "lucide-react";
-import Link from "next/link";
+import { PackageSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CatalogHero, type CatalogSupplierIdentity } from "@/components/catalog-hero";
+import { CatalogCartReview } from "@/components/catalog-cart-review";
 import { CatalogToolbar, type CatalogSortKey } from "@/components/catalog-toolbar";
 import { CustomerPicker } from "@/components/customer-picker";
 import { EmptyState } from "@/components/empty-state";
@@ -12,7 +12,6 @@ import { ProductCard } from "@/components/product-card";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
-import { formatCurrency } from "@/lib/format";
 import { productName } from "@/lib/catalog-helpers";
 import { useShopData } from "@/lib/shop-data-context";
 import type { Category } from "@/lib/types";
@@ -29,7 +28,7 @@ export function CatalogView({ locale, dict, supplier, initialCustomerId }: {
   supplier: CatalogSupplierIdentity;
   initialCustomerId?: string;
 }) {
-  const { totalPackages, subtotal, hydrated, setCustomer } = useCart();
+  const { hydrated, setCustomer } = useCart();
   const { products, categories, manufacturers, categoryById, manufacturerById } = useShopData();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -118,18 +117,7 @@ export function CatalogView({ locale, dict, supplier, initialCustomerId }: {
         )}
       </div>
       <div className="catalog-side-panel"><OrderPad locale={locale} dict={dict} /></div>
-      {hydrated && totalPackages > 0 ? (
-        <div className="catalog-cart-bar">
-          <ShoppingCart className="size-5 shrink-0 text-accent" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] text-band-muted"><bdi dir="ltr">{totalPackages}</bdi> {dict.common.packages}</p>
-            <p className="text-lg font-bold tabular-nums"><bdi dir="ltr">{formatCurrency(subtotal, locale)}</bdi></p>
-          </div>
-          <Link href={`/${locale}/cart`} className="catalog-cart-bar-action">
-            {dict.catalog.viewCart}<ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden />
-          </Link>
-        </div>
-      ) : null}
+      <CatalogCartReview locale={locale} dict={dict} />
     </div>
   );
 }

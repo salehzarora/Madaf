@@ -139,6 +139,7 @@ const ar: Dictionary = {
     increaseQuantity: "زيادة الكمية: {product}",
     decreaseQuantity: "تقليل الكمية: {product}",
     lineTotal: "مجموع الصنف",
+    reviewCart: "مراجعة السلة",
     subtitle: "أسعار جملة · شيكل · الأسعار لا تشمل ض.ق.م",
     searchPlaceholder: "ابحث عن منتجات، ماركات…",
     categories: "الأقسام",

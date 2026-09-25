@@ -139,6 +139,7 @@ const en: Dictionary = {
     increaseQuantity: "Increase quantity: {product}",
     decreaseQuantity: "Decrease quantity: {product}",
     lineTotal: "Line total",
+    reviewCart: "Review cart",
     subtitle: "Wholesale prices · ILS · prices exclude VAT",
     searchPlaceholder: "Search products, brands…",
     categories: "Categories",

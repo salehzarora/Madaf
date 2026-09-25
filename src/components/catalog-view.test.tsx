@@ -162,10 +162,10 @@ function assertSummary(h: Harness, packages: number, subtotal: number) {
   const badge = h.container.querySelector("nav a span[dir='ltr']");
   assert.equal(badge?.textContent ?? null, packages > 0 ? String(packages) : null, "header package badge is synchronized");
   const mobileBar = h.container.querySelector(".catalog-cart-bar");
-  const mobileCart = Array.from(mobileBar?.querySelectorAll("a") ?? []).find((a) => a.textContent?.trim() === h.dict.catalog.viewCart);
+  const mobileCart = Array.from(mobileBar?.querySelectorAll("button") ?? []).find((b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === h.dict.catalog.reviewCart);
   assert.equal(Boolean(mobileCart), packages > 0, "compact cart access follows the same cart");
   if (mobileCart) {
-    assert.equal(mobileCart.getAttribute("href"), `/${h.locale}/cart`);
+    assert.equal(mobileCart.getAttribute("aria-haspopup"), "dialog");
     assert.ok(mobileCart.parentElement?.textContent?.includes(formatCurrency(subtotal, h.locale)));
   }
 }

@@ -139,6 +139,7 @@ const he: Dictionary = {
     increaseQuantity: "הגדלת כמות: {product}",
     decreaseQuantity: "הקטנת כמות: {product}",
     lineTotal: "סכום שורה",
+    reviewCart: "סקירת העגלה",
     subtitle: "מחירים סיטונאיים · ₪ · המחירים לפני מע״מ",
     searchPlaceholder: "חיפוש מוצרים, מותגים…",
     categories: "קטגוריות",

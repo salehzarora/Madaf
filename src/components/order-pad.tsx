@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ShoppingCart, Trash2 } from "lucide-react";
+import { ArrowRight, ShoppingCart, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { CustomerPicker } from "@/components/customer-picker";
 import { ProductImage } from "@/components/product-image";
@@ -15,7 +15,12 @@ import { useShopData } from "@/lib/shop-data-context";
 
 /** Only the lines scroll, keeping the shop and totals in view. The customer
  * picker is not enclosed by a clipping container. */
-export function OrderPad({ locale, dict }: { locale: Locale; dict: Dictionary }) {
+export function OrderPad({ locale, dict, headingId, onClose }: {
+  locale: Locale;
+  dict: Dictionary;
+  headingId?: string;
+  onClose?: () => void;
+}) {
   const { items, setQuantity, removeItem, subtotal, totalPackages, hydrated } = useCart();
   const { productById } = useShopData();
 
@@ -24,8 +29,13 @@ export function OrderPad({ locale, dict }: { locale: Locale; dict: Dictionary })
       <header className="catalog-order-header">
         <div className="flex items-center gap-2 bg-band px-4 py-4 text-band-ink">
           <ShoppingCart className="size-5 text-accent" aria-hidden />
-          <h2 className="text-sm font-bold">{dict.cart.orderSummary}</h2>
+          <h2 id={headingId} className="text-sm font-bold">{dict.cart.orderSummary}</h2>
           <span dir="ltr" className="ms-auto rounded-full bg-band-ink/10 px-2.5 py-1 font-mono text-xs font-semibold">{hydrated ? totalPackages : 0}</span>
+          {onClose ? (
+            <button type="button" onClick={onClose} aria-label={dict.common.close} data-catalog-review-close className="flex size-11 shrink-0 items-center justify-center rounded-field text-band-ink transition-colors hover:bg-band-ink/10 focus-visible:outline-2 focus-visible:outline-accent">
+              <X className="size-5" aria-hidden />
+            </button>
+          ) : null}
         </div>
         <div className="border-b border-line bg-surface-warm p-3">
           <CustomerPicker locale={locale} dict={dict} className="w-full" />

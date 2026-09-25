@@ -123,6 +123,7 @@ export interface Dictionary {
     increaseQuantity: string;
     decreaseQuantity: string;
     lineTotal: string;
+    reviewCart: string;
     subtitle: string;
     searchPlaceholder: string;
     categories: string;

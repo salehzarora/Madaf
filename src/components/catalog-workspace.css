@@ -114,6 +114,31 @@
 }
 .catalog-cart-bar-action { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 8px; min-block-size: 44px; padding: 8px 16px; border-radius: var(--radius-field); background: var(--color-accent-soft); color: var(--color-band); font-size: 13px; font-weight: 700; }
 .catalog-cart-bar-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.catalog-review-dialog {
+  position: fixed;
+  inset: 0;
+  inset-block-start: auto;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  block-size: min(740px, calc(100dvh - 16px));
+  max-block-size: calc(100dvh - 16px);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: none;
+  border-start-start-radius: var(--radius-card);
+  border-start-end-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-float);
+}
+.catalog-review-dialog::backdrop { background: color-mix(in srgb, var(--color-band) 65%, transparent); }
+.catalog-review-dialog .catalog-order-pad { block-size: 100%; max-block-size: 100%; border-end-start-radius: 0; border-end-end-radius: 0; }
+.catalog-review-dialog .catalog-order-footer { padding-block-end: calc(14px + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) {
+  .catalog-review-dialog { inset-block-start: 0; inline-size: min(560px, calc(100% - 32px)); margin: auto; border-radius: var(--radius-card); }
+  .catalog-review-dialog .catalog-order-pad { border-radius: var(--radius-card); }
+}
 @media (max-width: 359px) {
   .catalog-product-grid { grid-template-columns: minmax(0, 1fr); }
   .catalog-product-image { aspect-ratio: 4 / 3; }
