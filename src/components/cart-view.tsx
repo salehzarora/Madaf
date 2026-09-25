@@ -90,8 +90,8 @@ export function CartView({
                 <ProductImage
                   product={product}
                   category={category}
+                  presentation="catalog"
                   className="size-20 shrink-0 rounded-field"
-                  iconClassName="text-2xl"
                 />
                 <div className="min-w-0 flex-1">
                   <Link

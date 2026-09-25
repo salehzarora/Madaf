@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../components/catalog-workspace.css";
+@import "../components/catalog-product-media.css";
 
 :root { --storefront-header-height: 56px; }
 @media (min-width: 640px) {

@@ -114,6 +114,9 @@ body:has(.catalog-workspace) {
 .catalog-card-stepper > button:enabled { color: var(--color-brand-900); background: var(--color-brand-50); }
 .catalog-card-stepper > button:last-child:enabled { color: var(--color-surface); background: var(--color-brand-700); }
 .catalog-card-stepper > button:enabled:hover { background: var(--color-brand-100); color: var(--color-brand-900); }
+.catalog-card-stepper > button:last-child:enabled:hover { background: var(--color-brand-900); color: var(--color-surface); }
+.catalog-card-stepper > button:focus-visible { outline: 2px solid var(--color-accent-text); outline-offset: -4px; }
+.catalog-card-stepper > button:last-child:enabled:focus-visible { outline-color: var(--color-accent-soft); }
 .catalog-card-stepper > span { min-inline-size: 22px; }
 .catalog-line-total { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; min-block-size: 15px; margin-block-start: 7px; font-size: 10px; font-weight: 500; color: var(--color-brand-700); }
 .catalog-order-pad {

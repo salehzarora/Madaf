@@ -31,7 +31,7 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
     <article className={cn("catalog-product", quantity > 0 && "catalog-product-selected")}>
       <Link href={`/${locale}/product/${product.id}`} aria-label={name} className="catalog-product-detail">
         <div className="catalog-product-frame relative">
-          <ProductImage product={product} category={category} className="catalog-product-image" showSizeTag={false} />
+          <ProductImage product={product} category={category} presentation="catalog" className="catalog-product-image" />
           <div className="catalog-product-badges">
             {product.availability !== "inStock" ? (
               <span className={cn("rounded-badge px-2 py-1 text-[11px] font-semibold", soldOut ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning")}>

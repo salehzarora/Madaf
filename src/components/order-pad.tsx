@@ -57,7 +57,7 @@ export function OrderPad({ locale, dict, headingId, onClose }: {
               return (
                 <li key={item.productId} className="catalog-order-line">
                   <div className="flex items-start gap-2.5">
-                    <ProductImage product={product} showSizeTag={false} className="size-14 shrink-0 rounded-field" iconClassName="size-6" />
+                    <ProductImage product={product} presentation="catalog" showSizeTag={false} className="size-14 shrink-0 rounded-field" />
                     <div className="min-w-0 flex-1 pt-1">
                       <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-ink" title={name}>{name}</p>
                       <p className="mt-1 text-[11px] leading-snug text-ink-soft">{packageLabel(product, dict)}</p>

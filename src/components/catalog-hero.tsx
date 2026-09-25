@@ -96,8 +96,8 @@ export function CatalogHero({
           >
             <ProductImage
               product={product}
+              presentation="catalog"
               className="aspect-[4/5] w-full rounded-field"
-              iconClassName="size-16 text-ink/20"
             />
           </div>
         )) : (

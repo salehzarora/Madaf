@@ -2,6 +2,7 @@
 
 import { Package } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { LogoMark } from "@/components/logo";
 import type { Category, Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ export function ProductImage({
   className,
   iconClassName,
   showSizeTag = true,
+  presentation = "default",
 }: {
   product: Product;
   /** Accepted for API compatibility; identity is a dot in the card body now. */
@@ -27,6 +29,8 @@ export function ProductImage({
   iconClassName?: string;
   /** The unit-size shelf tag — turn off for tiny thumbnails. */
   showSizeTag?: boolean;
+  /** Opt-in catalog framing; other shared surfaces retain their existing art. */
+  presentation?: "default" | "catalog";
 }) {
   const [broken, setBroken] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -43,7 +47,9 @@ export function ProductImage({
     showSizeTag && product.unitSize ? (
       <span
         dir="ltr"
-        className="absolute bottom-2 end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[11px] font-semibold text-background"
+        className={presentation === "catalog"
+          ? "catalog-media-size"
+          : "absolute bottom-2 end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[11px] font-semibold text-background"}
       >
         {product.unitSize}
       </span>
@@ -54,7 +60,11 @@ export function ProductImage({
     return (
       <div
         aria-hidden
-        className={cn("relative overflow-hidden bg-surface-sunken", className)}
+        className={cn(
+          "relative overflow-hidden",
+          presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
+          className,
+        )}
       >
         {/* Plain <img>: sources are signed Storage URLs / arbitrary hosts. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -64,8 +74,23 @@ export function ProductImage({
           alt=""
           loading="lazy"
           onError={() => setBroken(true)}
-          className="size-full object-cover"
+          className={presentation === "catalog" ? "catalog-media-photo" : "size-full object-cover"}
         />
+        {sizeTag}
+      </div>
+    );
+  }
+
+  if (presentation === "catalog") {
+    return (
+      <div aria-hidden data-packaging={product.packageType} className={cn("catalog-product-media catalog-product-media--placeholder", className)}>
+        <span className="catalog-media-orbit" />
+        <span className="catalog-media-ground" />
+        <span className="catalog-media-pack catalog-media-pack--rear" />
+        <span className="catalog-media-pack catalog-media-pack--front">
+          <LogoMark className="catalog-media-brand" />
+          <Package className={cn("catalog-media-glyph", iconClassName)} strokeWidth={1.35} aria-hidden />
+        </span>
         {sizeTag}
       </div>
     );
