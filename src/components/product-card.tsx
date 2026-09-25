@@ -30,7 +30,7 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
   return (
     <article className={cn("catalog-product", quantity > 0 && "catalog-product-selected")}>
       <Link href={`/${locale}/product/${product.id}`} aria-label={name} className="catalog-product-detail">
-        <div className="relative">
+        <div className="catalog-product-frame relative">
           <ProductImage product={product} category={category} className="catalog-product-image" showSizeTag={false} />
           <div className="catalog-product-badges">
             {product.availability !== "inStock" ? (
@@ -46,15 +46,17 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
           </div>
         </div>
         <div className="catalog-product-copy">
-          <p className="min-h-4 truncate text-[11px] font-semibold text-brand-700">{manufacturer?.name[locale] ?? "\u00a0"}</p>
-          <h3 className="line-clamp-2 min-h-[2.7em] text-sm font-bold leading-snug text-ink" title={name}>{name}</h3>
+          <p className="catalog-product-brand min-h-4 truncate text-[11px] font-semibold text-brand-700">
+            {manufacturer ? <span>{manufacturer.name[locale]}</span> : "\u00a0"}
+          </p>
+          <h3 className="catalog-product-name line-clamp-2 min-h-[2.7em] text-sm font-bold leading-snug text-ink" title={name}>{name}</h3>
           <p className="catalog-package-label">{packageLabel(product, dict)}</p>
         </div>
       </Link>
       <div className="catalog-product-order">
         <div className="catalog-product-prices">
           <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-            <bdi dir="ltr" className="text-[21px] font-extrabold tabular-nums tracking-tight text-ink">{formatCurrency(product.wholesalePrice, locale)}</bdi>
+            <bdi dir="ltr" className="catalog-package-price text-[21px] font-extrabold tabular-nums tracking-tight text-ink">{formatCurrency(product.wholesalePrice, locale)}</bdi>
             <span className="text-[10px] text-ink-soft">/ {dict.packaging[product.packageType]}</span>
           </p>
           <p className="mt-0.5 text-[11px] text-ink-soft">
@@ -83,12 +85,12 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
             <span>{soldOut ? dict.availability.outOfStock : dict.product.addToCart}</span>
           </button>
         )}
-          <p className="catalog-line-total" aria-hidden={quantity === 0 ? true : undefined}>
+        <p className="catalog-line-total" aria-hidden={quantity === 0 ? true : undefined}>
           {quantity > 0 ? <>
             <span className="inline-flex items-center gap-1"><Check className="size-3 shrink-0" aria-hidden />{dict.catalog.inCart}</span>
             <bdi dir="ltr" aria-label={dict.catalog.lineTotal}>{formatCurrency(quantity * product.wholesalePrice, locale)}</bdi>
           </> : null}
-          </p>
+        </p>
       </div>
     </article>
   );
