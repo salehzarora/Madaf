@@ -16,6 +16,7 @@ export function QuantityStepper({
   className,
   decreaseLabel = "−",
   increaseLabel = "+",
+  increaseDisabled = false,
 }: {
   value: number;
   onChange: (next: number) => void;
@@ -25,6 +26,8 @@ export function QuantityStepper({
   className?: string;
   decreaseLabel?: string;
   increaseLabel?: string;
+  /** Keep existing quantities removable when a product can no longer be added. */
+  increaseDisabled?: boolean;
 }) {
   const btn =
     size === "sm"
@@ -62,7 +65,7 @@ export function QuantityStepper({
       <button
         type="button"
         aria-label={increaseLabel}
-        disabled={value >= max}
+        disabled={increaseDisabled || value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
         className={cn(
           btn,

@@ -65,6 +65,7 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
         {quantity > 0 ? (
           <QuantityStepper
             value={quantity}
+            increaseDisabled={soldOut}
             onChange={(next) => setQuantity(product.id, next)}
             decreaseLabel={interpolate(dict.catalog.decreaseQuantity, { product: name })}
             increaseLabel={interpolate(dict.catalog.increaseQuantity, { product: name })}

@@ -115,6 +115,7 @@ export function CartView({
                   <QuantityStepper
                     size="sm"
                     value={item.quantity}
+                    increaseDisabled={product.availability === "outOfStock"}
                     onChange={(next) => setQuantity(item.productId, next)}
                   />
                   <button

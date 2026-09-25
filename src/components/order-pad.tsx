@@ -69,6 +69,7 @@ export function OrderPad({ locale, dict, headingId, onClose }: {
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                     <QuantityStepper
                       value={item.quantity}
+                      increaseDisabled={product.availability === "outOfStock"}
                       onChange={(next) => setQuantity(item.productId, next)}
                       decreaseLabel={interpolate(dict.catalog.decreaseQuantity, { product: name })}
                       increaseLabel={interpolate(dict.catalog.increaseQuantity, { product: name })}
