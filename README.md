@@ -5,6 +5,34 @@ Sales reps open the catalog on a tablet inside the shop; owners browse,
 pick package quantities and send a clean order request — instead of
 WhatsApp photo albums.
 
+## Current state
+
+Madaf supports Arabic, Hebrew and English with first-class RTL. The engineering
+baseline includes multi-tenant authorization, Phone OTP, idempotent orders,
+inventory reservation/restoration, audit timelines and M8 operational hardening.
+
+> **PRE-PILOT REHEARSAL — AUTHORIZED**
+>
+> **REAL CUSTOMER GO — BLOCKED PENDING SUPABASE UPGRADE AND HOSTED GO VERIFICATION**
+>
+> Synthetic rehearsal only: no real customer PII or commercial orders before
+> separate GO approval. Legal issuing remains OFF (`legal_effective=false`);
+> invoice drafts remain drafts, and payments are absent from the approved scope.
+
+The [Pilot runbook](docs/pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md) defines current
+operational authority, with the [recovery plan](docs/pilot/BACKUP_RESTORE_AND_RECOVERY.md)
+for backup/restore gates. This status does not assert backup/PITR readiness or
+hosted migration parity. Start coding work with [AGENTS.md](AGENTS.md); implemented
+behavior is defined by actual code and latest effective migrations.
+
+## Historical build milestones
+
+The M4–M7 summaries below are historical build history. Their phase/status claims,
+and the older M4A local-only setup restrictions and prototype-status wording later
+in this README, describe earlier milestones; they do not define today's platform
+capabilities or authorize hosted changes. Use the current authority above and
+scoped documentation before making changes.
+
 > **Phase M7C — staging deployment readiness (docs + CI + safe config).**
 > Adds a [staging deployment guide](docs/deployment/STAGING_DEPLOYMENT_M7C.md)
 > and [runbook](docs/deployment/RUNBOOK_STAGING.md) (Vercel + hosted Supabase

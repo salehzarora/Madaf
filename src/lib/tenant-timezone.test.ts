@@ -458,7 +458,9 @@ test("nonexistent local midnight: the day starts at the FIRST instant that exist
   const SPRING_AT_MIDNIGHT: Array<[zone: string, date: string, expected: string]> = [
     ["America/Santiago", "2025-09-07", "2025-09-07T04:00:00.000Z"],
     ["America/Havana", "2025-03-09", "2025-03-09T05:00:00.000Z"],
-    ["America/Asuncion", "2025-10-05", "2025-10-05T04:00:00.000Z"],
+    // Paraguay stayed at UTC-03 after this 2024 transition (IANA 2025a);
+    // 2025-10-05 no longer has a nonexistent midnight.
+    ["America/Asuncion", "2024-10-06", "2024-10-06T04:00:00.000Z"],
     ["Atlantic/Azores", "2025-03-30", "2025-03-30T01:00:00.000Z"],
     ["Asia/Beirut", "2026-03-29", "2026-03-28T22:00:00.000Z"],
   ];
