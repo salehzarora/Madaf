@@ -1,19 +1,35 @@
 # Future Backend Handoff
 
-For the coding/backend agent that connects Madaf to real infrastructure.
-Read PRODUCT_BRIEF.md and MVP_SCOPE.md first. **Do not redesign the UI** —
-everything here was built to be wired, not rebuilt.
+> **Current authority — historical handoff context below.**
+> This document preserves backend milestone and handoff history. Old “current”,
+> “next”, “not deployed” and “not provisioned” wording describes its milestone,
+> not the present operational state. Actual code and latest effective migrations
+> define implemented behavior. The [Pilot runbook](pilot/MONITORED-PILOT-LAUNCH-RUNBOOK.md)
+> defines current operational status, with the [recovery plan](pilot/BACKUP_RESTORE_AND_RECOVERY.md)
+> for backup/restore gates. Read [AGENTS.md](../AGENTS.md) and scoped current
+> product/specialist docs before changes; historical plans never override them.
+>
+> **PRE-PILOT REHEARSAL — AUTHORIZED**
+>
+> **REAL CUSTOMER GO — BLOCKED PENDING SUPABASE UPGRADE AND HOSTED GO VERIFICATION**
+>
+> Synthetic data only until separate real-customer GO approval. This banner does
+> not verify hosted migration parity or backup/PITR readiness.
 
-> **EXECUTION — M7D: supervised staging deploy (DOCS ONLY; not yet deployed).**
-> Adds **[docs/deployment/STAGING_EXECUTION_M7D.md](deployment/STAGING_EXECUTION_M7D.md)**
-> — the secret-free execution tracker for the supervised staging deploy. As of
-> this branch the hosted Supabase + Vercel staging environment is **NOT
-> provisioned**; every hosted step + the full smoke checklist is **PENDING
-> operator action** (recorded, never fabricated). Local baseline is green
+## Historical milestone record
+
+> **HISTORICAL M7D — supervised staging deploy planning (docs-only milestone).**
+> Added **[docs/deployment/STAGING_EXECUTION_M7D.md](deployment/STAGING_EXECUTION_M7D.md)**
+> — the secret-free execution tracker for the supervised staging deploy. At that
+> milestone, the hosted Supabase + Vercel staging environment was **not yet
+> provisioned**; hosted steps and the full smoke checklist were **pending
+> operator action**. That record does not establish today's hosted state.
+> The local baseline recorded for M7D was green
 > (Node 22, lint, build 216/216, audit 0; local `supabase db` checks unchanged
 > since M7C — Docker was offline this session). No secrets committed; legal/
 > payment boundary unchanged (`legal_effective` hard-false, all M6 flags off).
-> Execute §3–§9 of that log against a **staging** (never production) project.
+> The milestone proposed §3–§9 for staging; any new execution follows the current
+> Pilot runbook and explicit task approval.
 > Prior:
 > **STAGING — M7C: staging deployment readiness (DOCS + CI + safe config).**
 > Adds **[docs/deployment/STAGING_DEPLOYMENT_M7C.md](deployment/STAGING_DEPLOYMENT_M7C.md)**
