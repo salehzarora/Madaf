@@ -74,7 +74,7 @@ function mount(options: { locale?: Locale; initialCustomerId?: string; products?
       <CartProvider>
         <Probe />
         <nav aria-label="Test header"><CartLink locale={locale} label={dict.nav.cart} /></nav>
-        <CatalogView locale={locale} dict={dict} initialCustomerId={options.initialCustomerId} />
+        <CatalogView locale={locale} dict={dict} supplier={{ name: "Test supplier" }} initialCustomerId={options.initialCustomerId} />
       </CartProvider>
     </ShopDataProvider>,
   ));
@@ -104,6 +104,28 @@ function labelledButton(root: ParentNode, label: string) {
   const button = Array.from(root.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === label);
   assert.ok(button, `button labelled: ${label}`);
   return button;
+}
+function quantityButton(h: Harness, root: ParentNode, direction: "increase" | "decrease", productId: string) {
+  const product = products.find((p) => p.id === productId);
+  assert.ok(product);
+  return labelledButton(root, interpolate(
+    direction === "increase" ? h.dict.catalog.increaseQuantity : h.dict.catalog.decreaseQuantity,
+    { product: product.translations[h.locale].name },
+  ));
+}
+function manufacturerDisclosure(h: Harness) {
+  const details = h.container.querySelector("details");
+  assert.ok(details, "manufacturer disclosure");
+  const summary = details.querySelector("summary");
+  assert.ok(summary);
+  return { details, summary };
+}
+function openManufacturers(h: Harness) {
+  const { details, summary } = manufacturerDisclosure(h);
+  assert.equal(details.open, false, "secondary filters initially collapsed");
+  act(() => summary.click());
+  assert.equal(details.open, true);
+  return details;
 }
 function inputValue(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value")?.set;
@@ -139,7 +161,8 @@ function assertSummary(h: Harness, packages: number, subtotal: number) {
   assert.ok(orderPad(h).textContent?.includes(formatCurrency(subtotal, h.locale)), "order pad subtotal is synchronized");
   const badge = h.container.querySelector("nav a span[dir='ltr']");
   assert.equal(badge?.textContent ?? null, packages > 0 ? String(packages) : null, "header package badge is synchronized");
-  const mobileCart = Array.from(h.container.querySelectorAll("a")).find((a) => a.textContent?.trim() === h.dict.catalog.viewCart);
+  const mobileBar = h.container.querySelector(".catalog-cart-bar");
+  const mobileCart = Array.from(mobileBar?.querySelectorAll("a") ?? []).find((a) => a.textContent?.trim() === h.dict.catalog.viewCart);
   assert.equal(Boolean(mobileCart), packages > 0, "compact cart access follows the same cart");
   if (mobileCart) {
     assert.equal(mobileCart.getAttribute("href"), `/${h.locale}/cart`);
@@ -211,6 +234,28 @@ test("customer picker searches authorized reference rows, disables inactive shop
   assertSummary(h, 1, 36);
 });
 
+test("change-shop opens selection without clearing customer and Escape restores focus without cart mutation", () => {
+  localStorageSeed({ customerId: "shop-a", items: [{ productId: "juice", quantity: 2 }], submissionKey: SUBMISSION_KEY });
+  const h = mount();
+  const trigger = labelledButton(orderPad(h), `${h.dict.catalog.changeShop}: Shop A`);
+  click(trigger);
+  assert.equal(trigger.getAttribute("aria-expanded"), "true");
+  assert.equal(h.cart().customerId, "shop-a", "opening change is not clearing selection");
+  const popup = orderPad(h).querySelector("[role='dialog']");
+  assert.ok(popup);
+  assert.equal(trigger.getAttribute("aria-controls"), popup.id);
+  const searchInput = popup.querySelector("input");
+  assert.ok(searchInput);
+  assert.equal(document.activeElement, searchInput);
+  act(() => searchInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  assert.equal(orderPad(h).querySelector("[role='dialog']"), null);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(h.cart().customerId, "shop-a");
+  assert.equal(h.cart().submissionKey, SUBMISSION_KEY);
+  assertSummary(h, 2, 72);
+});
+
 test("search matches all product languages, SKU and manufacturer languages and reports no results", () => {
   const h = mount();
   for (const term of ["  zest JUICE  ", "عصير الليمون", "מיץ לימון", "SKU-JUICE", "العلامة ألف", "מותג אלף"]) {
@@ -229,6 +274,7 @@ test("category and multiple manufacturer filters combine and clear restores all 
   click(buttonWithText(h.container, "Drinks"));
   assert.deepEqual(names(h), ["Zest juice", "Mint tea"]);
   assert.equal(buttonWithText(h.container, "Drinks").getAttribute("aria-pressed"), "true");
+  openManufacturers(h);
   click(buttonWithText(h.container, "Beta brand"));
   assert.deepEqual(names(h), ["Mint tea"]);
   click(buttonWithText(h.container, "Alpha brand"));
@@ -258,22 +304,69 @@ test("price/name/default sorting changes displayed order without changing catalo
   assertSummary(h, 0, 0);
 });
 
+test("manufacturer disclosure exposes active count, independent reset and keyboard/outside dismissal", () => {
+  const h = mount();
+  const details = openManufacturers(h);
+  const { summary } = manufacturerDisclosure(h);
+  click(buttonWithText(details, "Beta brand"));
+  assert.deepEqual(names(h), ["Alpha beans", "Mint tea"]);
+  assert.equal(summary.querySelector("[dir='ltr']")?.textContent, "1");
+  click(buttonWithText(details, "Alpha brand"));
+  assert.equal(summary.querySelector("[dir='ltr']")?.textContent, "2");
+  assert.equal(buttonWithText(details, "Beta brand").getAttribute("aria-pressed"), "true");
+  act(() => details.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  assert.equal(details.open, false);
+  assert.equal(document.activeElement, summary, "Escape restores the disclosure trigger");
+  assert.equal(summary.querySelector("[dir='ltr']")?.textContent, "2", "closing the panel retains filters");
+  act(() => summary.click());
+  assert.equal(details.open, true);
+  act(() => h.container.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true })));
+  assert.equal(details.open, false, "outside pointer closes the disclosure");
+  click(buttonWithText(h.container, "Drinks"));
+  click(labelledButton(h.container, `${h.dict.common.clear}: ${h.dict.catalog.manufacturers}`));
+  assert.equal(summary.querySelector("[dir='ltr']"), null);
+  assert.deepEqual(names(h), ["Zest juice", "Mint tea"], "manufacturer reset preserves category selection");
+});
+
+for (const locale of ["ar", "he", "en"] as const) {
+  test(`${locale}: package and per-unit prices remain visible after add and quantity changes`, () => {
+    const h = mount({ locale });
+    const product = card(h, "juice");
+    function assertPrices() {
+      const paragraphs = Array.from(product.querySelectorAll("p"));
+      assert.ok(paragraphs.some((p) => p.querySelector("bdi")?.textContent === formatCurrency(36, locale) && p.textContent?.includes(h.dict.packaging.carton)), "one-package price remains its own bidi-safe value with package context");
+      assert.ok(paragraphs.some((p) => p.textContent?.includes(formatCurrency(3, locale)) && p.textContent.includes(h.dict.units.bottles)), "per-unit price remains visible with its unit");
+      assert.ok(product.textContent?.includes(packageLabel(products[0], h.dict)), "package description remains visible");
+    }
+    assertPrices();
+    click(labelledButton(product, h.dict.catalog.addToCart));
+    assertPrices();
+    click(quantityButton(h, product, "increase", "juice"));
+    assertPrices();
+    assert.ok(product.textContent?.includes(formatCurrency(72, locale)), "two-package line total is secondary information");
+    assertSummary(h, 2, 72);
+    click(quantityButton(h, product, "decrease", "juice"));
+    assertPrices();
+    assertSummary(h, 1, 36);
+  });
+}
+
 test("card and order-pad quantities, removal, subtotal and responsive cart access share one state", () => {
   const h = mount();
   click(labelledButton(card(h, "juice"), h.dict.catalog.addToCart));
   assertSummary(h, 1, 36);
-  click(labelledButton(card(h, "juice"), "+"));
+  click(quantityButton(h, card(h, "juice"), "increase", "juice"));
   assertSummary(h, 2, 72);
-  click(labelledButton(orderPad(h), "+"));
+  click(quantityButton(h, orderPad(h), "increase", "juice"));
   assertSummary(h, 3, 108);
-  click(labelledButton(orderPad(h), "−"));
+  click(quantityButton(h, orderPad(h), "decrease", "juice"));
   assertSummary(h, 2, 72);
   click(labelledButton(card(h, "beans"), h.dict.catalog.addToCart));
   assertSummary(h, 3, 90);
   assert.equal(h.cart().items.length, 2, "package count is distinct from line count");
   click(labelledButton(orderPad(h), h.dict.common.remove));
   assertSummary(h, 1, 18);
-  click(labelledButton(orderPad(h), "−"));
+  click(quantityButton(h, orderPad(h), "decrease", "beans"));
   assertSummary(h, 0, 0);
   assert.deepEqual(h.cart().items, []);
 });
@@ -301,7 +394,7 @@ test("product detail links do not contain cart buttons and quantity actions neve
   let navigations = 0;
   link.addEventListener("click", (event) => { event.preventDefault(); navigations += 1; });
   click(labelledButton(product, h.dict.catalog.addToCart));
-  click(labelledButton(product, "+"));
+  click(quantityButton(h, product, "increase", "juice"));
   assert.equal(navigations, 0);
   act(() => link.click());
   assert.equal(navigations, 1, "detail navigation remains a separate reachable action");

@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "../components/catalog-workspace.css";
+
+:root { --storefront-header-height: 56px; }
+@media (min-width: 640px) {
+  :root { --storefront-header-height: 64px; }
+}
 
 /*
  * Madaf / מדף — Design tokens ("Madaf Ledger", design/sitewide-visual-refresh)

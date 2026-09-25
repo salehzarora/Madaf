@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, ChevronDown, Search, Store, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Locale } from "@/i18n/config";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { dirFor, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
 import { useShopData } from "@/lib/shop-data-context";
@@ -28,7 +28,10 @@ export function CustomerPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const popupId = useId();
 
   const selected = customers.find((c) => c.id === customerId) ?? null;
 
@@ -59,17 +62,66 @@ export function CustomerPicker({
   }, [customers, query]);
 
   useEffect(() => {
+    if (!open) return;
+    const popup = popupRef.current;
+    if (!popup) return;
+
+    // The native top layer escapes clipped order panels while keeping this
+    // DOM-local control inside a containing cart-review dialog's focus scope.
+    // React owns dismissal so one Escape cannot close both picker and review.
+    function positionPopup() {
+      const trigger = triggerRef.current;
+      if (!trigger || !popup) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      // Fixed logical insets use the layout viewport, excluding its scrollbar.
+      const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewTop = viewport?.offsetTop ?? 0;
+      const viewLeft = viewport?.offsetLeft ?? 0;
+      const viewWidth = viewport?.width ?? layoutWidth;
+      const viewHeight = viewport?.height ?? window.innerHeight;
+      const width = Math.min(336, Math.max(0, viewWidth - 16));
+      const x = Math.max(viewLeft + 8, Math.min(
+        dirFor(locale) === "rtl" ? rect.right - width : rect.left,
+        viewLeft + viewWidth - width - 8,
+      ));
+      const below = Math.max(0, viewTop + viewHeight - rect.bottom - 14);
+      const above = Math.max(0, rect.top - viewTop - 14);
+      const opensBelow = below >= 240 || below >= above;
+      const maxHeight = Math.min(440, opensBelow ? below : above);
+      popup.style.width = `${width}px`;
+      popup.style.maxHeight = `${maxHeight}px`;
+      popup.style.insetInlineStart = `${dirFor(locale) === "rtl" ? layoutWidth - x - width : x}px`;
+      popup.style.insetBlockStart = opensBelow ? `${Math.max(viewTop + 8, rect.bottom + 6)}px` : "auto";
+      popup.style.insetBlockEnd = opensBelow ? "auto" : `${Math.max(8, window.innerHeight - rect.top + 6)}px`;
+    }
+
+    positionPopup();
+    if (typeof popup.showPopover === "function") popup.showPopover();
+    else popup.style.display = "flex"; // Older browsers/test DOM: no fabricated native API.
+    searchRef.current?.focus();
+
     function onPointerDown(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+    window.addEventListener("resize", positionPopup);
+    window.addEventListener("scroll", positionPopup, { capture: true, passive: true });
+    window.visualViewport?.addEventListener("resize", positionPopup);
+    window.visualViewport?.addEventListener("scroll", positionPopup);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("resize", positionPopup);
+      window.removeEventListener("scroll", positionPopup, true);
+      window.visualViewport?.removeEventListener("resize", positionPopup);
+      window.visualViewport?.removeEventListener("scroll", positionPopup);
+    };
+  }, [open, locale]);
 
-  // Focus the search box when the menu opens (ref call only — no state in effect).
-  useEffect(() => {
-    if (open) searchRef.current?.focus();
-  }, [open]);
+  function close() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
 
   // Reset the query as we open, from the event handler (not an effect).
   function toggle() {
@@ -78,12 +130,31 @@ export function CustomerPicker({
   }
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div
+      ref={rootRef}
+      className={cn("relative min-w-0", className)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          // Consume this Escape before the containing native dialog handles it.
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }
+      }}
+      onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
       <button
+        ref={triggerRef}
         type="button"
+        aria-label={selected ? `${dict.catalog.changeShop}: ${selected.name}` : dict.catalog.selectShop}
+        aria-expanded={open}
+        aria-controls={popupId}
+        aria-haspopup="dialog"
         onClick={toggle}
         className={cn(
-          "flex h-11 w-full items-center gap-2 rounded-field border px-3 text-sm transition-colors sm:w-auto",
+          "flex h-11 w-full min-w-0 items-center gap-2 rounded-field border px-3 text-start text-sm transition-colors",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
           selected
             ? "border-brand-300 bg-brand-50 text-brand-900"
@@ -91,7 +162,7 @@ export function CustomerPicker({
         )}
       >
         <Store className="size-4 shrink-0" aria-hidden />
-        <span className="truncate font-medium">
+        <span className="min-w-0 truncate font-medium">
           {!hydrated
             ? "…"
             : selected
@@ -102,8 +173,17 @@ export function CustomerPicker({
       </button>
 
       {open ? (
-        <div className="absolute start-0 top-full z-50 mt-2 w-full min-w-72 overflow-hidden rounded-card border border-line bg-surface shadow-float sm:w-80">
-          <div className="border-b border-line-hair p-2">
+        <div
+          ref={popupRef}
+          id={popupId}
+          popover="manual"
+          role="dialog"
+          aria-label={dict.catalog.selectShop}
+          dir={dirFor(locale)}
+          onToggle={(event) => { if (event.newState === "closed") setOpen(false); }}
+          className="fixed inset-auto z-50 m-0 flex max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-card border border-line bg-surface text-ink shadow-float"
+        >
+          <div className="shrink-0 border-b border-line-hair p-2">
             <div className="relative">
               <Search
                 className="pointer-events-none absolute inset-y-0 start-2.5 my-auto size-4 text-ink-muted"
@@ -116,11 +196,11 @@ export function CustomerPicker({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={dict.catalog.searchShops}
                 aria-label={dict.catalog.searchShops}
-                className="h-10 w-full rounded-field border border-line-strong bg-surface ps-9 pe-3 text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:border-brand-400 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand-600"
+                className="h-11 w-full rounded-field border border-line-strong bg-surface ps-9 pe-3 text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:border-brand-600 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand-600"
               />
             </div>
           </div>
-          <ul className="max-h-72 overflow-y-auto py-1">
+          <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
             {filtered.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-ink-muted">
                 {dict.catalog.noShopsFound}
@@ -135,7 +215,7 @@ export function CustomerPicker({
                     disabled={inactive}
                     onClick={() => {
                       setCustomer(customer.id);
-                      setOpen(false);
+                      close();
                     }}
                     className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-warm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
                   >
@@ -172,9 +252,9 @@ export function CustomerPicker({
               type="button"
               onClick={() => {
                 setCustomer(null);
-                setOpen(false);
+                close();
               }}
-              className="flex w-full items-center gap-2 border-t border-line-hair px-4 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-warm hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+              className="flex min-h-11 w-full shrink-0 items-center gap-2 border-t border-line-hair px-4 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-warm hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
             >
               <X className="size-4" aria-hidden />
               {dict.common.clear}

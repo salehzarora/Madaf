@@ -4,7 +4,7 @@ import { CatalogView } from "@/components/catalog-view";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
-import { getDataMode } from "@/lib/data";
+import { getDataMode, getSupplier } from "@/lib/data";
 
 /**
  * Customer/sales catalog. Supports the admin deep-link
@@ -44,7 +44,16 @@ export default async function CatalogPage({
     }
   }
 
+  // Keep this read AFTER the private-catalog guard. Only display identity crosses
+  // the client boundary, never the supplier's legal, tax or configuration data.
+  const supplier = await getSupplier();
+
   return (
-    <CatalogView locale={locale} dict={dict} initialCustomerId={customer} />
+    <CatalogView
+      locale={locale}
+      dict={dict}
+      initialCustomerId={customer}
+      supplier={{ name: supplier.name[locale], logoUrl: supplier.logoUrl }}
+    />
   );
 }

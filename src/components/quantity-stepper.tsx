@@ -14,6 +14,8 @@ export function QuantityStepper({
   max = 999,
   size = "md",
   className,
+  decreaseLabel = "−",
+  increaseLabel = "+",
 }: {
   value: number;
   onChange: (next: number) => void;
@@ -21,6 +23,8 @@ export function QuantityStepper({
   max?: number;
   size?: "sm" | "md";
   className?: string;
+  decreaseLabel?: string;
+  increaseLabel?: string;
 }) {
   const btn =
     size === "sm"
@@ -36,7 +40,7 @@ export function QuantityStepper({
     >
       <button
         type="button"
-        aria-label="−"
+        aria-label={decreaseLabel}
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
         className={cn(
@@ -44,7 +48,7 @@ export function QuantityStepper({
           "flex items-center justify-center rounded-s-field text-ink-soft transition-colors hover:bg-surface-sunken disabled:opacity-35",
         )}
       >
-        <Minus className="size-4" />
+        <Minus className="size-4" aria-hidden />
       </button>
       <span
         className={cn(
@@ -57,7 +61,7 @@ export function QuantityStepper({
       </span>
       <button
         type="button"
-        aria-label="+"
+        aria-label={increaseLabel}
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
         className={cn(
@@ -65,7 +69,7 @@ export function QuantityStepper({
           "flex items-center justify-center rounded-e-field text-ink-soft transition-colors hover:bg-surface-sunken disabled:opacity-35",
         )}
       >
-        <Plus className="size-4" />
+        <Plus className="size-4" aria-hidden />
       </button>
     </div>
   );

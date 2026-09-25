@@ -117,6 +117,12 @@ export interface Dictionary {
   };
   catalog: {
     title: string;
+    heroTitle: string;
+    heroBody: string;
+    /** Accessible quantity control labels; `{product}` is the product name. */
+    increaseQuantity: string;
+    decreaseQuantity: string;
+    lineTotal: string;
     subtitle: string;
     searchPlaceholder: string;
     categories: string;
@@ -140,7 +146,7 @@ export interface Dictionary {
     inCart: string;
     viewCart: string;
     expiryTracked: string;
-    /** Catalog v2 command-bar sort control. */
+    /** Catalog order preserves the data source order; no popularity ranking. */
     sort: string;
     sortFeatured: string;
     sortPriceAsc: string;
