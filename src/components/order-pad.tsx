@@ -57,17 +57,18 @@ export function OrderPad({ locale, dict, headingId, onClose }: {
               return (
                 <li key={item.productId} className="catalog-order-line">
                   <div className="flex items-start gap-2.5">
-                    <ProductImage product={product} presentation="catalog" showSizeTag={false} className="size-14 shrink-0 rounded-field" />
+                    <ProductImage product={product} presentation="catalog" showSizeTag={false} className="catalog-order-thumbnail size-14 shrink-0 rounded-field" />
                     <div className="min-w-0 flex-1 pt-1">
                       <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-ink" title={name}>{name}</p>
                       <p className="mt-1 text-[11px] leading-snug text-ink-soft">{packageLabel(product, dict)}</p>
                     </div>
-                    <button type="button" onClick={() => removeItem(item.productId)} aria-label={dict.common.remove} title={`${dict.common.remove}: ${name}`} className="flex size-11 shrink-0 items-center justify-center rounded-field text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-brand-600">
+                    <button type="button" onClick={() => removeItem(item.productId)} aria-label={dict.common.remove} title={`${dict.common.remove}: ${name}`} className="catalog-order-remove flex size-11 shrink-0 items-center justify-center rounded-field text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-brand-600">
                       <Trash2 className="size-4" aria-hidden />
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                     <QuantityStepper
+                      className="catalog-order-stepper"
                       value={item.quantity}
                       increaseDisabled={product.availability === "outOfStock"}
                       onChange={(next) => setQuantity(item.productId, next)}
