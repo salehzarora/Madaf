@@ -6,6 +6,7 @@
 @import "../components/storefront-product.css";
 @import "../components/storefront-cart.css";
 @import "../components/storefront-checkout.css";
+@import "../components/storefront-landing.css";
 
 :root { --storefront-header-height: 56px; }
 @media (min-width: 640px) {

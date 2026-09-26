@@ -50,31 +50,29 @@ export async function MiniCatalogPreview({
   const subtotal = lines.reduce((sum, line) => sum + line.total, 0);
 
   return (
-    <div className="relative mx-auto w-full max-w-md" aria-hidden>
+    <div className="storefront-landing-preview" aria-hidden>
       {/* Product mini-grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="storefront-landing-preview-grid">
         {previewProducts.map((product, index) => {
           // Optional for ProductImage — never crash on a missing category (M8A).
           const category = categoryById.get(product.categoryId);
           return (
             <div
-              key={product.id}
-              className={
-                "overflow-hidden rounded-card border border-line bg-surface shadow-card " +
-                (index % 2 === 1 ? "translate-y-4" : "")
-              }
+              key={`${index}-${product.id}`}
+              className="storefront-landing-preview-product"
             >
               <ProductImage
                 product={product}
                 category={category}
-                className="aspect-[4/3] w-full"
-                iconClassName="text-3xl"
+                presentation="storefront"
+                className="storefront-landing-preview-media"
+                showSizeTag={false}
               />
-              <div className="p-2.5">
-                <p className="line-clamp-1 text-xs font-bold text-ink">
+              <div className="storefront-landing-preview-caption">
+                <p className="line-clamp-1">
                   {productName(product, locale)}
                 </p>
-                <p className="mt-0.5 text-sm font-extrabold text-ink">
+                <p className="storefront-landing-preview-price">
                   {formatCurrency(product.wholesalePrice, locale)}
                 </p>
               </div>
@@ -84,38 +82,37 @@ export async function MiniCatalogPreview({
       </div>
 
       {/* Floating order card */}
-      <div className="absolute -bottom-6 -start-2 w-64 rounded-card border border-line bg-surface p-3.5 shadow-float sm:-start-8">
-        <p className="flex items-center gap-1.5 text-xs font-bold text-ink">
-          <ShoppingCart className="size-3.5 text-brand-600" aria-hidden />
+      <div className="storefront-landing-preview-order">
+        <p className="storefront-landing-preview-order-heading">
+          <ShoppingCart className="size-4" aria-hidden />
           {dict.cart.orderSummary}
         </p>
-        <ul className="mt-2 flex flex-col gap-1">
-          {lines.map(({ product, qty, total }) => (
+        <ul>
+          {lines.map(({ product, qty, total }, index) => (
             <li
-              key={product.id}
-              className="flex items-baseline justify-between gap-2 text-[11px]"
+              key={`${index}-${product.id}`}
             >
-              <span className="min-w-0 flex-1 truncate text-ink-soft">
+              <span className="storefront-landing-preview-line-name">
                 {productName(product, locale)}
               </span>
-              <span className="shrink-0 tabular-nums text-ink-muted">
+              <span className="storefront-landing-preview-qty">
                 ×{qty}
               </span>
-              <span className="w-14 shrink-0 text-end font-semibold tabular-nums text-ink">
+              <span className="storefront-landing-preview-line-total">
                 {formatCurrency(total, locale)}
               </span>
             </li>
           ))}
         </ul>
-        <div className="mt-2 flex items-baseline justify-between border-t border-line pt-2">
-          <span className="text-xs font-medium text-ink-soft">
+        <div className="storefront-landing-preview-subtotal">
+          <span>
             {dict.common.subtotal}
           </span>
-          <span className="text-base font-extrabold tabular-nums text-ink">
+          <strong>
             {formatCurrency(subtotal, locale)}
-          </span>
+          </strong>
         </div>
-        <div className="mt-2 flex h-9 items-center justify-center gap-1.5 rounded-field bg-brand-600 text-xs font-bold text-white">
+        <div className="storefront-landing-preview-confirmation">
           <Check className="size-3.5" aria-hidden />
           {dict.checkout.sendOrder}
         </div>
