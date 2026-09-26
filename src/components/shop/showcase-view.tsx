@@ -180,22 +180,20 @@ export function ShowcaseView({
   // ── Success ──────────────────────────────────────────────────────────────
   if (publicRef) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-4 py-16 text-center">
-        <CheckCircle2 className="size-14 text-success" aria-hidden />
-        <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-ink">
-          {t.successTitle}
-        </h1>
-        <p className="mt-2 text-sm text-ink-soft">{t.successBody}</p>
-        <div className="mt-5 rounded-card border border-line bg-surface-warm px-5 py-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
-            {t.orderNumberLabel}
-          </p>
-          <p className="mt-0.5 font-mono text-lg font-bold text-ink" dir="ltr">
-            {publicRef}
-          </p>
+      <main className="storefront-theme showcase-store public-store-terminal showcase-success">
+        <div className="public-store-terminal-panel">
+          <CheckCircle2 className="public-store-success-icon" aria-hidden />
+          <h1>{t.successTitle}</h1>
+          <p className="public-store-terminal-body">{t.successBody}</p>
+          <div className="public-store-reference">
+            <p>{t.orderNumberLabel}</p>
+            <p className="public-store-reference-value" dir="ltr">
+              {publicRef}
+            </p>
+          </div>
+          <p className="public-store-terminal-hint">{t.refHint}</p>
+          <p className="public-store-disclaimer">{t.disclaimer}</p>
         </div>
-        <p className="mt-2 max-w-sm text-xs text-ink-soft">{t.refHint}</p>
-        <p className="mt-6 max-w-sm text-xs text-ink-soft">{t.disclaimer}</p>
       </main>
     );
   }
@@ -204,76 +202,76 @@ export function ShowcaseView({
   if (step === "checkout") {
     const su = dict.access.signup;
     return (
-      <div className="min-h-dvh bg-surface-sunken">
-        <header className="border-b border-line bg-surface-warm">
-          <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-4">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
+      <div className="storefront-theme showcase-store showcase-checkout">
+        <header className="public-store-header">
+          <div className="public-store-header-inner">
+            <span className="showcase-checkout-icon">
               <Store className="size-5" aria-hidden />
             </span>
-            <h1 className="min-w-0 truncate text-lg font-bold tracking-tight text-ink">
+            <h1 className="showcase-checkout-title">
               {t.checkoutTitle}
             </h1>
-            <div className="ms-auto">
-              <LocaleSwitcher current={locale} />
+            <div className="public-store-locale">
+              <LocaleSwitcher current={locale} label={dict.common.language} variant="compact" />
             </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-lg px-4 py-6">
-          <p className="rounded-field bg-info-soft px-4 py-3 text-sm text-info">
+        <main className="showcase-checkout-main">
+          <p className="showcase-checkout-intro">
             {t.checkoutIntro}
           </p>
 
           {/* Order summary — read-only recap of the cart */}
-          <div className="mt-5 rounded-card border border-line bg-surface">
-            <div className="border-b border-line px-4 py-2.5">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+          <div className="showcase-summary">
+            <div className="showcase-summary-header">
+              <p>
                 <ShoppingCart className="size-3.5" aria-hidden />
                 {dict.cart.title} · {formatNumber(lineCount, locale)}
               </p>
             </div>
-            <ul className="divide-y divide-line">
+            <ul>
               {[...cart.entries()].map(([productId, qty]) => {
                 const product = productById.get(productId);
                 if (!product) return null;
                 return (
                   <li
                     key={productId}
-                    className="flex items-center gap-3 px-4 py-2.5"
+                    className="showcase-summary-line"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                    <span className="showcase-summary-name">
                       {productName(product, locale)}
                     </span>
                     <span
-                      className="shrink-0 text-xs tabular-nums text-ink-muted"
+                      className="showcase-summary-quantity"
                       dir="ltr"
                     >
                       ×{formatNumber(qty, locale)}
                     </span>
-                    <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                    <span className="showcase-summary-price" dir="ltr">
                       {formatCurrency(qty * product.wholesalePrice, locale)}
                     </span>
                   </li>
                 );
               })}
             </ul>
-            <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
-              <span className="text-sm font-semibold text-ink">
+            <div className="showcase-summary-total">
+              <span>
                 {t.estimatedTotal}
               </span>
-              <span className="text-base font-extrabold tabular-nums text-ink">
+              <span dir="ltr">
                 {formatCurrency(estimate, locale)}
               </span>
             </div>
           </div>
-          <p className="mt-1.5 text-xs text-ink-soft">{t.vatNote}</p>
+          <p className="showcase-vat-note">{t.vatNote}</p>
 
-          <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-4">
+          <form onSubmit={onSubmit} className="showcase-guest-form">
             <div>
               <Label htmlFor="sc-name">{su.storeName}</Label>
               <Input id="sc-name" name="name" required maxLength={200} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="showcase-field-grid">
               <div>
                 <Label htmlFor="sc-contact">
                   {su.contactName} · {dict.common.optional}
@@ -324,12 +322,12 @@ export function ShowcaseView({
               />
             </div>
 
-            <p className="text-xs text-ink-soft">{t.disclaimer}</p>
+            <p className="showcase-form-disclaimer">{t.disclaimer}</p>
 
             {error ? (
               <p
                 role="alert"
-                className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+                className="public-store-error"
               >
                 {t.error}
               </p>
@@ -337,7 +335,7 @@ export function ShowcaseView({
             {prepFailed ? (
               <p
                 role="alert"
-                className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
+                className="public-store-error"
               >
                 {t.prepError}
               </p>
@@ -345,7 +343,7 @@ export function ShowcaseView({
             {conflict ? (
               <div
                 role="alert"
-                className="flex flex-col gap-2 rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-accent-deep"
+                className="public-store-warning showcase-conflict"
               >
                 <span>{t.conflictError}</span>
                 <Button
@@ -353,19 +351,19 @@ export function ShowcaseView({
                   variant="outline"
                   size="sm"
                   onClick={startNewAttempt}
-                  className="self-start"
+                  className="public-store-new-attempt"
                 >
                   {t.conflictRetry}
                 </Button>
               </div>
             ) : null}
 
-            <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <div className="showcase-form-actions">
               <Button
                 type="submit"
                 size="lg"
                 disabled={pending || conflict}
-                className="sm:flex-1"
+                className="showcase-submit"
               >
                 <ShoppingCart className="size-5" aria-hidden />
                 {pending ? t.submitting : t.submit}
@@ -376,6 +374,7 @@ export function ShowcaseView({
                 size="lg"
                 disabled={pending}
                 onClick={() => setStep("browse")}
+                className="showcase-back"
               >
                 {t.backToProducts}
               </Button>
@@ -388,39 +387,40 @@ export function ShowcaseView({
 
   // ── Browse ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-dvh bg-surface-sunken pb-24">
-      <header className="border-b border-line bg-surface-warm">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+    <div className="storefront-theme showcase-store">
+      <header className="public-store-header">
+        <div className="public-store-header-inner">
           {catalog.tenantLogoUrl ? (
             // Supplier business logo (M8E.1) — signed URL; graceful fallback.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={catalog.tenantLogoUrl}
               alt=""
-              className="size-10 shrink-0 rounded-field border border-line bg-surface object-contain"
+              className="public-store-supplier-logo"
             />
           ) : null}
-          <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-xs font-medium text-ink-muted">
+          <div className="public-store-supplier">
+            <p className="showcase-browse-label">
               <Store className="size-3.5" aria-hidden />
               {t.browseOrder}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight text-ink">
+            <h1>
               {tenantName}
             </h1>
           </div>
-          <div className="ms-auto">
-            <LocaleSwitcher current={locale} />
+          <div className="public-store-locale">
+            <LocaleSwitcher current={locale} label={dict.common.language} variant="compact" />
           </div>
         </div>
-        <div className="mx-auto max-w-5xl px-4 pb-3 sm:px-6">
-          <p className="text-sm text-ink-soft">{t.intro}</p>
+        <div className="showcase-intro-wrap">
+          <p>{t.intro}</p>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6">
+      <main className="public-store-main">
         {catalog.products.length > 0 ? (
           <CatalogFilterBar
+            className="public-store-filter-bar"
             locale={locale}
             dict={dict}
             categories={catalog.categories}
@@ -432,15 +432,16 @@ export function ShowcaseView({
         ) : null}
 
         {catalog.products.length === 0 ? (
-          <EmptyState icon={<PackageSearch />} title={t.empty} />
+          <EmptyState className="public-store-empty" icon={<PackageSearch />} title={t.empty} />
         ) : visible.length === 0 ? (
           <EmptyState
+            className="public-store-empty"
             icon={<PackageSearch />}
             title={dict.catalog.noResults}
             hint={dict.catalog.noResultsHint}
           />
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="public-store-grid">
             {visible.map((product) => {
               const qty = cart.get(product.id) ?? 0;
               const soldOut = product.availability === "outOfStock";
@@ -451,51 +452,49 @@ export function ShowcaseView({
                 <div
                   key={product.id}
                   className={cn(
-                    "flex flex-col overflow-hidden rounded-card border bg-surface shadow-card transition-all",
-                    qty > 0
-                      ? "border-brand-500 ring-1 ring-brand-300"
-                      : "border-line",
+                    "public-store-product",
+                    qty > 0 && "public-store-product-selected",
                   )}
                 >
                   <ProductImage
                     product={product}
                     category={category}
-                    className="aspect-[5/4] w-full sm:aspect-[4/3]"
+                    presentation="storefront"
+                    className="public-store-product-media"
                   />
-                  <div className="flex flex-1 flex-col gap-0.5 px-3 pt-2.5">
-                    <h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-ink">
+                  <div className="public-store-product-copy">
+                    <h3>
                       {productName(product, locale)}
                     </h3>
                     {manufacturer ? (
-                      <p className="truncate text-[11px] font-semibold uppercase tracking-[0.04em] text-brand-700">
+                      <p className="public-store-product-brand">
                         {manufacturer.name[locale]}
                       </p>
                     ) : null}
-                    <p className="text-xs text-ink-muted">
+                    <p className="public-store-product-package">
                       {packageLabel(product, dict)}
                     </p>
-                    <p className="mt-1.5 text-xl font-extrabold tracking-tight text-ink">
+                    <p className="public-store-product-price" dir="ltr">
                       {formatCurrency(product.wholesalePrice, locale)}
                     </p>
                   </div>
-                  <div className="px-3 pb-3 pt-2">
+                  <div className="public-store-product-action">
+                    {soldOut && qty > 0 ? (
+                      <p className="public-store-sold-out">{dict.availability.outOfStock}</p>
+                    ) : null}
                     {qty > 0 ? (
                       <QuantityStepper
                         value={qty}
+                        increaseDisabled={soldOut}
                         onChange={(next) => setQty(product.id, next)}
-                        className="w-full justify-between border-brand-500 bg-brand-50"
+                        className="public-store-quantity"
                       />
                     ) : (
                       <button
                         type="button"
                         onClick={() => setQty(product.id, 1)}
                         disabled={soldOut}
-                        className={cn(
-                          "flex h-11 w-full items-center justify-center gap-1.5 rounded-field text-sm font-bold transition-all",
-                          soldOut
-                            ? "cursor-not-allowed bg-surface-sunken text-ink-muted"
-                            : "bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[0.98]",
-                        )}
+                        className="public-store-add"
                       >
                         {soldOut ? (
                           dict.availability.outOfStock
@@ -517,18 +516,18 @@ export function ShowcaseView({
 
       {/* Sticky order bar — proceed to store details */}
       {lineCount > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
-            <div className="min-w-0">
-              <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+        <div className="public-store-order-bar">
+          <div className="public-store-order-inner">
+            <div className="public-store-order-summary">
+              <p className="public-store-line-count">
                 <ShoppingCart className="size-3.5" aria-hidden />
                 {dict.cart.title} · {formatNumber(lineCount, locale)}
               </p>
-              <p className="text-lg font-extrabold tabular-nums text-ink">
+              <p className="public-store-estimate" dir="ltr">
                 {formatCurrency(estimate, locale)}
               </p>
             </div>
-            <Button size="lg" onClick={() => setStep("checkout")} className="ms-auto">
+            <Button size="lg" onClick={() => setStep("checkout")} className="public-store-submit showcase-proceed">
               {t.reviewOrder}
               <ArrowRight className="size-5 rtl:-scale-x-100" aria-hidden />
             </Button>

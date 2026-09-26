@@ -29,11 +29,14 @@ export function ProductImage({
   iconClassName?: string;
   /** The unit-size shelf tag — turn off for tiny thumbnails. */
   showSizeTag?: boolean;
-  /** Card-only styling is separate from the existing hero/cart presentation. */
-  presentation?: "default" | "catalog" | "catalog-card";
+  /** Shared V3 art; caller classes own geometry. catalog-card is its existing
+   * compatibility alias. Default and legacy catalog consumers stay separate. */
+  presentation?: "default" | "catalog" | "catalog-card" | "storefront";
 }) {
   const [broken, setBroken] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const isStorefront = presentation === "storefront" || presentation === "catalog-card";
+  const mediaPrefix = presentation === "catalog-card" ? "catalog-card" : "storefront";
 
   // Media error events don't bubble and aren't replayed by React — an image
   // that failed BEFORE hydration never fires onError. Detect it on mount:
@@ -47,7 +50,7 @@ export function ProductImage({
     showSizeTag && product.unitSize ? (
       <span
         dir="ltr"
-        className={presentation === "catalog-card" ? "catalog-card-media-size" : presentation === "catalog"
+        className={isStorefront ? `${mediaPrefix}-media-size` : presentation === "catalog"
           ? "catalog-media-size"
           : "absolute bottom-2 end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[11px] font-semibold text-background"}
       >
@@ -62,7 +65,7 @@ export function ProductImage({
         aria-hidden
         className={cn(
           "relative overflow-hidden",
-          presentation === "catalog-card" ? "catalog-card-media catalog-card-media--photo" : presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
+          isStorefront ? `${mediaPrefix}-media ${mediaPrefix}-media--photo` : presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
           className,
         )}
       >
@@ -74,19 +77,19 @@ export function ProductImage({
           alt=""
           loading="lazy"
           onError={() => setBroken(true)}
-          className={presentation === "catalog-card" ? "catalog-card-media-photo" : presentation === "catalog" ? "catalog-media-photo" : "size-full object-cover"}
+          className={isStorefront ? `${mediaPrefix}-media-photo` : presentation === "catalog" ? "catalog-media-photo" : "size-full object-cover"}
         />
         {sizeTag}
       </div>
     );
   }
 
-  if (presentation === "catalog-card") {
+  if (isStorefront) {
     return (
-      <div aria-hidden className={cn("catalog-card-media catalog-card-media--placeholder", className)}>
-        <span className="catalog-card-placeholder">
-          <LogoMark className="catalog-card-placeholder-brand" />
-          <Package className={cn("catalog-card-placeholder-glyph", iconClassName)} strokeWidth={1.25} aria-hidden />
+      <div aria-hidden className={cn(`${mediaPrefix}-media ${mediaPrefix}-media--placeholder`, className)}>
+        <span className={`${mediaPrefix}-placeholder`}>
+          <LogoMark className={`${mediaPrefix}-placeholder-brand`} />
+          <Package className={cn(`${mediaPrefix}-placeholder-glyph`, iconClassName)} strokeWidth={1.25} aria-hidden />
         </span>
         {sizeTag}
       </div>

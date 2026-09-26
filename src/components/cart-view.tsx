@@ -3,12 +3,9 @@
 import { ArrowRight, ShoppingCart, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { CustomerPicker } from "@/components/customer-picker";
-import { EmptyState } from "@/components/empty-state";
 import { ProductImage } from "@/components/product-image";
 import { QuantityStepper } from "@/components/quantity-stepper";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label, Textarea } from "@/components/ui/input";
-import { ShelfRule } from "@/components/ui/shelf-rule";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
@@ -30,7 +27,7 @@ export function CartView({
 
   if (!hydrated) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-4 py-16 text-center text-sm text-ink-muted sm:px-6">
+      <div className="storefront-cart-page storefront-cart-loading">
         …
       </div>
     );
@@ -38,162 +35,156 @@ export function CartView({
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-        <div className="mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+      <div className="storefront-cart-page storefront-cart-page--empty">
+        <header className="storefront-cart-heading">
+          <p>
             {dict.nav.cart}
           </p>
-          <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+          <h1>
             {dict.cart.title}
           </h1>
-          <ShelfRule className="mt-4" />
+        </header>
+        <div className="storefront-cart-empty">
+          <div className="storefront-cart-empty-art" aria-hidden><ShoppingCart strokeWidth={1.5} /></div>
+          <h2>{dict.cart.empty}</h2>
+          <p>{dict.cart.emptyHint}</p>
+          <Link href={`/${locale}/catalog`} className="storefront-cart-primary">
+            {dict.cart.browseCatalog}
+          </Link>
         </div>
-        <EmptyState
-          icon={<ShoppingCart />}
-          title={dict.cart.empty}
-          hint={dict.cart.emptyHint}
-          action={
-            <Link
-              href={`/${locale}/catalog`}
-              className="inline-flex h-11 items-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-            >
-              {dict.cart.browseCatalog}
-            </Link>
-          }
-        />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+    <div className="storefront-cart-page">
+      <header className="storefront-cart-heading">
+        <p>
           {dict.nav.cart}
         </p>
-        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+        <h1>
           {dict.cart.title}
         </h1>
-        <ShelfRule className="mt-4" />
-      </div>
+      </header>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Items — ledger line rows */}
-        <Card className="divide-y divide-line-hair">
+      {/* Zero-minimum tracks prevent item min-content width expanding the grid. */}
+      <div className="storefront-cart-layout">
+        <div className="storefront-cart-items">
           {items.map((item) => {
             const product = productById.get(item.productId);
             if (!product) return null;
             // Optional for ProductImage — never crash on a missing category (M8A).
             const category = categoryById.get(product.categoryId);
             return (
-              <div key={item.productId} className="flex items-center gap-4 p-4">
-                <ProductImage
-                  product={product}
-                  category={category}
-                  presentation="catalog"
-                  className="size-20 shrink-0 rounded-field"
-                />
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/${locale}/product/${product.id}`}
-                    className="line-clamp-2 text-sm font-semibold text-ink transition-colors hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-                  >
-                    {productName(product, locale)}
-                  </Link>
-                  <p className="mt-0.5 text-xs text-ink-soft">
-                    {packageLabel(product, dict)}
-                  </p>
-                  <p className="mt-1 text-sm font-bold tabular-nums text-ink">
-                    {formatCurrency(product.wholesalePrice * item.quantity, locale)}
-                    <span className="ms-1.5 text-xs font-normal text-ink-muted">
+              <article key={item.productId} className="storefront-cart-line">
+                <div className="storefront-cart-line-product">
+                  <ProductImage
+                    product={product}
+                    category={category}
+                    presentation="storefront"
+                    showSizeTag={false}
+                    className="storefront-cart-thumbnail"
+                  />
+                  <div className="storefront-cart-line-copy">
+                    <Link
+                      href={`/${locale}/product/${product.id}`}
+                      className="storefront-cart-product-link"
+                      title={productName(product, locale)}
+                    >
+                      {productName(product, locale)}
+                    </Link>
+                    <p className="storefront-cart-package">
+                      {packageLabel(product, dict)}
+                    </p>
+                  </div>
+                </div>
+                <div className="storefront-cart-line-footer">
+                  <div className="storefront-cart-line-price">
+                    <bdi dir="ltr">{formatCurrency(product.wholesalePrice * item.quantity, locale)}</bdi>
+                    <span><bdi dir="ltr">
                       ({formatCurrency(product.wholesalePrice, locale)} ×{" "}
                       {item.quantity})
-                    </span>
-                  </p>
+                    </bdi></span>
+                  </div>
+                  <div className="storefront-cart-line-controls">
+                    <QuantityStepper
+                      className="storefront-cart-stepper"
+                      value={item.quantity}
+                      increaseDisabled={product.availability === "outOfStock"}
+                      onChange={(next) => setQuantity(item.productId, next)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.productId)}
+                      className="storefront-cart-remove"
+                      aria-label={`${dict.common.remove}: ${productName(product, locale)}`}
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                      <span className="sr-only">{dict.common.remove}</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <QuantityStepper
-                    size="sm"
-                    value={item.quantity}
-                    increaseDisabled={product.availability === "outOfStock"}
-                    onChange={(next) => setQuantity(item.productId, next)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.productId)}
-                    className="inline-flex items-center gap-1 rounded-field text-xs text-ink-soft transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    {dict.common.remove}
-                  </button>
-                </div>
-              </div>
+              </article>
             );
           })}
-        </Card>
+        </div>
 
         {/* Side column: shop, notes, summary */}
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{dict.cart.shopSection}</CardTitle>
-              <p className="text-xs text-ink-soft">{dict.cart.shopHint}</p>
-            </CardHeader>
-            <CardContent className="pt-3">
-              <CustomerPicker locale={locale} dict={dict} className="w-full" />
-            </CardContent>
-          </Card>
+        <div className="storefront-cart-side">
+          <section className="storefront-cart-panel storefront-cart-customer">
+            <h2>{dict.cart.shopSection}</h2>
+            <p className="storefront-cart-hint">{dict.cart.shopHint}</p>
+            <CustomerPicker locale={locale} dict={dict} className="storefront-cart-picker" />
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{dict.cart.orderNotes}</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-3">
-              <Label htmlFor="cart-notes" className="sr-only">
-                {dict.cart.orderNotes}
-              </Label>
-              <Textarea
-                id="cart-notes"
-                placeholder={dict.cart.notesPlaceholder}
-              />
-            </CardContent>
-          </Card>
+          <section className="storefront-cart-panel storefront-cart-notes">
+            <h2>{dict.cart.orderNotes}</h2>
+            <Label htmlFor="cart-notes" className="sr-only">
+              {dict.cart.orderNotes}
+            </Label>
+            <Textarea
+              id="cart-notes"
+              className="storefront-cart-notes-field"
+              placeholder={dict.cart.notesPlaceholder}
+            />
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{dict.cart.orderSummary}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 pt-3">
-              <div className="flex justify-between text-sm text-ink-soft">
+          <section className="storefront-cart-summary">
+            <div className="storefront-cart-summary-heading">
+              <ShoppingCart className="size-5" aria-hidden />
+              <h2>{dict.cart.orderSummary}</h2>
+            </div>
+            <div className="storefront-cart-summary-body">
+              <div className="storefront-cart-count">
                 <span>{dict.common.items}</span>
-                <span className="tabular-nums">
-                  {totalPackages} {dict.common.packages}
+                <span>
+                  <bdi>{totalPackages}</bdi> {dict.common.packages}
                 </span>
               </div>
-              <div className="flex justify-between text-base font-bold text-ink">
+              <div className="storefront-cart-subtotal">
                 <span>{dict.common.subtotal}</span>
-                <span className="tabular-nums">
+                <bdi dir="ltr">
                   {formatCurrency(subtotal, locale)}
-                </span>
+                </bdi>
               </div>
-              <p className="text-xs leading-relaxed text-ink-muted">
+              <p className="storefront-cart-vat">
                 {dict.cart.vatNote}
               </p>
               <Link
                 href={`/${locale}/checkout`}
-                className="mt-2 inline-flex h-12 items-center justify-center gap-2 rounded-field bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                className="storefront-cart-primary"
               >
                 {dict.cart.proceedCheckout}
                 <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden />
               </Link>
               <Link
                 href={`/${locale}/catalog`}
-                className="inline-flex h-11 items-center justify-center rounded-field text-sm font-medium text-ink-soft transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                className="storefront-cart-secondary"
               >
                 {dict.cart.continueShopping}
               </Link>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </div>
       </div>
     </div>

@@ -1,12 +1,11 @@
 "use client";
 
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProductImage } from "@/components/product-image";
 import { Input, Label, Textarea } from "@/components/ui/input";
-import { ShelfRule } from "@/components/ui/shelf-rule";
 import type { Locale } from "@/i18n/config";
 import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
@@ -121,25 +120,22 @@ export function CheckoutView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
+    <div className="storefront-checkout">
+      <header className="storefront-checkout-heading">
+        <p>
           {dict.nav.cart}
         </p>
-        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+        <h1>
           {dict.checkout.title}
         </h1>
-        <ShelfRule className="mt-4" />
-      </div>
+      </header>
 
-      <form onSubmit={submit} className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="flex flex-col gap-4">
+      <form onSubmit={submit} className="storefront-checkout-layout">
+        <div className="storefront-checkout-form-sections">
           {/* Shop details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{dict.checkout.shopDetails}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
+          <section className="storefront-checkout-panel">
+            <h2>{dict.checkout.shopDetails}</h2>
+            <div className="storefront-checkout-fields">
               <div>
                 <Label htmlFor="co-shop">{dict.checkout.shopName}</Label>
                 <Input
@@ -172,137 +168,133 @@ export function CheckoutView({
                   defaultValue={customer?.city[locale] ?? ""}
                 />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           {/* Delivery preference */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{dict.checkout.delivery}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row">
+          <section className="storefront-checkout-panel">
+            <h2>{dict.checkout.delivery}</h2>
+            <div className="storefront-checkout-delivery">
               {(["asap", "scheduled"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setDelivery(option)}
-                  className={cn(
-                    "flex h-12 flex-1 items-center justify-center rounded-field border text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                    delivery === option
-                      ? "border-brand-600 bg-brand-50 text-brand-800 shadow-[inset_0_0_0_1px_var(--color-brand-600)]"
-                      : "border-line-strong bg-surface text-ink-soft hover:border-ink",
-                  )}
+                  aria-pressed={delivery === option}
+                  className="storefront-checkout-delivery-option"
                 >
                   {dict.checkout[option === "asap" ? "asap" : "scheduled"]}
                 </button>
               ))}
               {delivery === "scheduled" ? (
-                <Input type="date" className="sm:max-w-44" dir="ltr" />
+                <Input
+                  type="date"
+                  className="storefront-checkout-date"
+                  dir="ltr"
+                  aria-label={dict.checkout.scheduled}
+                />
               ) : null}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           {/* Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {dict.common.notes}{" "}
-                <span className="text-xs font-normal text-ink-muted">
-                  ({dict.common.optional})
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <Textarea name="notes" placeholder={dict.cart.notesPlaceholder} />
-            </CardContent>
-          </Card>
+          <section className="storefront-checkout-panel">
+            <h2>
+              {dict.common.notes}{" "}
+              <span className="storefront-checkout-optional">
+                ({dict.common.optional})
+              </span>
+            </h2>
+            <Textarea
+              name="notes"
+              aria-label={dict.common.notes}
+              placeholder={dict.cart.notesPlaceholder}
+            />
+          </section>
         </div>
 
         {/* Summary */}
-        <div>
-          <Card className="sticky top-24">
-            <CardHeader>
-              <CardTitle>{dict.checkout.summary}</CardTitle>
-              <p className="text-xs text-ink-muted">
-                {interpolate(dict.checkout.itemsCount, { count: items.length })} ·{" "}
-                {totalPackages} {dict.common.packages}
-              </p>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 pt-3">
-              <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto text-sm">
-                {items.map((item) => {
-                  const product = productById.get(item.productId);
-                  if (!product) return null;
-                  return (
-                    <li
-                      key={item.productId}
-                      className="flex items-baseline justify-between gap-3"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-ink-soft">
-                        {productName(product, locale)}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-ink-muted">
-                        ×{item.quantity}
-                      </span>
-                      <span className="w-20 shrink-0 text-end tabular-nums font-medium text-ink">
-                        {formatCurrency(
-                          product.wholesalePrice * item.quantity,
-                          locale,
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="mt-2 flex justify-between border-t border-line pt-3 text-base font-bold text-ink">
-                <span>{dict.common.subtotal}</span>
-                <span className="tabular-nums">
-                  {formatCurrency(subtotal, locale)}
-                </span>
-              </div>
-              <p className="text-xs leading-relaxed text-ink-muted">
-                {dict.checkout.disclaimer}
-              </p>
-              {sendFailed ? (
-                <p
-                  role="alert"
-                  className="rounded-field bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
-                >
-                  {dict.checkout.sendError}
-                </p>
-              ) : null}
-              {conflict ? (
-                <div
-                  role="alert"
-                  className="flex flex-col gap-2 rounded-field bg-warning-soft px-3 py-2 text-sm font-medium text-accent-deep"
-                >
-                  <span>{dict.checkout.conflictError}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={startNewAttempt}
-                    className="self-start"
+        <section className="storefront-checkout-summary">
+          <div className="storefront-checkout-summary-heading">
+            <div><ShoppingCart className="size-5" aria-hidden /><h2>{dict.checkout.summary}</h2></div>
+            <p>
+              {interpolate(dict.checkout.itemsCount, { count: items.length })} ·{" "}
+              {totalPackages} {dict.common.packages}
+            </p>
+          </div>
+          <div className="storefront-checkout-summary-body">
+            <ul className="storefront-checkout-lines">
+              {items.map((item) => {
+                const product = productById.get(item.productId);
+                if (!product) return null;
+                return (
+                  <li
+                    key={item.productId}
+                    className="storefront-checkout-line"
                   >
-                    {dict.checkout.conflictRetry}
-                  </Button>
-                </div>
-              ) : null}
-              <Button
-                type="submit"
-                size="lg"
-                disabled={sending || conflict || items.length === 0}
-                className="mt-1 w-full"
+                    <ProductImage product={product} presentation="storefront" showSizeTag={false} className="storefront-checkout-thumbnail" />
+                    <div className="storefront-checkout-line-copy">
+                      <p title={productName(product, locale)}>{productName(product, locale)}</p>
+                      <span dir="ltr">×{item.quantity}</span>
+                    </div>
+                    <bdi dir="ltr" className="storefront-checkout-line-price">
+                      {formatCurrency(
+                        product.wholesalePrice * item.quantity,
+                        locale,
+                      )}
+                    </bdi>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="storefront-checkout-subtotal">
+              <span>{dict.common.subtotal}</span>
+              <bdi dir="ltr">
+                {formatCurrency(subtotal, locale)}
+              </bdi>
+            </div>
+            <p className="storefront-checkout-disclaimer">
+              {dict.checkout.disclaimer}
+            </p>
+            {sendFailed ? (
+              <p
+                role="alert"
+                className="storefront-checkout-error"
               >
-                <SendHorizontal
-                  className={cn("size-4 rtl:-scale-x-100", sending && "animate-pulse")}
-                  aria-hidden
-                />
-                {dict.checkout.sendOrder}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+                {dict.checkout.sendError}
+              </p>
+            ) : null}
+            {conflict ? (
+              <div
+                role="alert"
+                className="storefront-checkout-conflict"
+              >
+                <span>{dict.checkout.conflictError}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={startNewAttempt}
+                  className="storefront-checkout-retry"
+                >
+                  {dict.checkout.conflictRetry}
+                </Button>
+              </div>
+            ) : null}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={sending || conflict || items.length === 0}
+              className="storefront-checkout-submit"
+            >
+              <SendHorizontal
+                className={cn("size-4 rtl:-scale-x-100", sending && "animate-pulse")}
+                aria-hidden
+              />
+              {dict.checkout.sendOrder}
+            </Button>
+          </div>
+        </section>
       </form>
     </div>
   );

@@ -1,0 +1,74 @@
+/* Shared V3 art. Catalog compatibility selectors preserve its approved paint.
+ * Dimensions belong to card/detail/tile classes, not to the media renderer. */
+:is(.storefront-media, .catalog-card-media) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  container: storefront-media / inline-size;
+  background: radial-gradient(ellipse at 30% 16%, var(--storefront-warm), transparent 65%), linear-gradient(160deg, var(--color-surface) 12%, var(--storefront-canvas));
+}
+:is(.storefront-media, .catalog-card-media)::before {
+  content: "";
+  position: absolute;
+  inline-size: 130%;
+  block-size: 28%;
+  inset-inline-start: -15%;
+  inset-block-end: -10%;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(var(--color-surface), var(--storefront-canvas));
+  pointer-events: none;
+}
+:is(.storefront-media-photo, .catalog-card-media-photo) {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 5cqw;
+}
+:is(.storefront-media-size, .catalog-card-media-size) {
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: 8px;
+  inset-block-end: 6px;
+  max-inline-size: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  color: var(--storefront-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+:is(.storefront-placeholder, .catalog-card-placeholder) {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  inline-size: 39%;
+  block-size: 64%;
+  inset-inline-start: 30.5%;
+  inset-block-start: 19%;
+  transform: rotate(-5deg);
+  border: 1px solid var(--storefront-edge);
+  border-radius: 12px;
+  background: linear-gradient(155deg, var(--color-surface), var(--storefront-selected));
+  color: var(--storefront-indigo);
+}
+:is(.storefront-placeholder, .catalog-card-placeholder)::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -1px;
+  inline-size: 30%;
+  block-size: 4px;
+  border-radius: 0 0 3px 3px;
+  background: var(--storefront-action);
+}
+:is(.storefront-placeholder-brand, .catalog-card-placeholder-brand) { position: absolute; inline-size: 20%; block-size: auto; inset-block-start: 12%; inset-inline-start: 12%; }
+:is(.storefront-placeholder-brand, .catalog-card-placeholder-brand) > rect:first-child { fill: var(--storefront-navy); }
+:is(.storefront-placeholder-glyph, .catalog-card-placeholder-glyph) { inline-size: 45%; block-size: auto; margin-block-start: 14%; }

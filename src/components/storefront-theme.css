@@ -1,0 +1,63 @@
+/* Opt-in storefront presentation. AppShell and the private shop own explicit
+ * boundaries; admin, auth and other public routes retain Ledger defaults. Bodies opt in
+ * separately: do not override global brand, status or primitive tokens here. */
+body:has(> .storefront-theme),
+.storefront-theme {
+  --storefront-navy: #182444;
+  --storefront-indigo: #273A68;
+  --storefront-canvas: #F5F3FA;
+  --storefront-warm: #FFF8F2;
+  --storefront-action: #FFB38C;
+  --storefront-selected: #EEE9FF;
+  --storefront-selected-edge: #5D56A7;
+  --storefront-muted: #58617A;
+  --storefront-edge: #DCE0ED;
+  --storefront-focus: #5144B2;
+  /* Preserve the approved native-dialog alpha compositing in Chromium. A
+   * color-mix() scrim paints slightly differently from this legacy sRGB color. */
+  --storefront-scrim: rgb(24 36 68 / 65%);
+}
+
+/* Body canvas propagation also paints the reserved scrollbar gutter during
+ * native-dialog scroll lock. Keep that approved paint origin, gated strictly
+ * by an explicit theme boundary; other routes retain their own canvas. */
+body:has(> .storefront-theme) {
+  background-color: var(--storefront-canvas);
+  background-image:
+    radial-gradient(ellipse at 75% 45%, color-mix(in srgb, var(--storefront-action) 18%, transparent), transparent 68%),
+    linear-gradient(var(--storefront-canvas), color-mix(in srgb, var(--color-surface) 55%, var(--storefront-canvas)) 70%, var(--storefront-canvas));
+  background-size: 100% 480px, 100% 700px;
+  background-repeat: no-repeat;
+}
+
+/* Existing header geometry, logo and interaction leaves stay unchanged. */
+.storefront-theme .storefront-header {
+  border-color: var(--storefront-edge);
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+}
+.storefront-theme .storefront-header > [aria-hidden] { background: var(--storefront-navy); }
+.storefront-theme .storefront-header .storefront-cart-link,
+.storefront-theme .storefront-header a[aria-current="page"] { background: var(--storefront-navy); color: var(--color-surface); }
+.storefront-theme .storefront-header .storefront-cart-link:hover,
+.storefront-theme .storefront-header a[aria-current="page"]:hover { background: var(--storefront-indigo); }
+.storefront-theme .storefront-header .storefront-cart-link > span[dir="ltr"] { background: var(--storefront-action); color: var(--storefront-navy); }
+.storefront-theme .storefront-header a[href$="/admin"] { color: var(--storefront-muted); }
+.storefront-theme .storefront-header a[href$="/admin"]:hover { background: var(--storefront-canvas); color: var(--storefront-navy); }
+.storefront-theme .storefront-header nav[aria-label],
+.storefront-theme .storefront-header button[aria-expanded] { border-color: var(--storefront-edge); background: var(--storefront-canvas); color: var(--storefront-navy); }
+.storefront-theme .storefront-header nav[aria-label] a { color: var(--storefront-muted); }
+.storefront-theme .storefront-header nav[aria-label] a:hover,
+.storefront-theme .storefront-header nav[aria-label] a[aria-current="true"] { background: var(--storefront-selected); color: var(--storefront-navy); }
+.storefront-theme .storefront-header :is(a, button):focus-visible { outline-color: var(--storefront-focus); }
+
+/* Same two content paragraphs and spacing; only the footer presentation changes. */
+.storefront-theme .storefront-footer {
+  border-color: var(--storefront-indigo);
+  background: linear-gradient(120deg, var(--storefront-indigo), var(--storefront-navy));
+  color: var(--storefront-selected);
+}
+.storefront-theme .storefront-footer-title { color: var(--color-surface); }
+.storefront-theme .storefront-footer-notice {
+  border-color: color-mix(in srgb, var(--storefront-action) 28%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 5%, transparent);
+}

@@ -22,9 +22,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="storefront-theme flex min-h-dvh flex-col">
       <header className="storefront-header sticky top-0 z-40 flex h-[var(--storefront-header-height)] shrink-0 flex-col border-b border-line bg-surface-warm/95 backdrop-blur">
-        {/* Bottle-green shelf edge */}
+        {/* Shared storefront structural edge */}
         <div className="h-1 shrink-0 bg-band" aria-hidden />
         <div className="mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 items-center gap-2 px-4 sm:gap-3 sm:px-6">
           <Link
@@ -45,7 +45,7 @@ export function AppShell({
           </nav>
 
           <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
-            <CartLink locale={locale} label={dict.nav.cart} />
+            <CartLink locale={locale} label={dict.nav.cart} className="storefront-cart-link" />
             <Link
               href={`/${locale}/admin`}
               aria-label={dict.nav.admin}
@@ -62,12 +62,12 @@ export function AppShell({
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t border-line bg-band text-band-muted">
+      <footer className="storefront-footer border-t border-line bg-band text-band-muted">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-2.5 px-4 py-7 text-center sm:px-6">
-          <p className="text-sm font-semibold text-band-ink">
+          <p className="storefront-footer-title text-sm font-semibold text-band-ink">
             {dict.meta.appNameNative} · {dict.meta.tagline}
           </p>
-          <p className="rounded-badge border border-band-ink/15 bg-band-ink/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
+          <p className="storefront-footer-notice rounded-badge border border-band-ink/15 bg-band-ink/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
             {dict.common.mockNotice}
           </p>
         </div>

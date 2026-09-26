@@ -1,0 +1,55 @@
+/* Guest-only surfaces. Shared browse/card/media/terminal styles opt in via
+   public-store-* aliases in private-shop.css; no controller or provider sharing. */
+.showcase-store .showcase-browse-label { display: flex; align-items: center; gap: 6px; }
+.showcase-store .showcase-intro-wrap { width: min(100% - 32px, 1200px); margin-inline: auto; padding-block-end: 14px; }
+.showcase-store .showcase-intro-wrap > p { border: 1px solid var(--storefront-edge); border-radius: 16px; padding: 12px 14px; color: var(--storefront-muted); background: var(--storefront-selected); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+
+/* Checkout uses normal document flow: fields and submit remain scrollable
+   when the viewport shrinks, without a fixed proceed bar over the keyboard. */
+.storefront-theme.showcase-checkout { padding-block-end: calc(32px + env(safe-area-inset-bottom, 0px)); }
+.showcase-checkout .public-store-header-inner,
+.showcase-store .showcase-checkout-main { width: min(100% - 32px, 640px); margin-inline: auto; }
+.showcase-store .showcase-checkout-main { padding-block: 20px; }
+.showcase-store .showcase-checkout-icon { display: flex; width: 40px; height: 40px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 13px; color: var(--storefront-selected-edge); background: var(--storefront-selected); }
+.showcase-store .showcase-checkout-title { min-width: 0; font-size: 18px; font-weight: 750; line-height: 1.4; overflow-wrap: anywhere; }
+.showcase-store .showcase-checkout-intro { border: 1px solid var(--storefront-edge); border-radius: 18px; padding: 14px 16px; color: var(--storefront-indigo); background: var(--storefront-selected); font-size: 13px; line-height: 1.7; }
+.showcase-store .showcase-summary { margin-block-start: 20px; overflow: hidden; border: 1px solid var(--storefront-edge); border-radius: 22px; background: var(--color-surface); }
+.showcase-store .showcase-summary-header { border-block-end: 1px solid var(--storefront-edge); padding: 12px 16px; color: var(--storefront-indigo); background: var(--storefront-canvas); }
+.showcase-store .showcase-summary-header p { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.showcase-store .showcase-summary-line { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.showcase-store .showcase-summary-line + .showcase-summary-line { border-block-start: 1px solid var(--storefront-edge); }
+.showcase-store .showcase-summary-name { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.showcase-store .showcase-summary-quantity { flex-shrink: 0; color: var(--storefront-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.showcase-store .showcase-summary-price { flex-shrink: 0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+.showcase-store .showcase-summary-total { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-block-start: 1px solid var(--storefront-edge); padding: 14px 16px; background: var(--storefront-canvas); font-size: 13px; font-weight: 600; }
+.showcase-store .showcase-summary-total > span:last-child { flex-shrink: 0; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+.showcase-store .showcase-vat-note { margin-block-start: 8px; color: var(--storefront-muted); font-size: 11px; line-height: 1.7; }
+.showcase-store .showcase-guest-form { display: flex; flex-direction: column; gap: 18px; margin-block-start: 20px; border: 1px solid var(--storefront-edge); border-radius: 22px; padding: 18px; background: var(--color-surface); }
+.showcase-store .showcase-guest-form label { margin-block-end: 7px; color: var(--storefront-muted); font-size: 12px; }
+.showcase-store .showcase-guest-form input,
+.showcase-store .showcase-guest-form textarea { width: 100%; min-width: 0; min-height: 46px; border-color: var(--storefront-edge); border-radius: 13px; background: var(--storefront-canvas); color: var(--storefront-navy); font-size: 16px; box-shadow: none; scroll-margin-block: 20px; }
+.showcase-store .showcase-guest-form input[dir="ltr"] { font-family: var(--font-mono); }
+.showcase-store .showcase-guest-form textarea { min-height: 110px; }
+.showcase-store .showcase-guest-form textarea::placeholder { color: var(--storefront-muted); }
+.showcase-store .showcase-field-grid { display: grid; min-width: 0; gap: 18px; }
+.showcase-store .showcase-field-grid > div { min-width: 0; }
+.showcase-store .showcase-form-disclaimer { color: var(--storefront-muted); font-size: 12px; line-height: 1.7; }
+.showcase-store .showcase-conflict { display: flex; flex-direction: column; gap: 10px; }
+.showcase-store .showcase-form-actions { display: flex; flex-direction: column; gap: 8px; }
+.showcase-store .showcase-submit,
+.showcase-store .showcase-back { height: auto; min-height: 48px; border-radius: 14px; padding: 12px 16px; font-size: 14px; box-shadow: none; }
+.showcase-store .showcase-submit { color: var(--storefront-navy); background: var(--storefront-action); }
+.showcase-store .showcase-submit:not(:disabled):hover { background: color-mix(in srgb, var(--storefront-action) 80%, var(--color-surface)); }
+.showcase-store .showcase-back { color: var(--storefront-indigo); background: var(--storefront-canvas); }
+.showcase-store .showcase-back:not(:disabled):hover { background: var(--storefront-selected); }
+
+@media (min-width: 640px) {
+  .showcase-store .showcase-intro-wrap { width: min(100% - 48px, 1200px); }
+  .showcase-checkout .public-store-header-inner,
+  .showcase-store .showcase-checkout-main { width: min(100% - 48px, 640px); }
+  .showcase-store .showcase-checkout-title { font-size: 22px; }
+  .showcase-store .showcase-guest-form { padding: 24px; }
+  .showcase-store .showcase-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .showcase-store .showcase-form-actions { flex-direction: row-reverse; }
+  .showcase-store .showcase-submit { flex: 1; }
+}

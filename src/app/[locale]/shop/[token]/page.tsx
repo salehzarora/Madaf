@@ -41,24 +41,22 @@ export default async function ShopTokenPage({
   if (!catalog) {
     const inactive = await isShopLinkInactive(token);
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-4 py-16 text-center">
-        {inactive ? (
-          <>
-            <Store className="size-12 text-ink-muted" aria-hidden />
-            <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">
-              {t.inactiveTitle}
-            </h1>
-            <p className="mt-2 text-sm text-ink-soft">{t.inactiveBody}</p>
-          </>
-        ) : (
-          <>
-            <Link2Off className="size-12 text-ink-muted" aria-hidden />
-            <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">
-              {t.invalidTitle}
-            </h1>
-            <p className="mt-2 text-sm text-ink-soft">{t.invalidBody}</p>
-          </>
-        )}
+      <main className="storefront-theme private-shop private-shop-terminal">
+        <div className="private-shop-terminal-panel">
+          {inactive ? (
+            <>
+              <Store className="private-shop-terminal-icon" aria-hidden />
+              <h1>{t.inactiveTitle}</h1>
+              <p className="private-shop-terminal-body">{t.inactiveBody}</p>
+            </>
+          ) : (
+            <>
+              <Link2Off className="private-shop-terminal-icon" aria-hidden />
+              <h1>{t.invalidTitle}</h1>
+              <p className="private-shop-terminal-body">{t.invalidBody}</p>
+            </>
+          )}
+        </div>
       </main>
     );
   }

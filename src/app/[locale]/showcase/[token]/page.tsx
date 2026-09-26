@@ -36,12 +36,12 @@ export default async function ShowcaseTokenPage({
 
   if (!catalog) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-4 py-16 text-center">
-        <Link2Off className="size-12 text-ink-muted" aria-hidden />
-        <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">
-          {t.invalidTitle}
-        </h1>
-        <p className="mt-2 text-sm text-ink-soft">{t.invalidBody}</p>
+      <main className="storefront-theme showcase-store public-store-terminal">
+        <div className="public-store-terminal-panel">
+          <Link2Off className="public-store-terminal-icon" aria-hidden />
+          <h1>{t.invalidTitle}</h1>
+          <p className="public-store-terminal-body">{t.invalidBody}</p>
+        </div>
       </main>
     );
   }

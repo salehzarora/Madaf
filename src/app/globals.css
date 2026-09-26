@@ -1,6 +1,14 @@
 @import "tailwindcss";
+@import "../components/storefront-theme.css";
 @import "../components/catalog-workspace.css";
 @import "../components/catalog-product-media.css";
+@import "../components/storefront-product-media.css";
+@import "../components/storefront-product.css";
+@import "../components/storefront-cart.css";
+@import "../components/storefront-checkout.css";
+@import "../components/storefront-landing.css";
+@import "../components/shop/private-shop.css";
+@import "../components/shop/showcase-storefront.css";
 
 :root { --storefront-header-height: 56px; }
 @media (min-width: 640px) {

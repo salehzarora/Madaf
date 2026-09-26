@@ -13,6 +13,7 @@ import {
 } from "@/lib/catalog-filter";
 import { categoryDot } from "@/lib/category-style";
 import type { Category, Manufacturer } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 /** Shared search + category/manufacturer/in-stock filter + sort bar for the
  * private shop and the product showcase (mobile/RTL-friendly, sticky). */
@@ -24,6 +25,7 @@ export function CatalogFilterBar({
   filters,
   onChange,
   onClear,
+  className,
 }: {
   locale: Locale;
   dict: Dictionary;
@@ -32,6 +34,8 @@ export function CatalogFilterBar({
   filters: CatalogFilterState;
   onChange: (next: CatalogFilterState) => void;
   onClear: () => void;
+  /** Optional scoped presentation; default Showcase output stays unchanged. */
+  className?: string;
 }) {
   const t = dict.catalog;
 
@@ -43,7 +47,7 @@ export function CatalogFilterBar({
   }
 
   return (
-    <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-2.5 border-b border-line bg-surface-warm/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-card sm:border">
+    <div className={cn("sticky top-0 z-20 -mx-4 flex flex-col gap-2.5 border-b border-line bg-surface-warm/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-card sm:border", className)}>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search

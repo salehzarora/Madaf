@@ -25,15 +25,16 @@ export function ProductDetailActions({
 
   if (quantity > 0) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="storefront-detail-actions flex flex-wrap items-center gap-3">
         <QuantityStepper
           value={quantity}
           increaseDisabled={soldOut}
           onChange={(next) => setQuantity(product.id, next)}
+          className="storefront-detail-stepper"
         />
         <Link
           href={`/${locale}/cart`}
-          className="inline-flex h-12 items-center gap-2 rounded-field bg-brand-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="storefront-detail-view-cart inline-flex h-12 items-center gap-2 rounded-field bg-brand-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           <ShoppingCart className="size-4" aria-hidden />
           {dict.catalog.viewCart}
@@ -47,7 +48,7 @@ export function ProductDetailActions({
       size="lg"
       disabled={soldOut}
       onClick={() => addItem(product.id)}
-      className="w-full sm:w-auto sm:min-w-56"
+      className="storefront-detail-add w-full sm:w-auto sm:min-w-56"
     >
       <ShoppingCart className="size-5" aria-hidden />
       {soldOut ? dict.availability.outOfStock : dict.product.addToCart}
