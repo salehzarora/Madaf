@@ -77,23 +77,24 @@ export function CartView({
         <ShelfRule className="mt-4" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+      {/* Zero-minimum tracks prevent item min-content width expanding the grid. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* Items — ledger line rows */}
-        <Card className="divide-y divide-line-hair">
+        <Card className="min-w-0 divide-y divide-line-hair">
           {items.map((item) => {
             const product = productById.get(item.productId);
             if (!product) return null;
             // Optional for ProductImage — never crash on a missing category (M8A).
             const category = categoryById.get(product.categoryId);
             return (
-              <div key={item.productId} className="flex items-center gap-4 p-4">
+              <div key={item.productId} className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-4 p-4 sm:flex">
                 <ProductImage
                   product={product}
                   category={category}
                   presentation="catalog"
                   className="size-20 shrink-0 rounded-field"
                 />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <Link
                     href={`/${locale}/product/${product.id}`}
                     className="line-clamp-2 text-sm font-semibold text-ink transition-colors hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
@@ -111,7 +112,7 @@ export function CartView({
                     </span>
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
+                <div className="col-span-2 flex min-w-0 items-center justify-between gap-2 sm:shrink-0 sm:flex-col sm:items-end">
                   <QuantityStepper
                     size="sm"
                     value={item.quantity}
@@ -133,7 +134,7 @@ export function CartView({
         </Card>
 
         {/* Side column: shop, notes, summary */}
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle>{dict.cart.shopSection}</CardTitle>
