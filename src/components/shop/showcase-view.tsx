@@ -482,6 +482,7 @@ export function ShowcaseView({
                     {qty > 0 ? (
                       <QuantityStepper
                         value={qty}
+                        increaseDisabled={soldOut}
                         onChange={(next) => setQty(product.id, next)}
                         className="w-full justify-between border-brand-500 bg-brand-50"
                       />

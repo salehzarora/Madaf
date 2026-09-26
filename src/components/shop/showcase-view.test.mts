@@ -82,13 +82,13 @@ function catalog(): ShowcaseCatalog {
 }
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
-function mount(token = TOKEN): HTMLElement {
+function mount(token = TOKEN, data = catalog()): HTMLElement {
   const container = dom.window.document.createElement("div");
   dom.window.document.body.appendChild(container);
   const root = createRoot(container);
   mounted.push({ root, container });
   act(() => {
-    root.render(React.createElement(ShowcaseView, { locale: "en", dict, token, catalog: catalog() }));
+    root.render(React.createElement(ShowcaseView, { locale: "en", dict, token, catalog: data }));
   });
   return container;
 }
@@ -230,4 +230,40 @@ test("the submission key never appears in the DOM, and the raw token is never pe
     assert.ok(!v.includes(TOKEN), "raw token not in a storage value");
     assert.ok(!v.includes("Guest Shop Ltd"), "guest PII not in a storage value");
   }
+});
+
+test("initial sold-out Add is disabled and cannot create a selected line", async () => {
+  const data = { ...catalog(), products: [{ ...inStockProduct, availability: "outOfStock" as const }] };
+  const container = mount(TOKEN, data);
+  const add = buttonByText(container, dict.availability.outOfStock)!;
+  assert.equal(add.disabled, true);
+  await click(add);
+  assert.equal(container.querySelector('button[aria-label="+"]'), null);
+  assert.equal(buttonByText(container, dict.access.showcase.reviewOrder), null);
+  assert.equal(calls.length, 0);
+});
+
+test("selected sold-out item keeps quantity, blocks increment and permits decrement/removal", async () => {
+  const container = mount();
+  await click(buttonByText(container, dict.catalog.addToCart)!);
+  const increase = () => container.querySelector<HTMLButtonElement>('button[aria-label="+"]')!;
+  const decrease = () => container.querySelector<HTMLButtonElement>('button[aria-label="−"]')!;
+  const quantity = () => increase().parentElement?.querySelector('span[dir="ltr"]')?.textContent;
+  await click(increase());
+  assert.equal(quantity(), "2");
+  const data = { ...catalog(), products: [{ ...inStockProduct, availability: "outOfStock" as const }] };
+  act(() => mounted[0].root.render(React.createElement(ShowcaseView, { locale: "en", dict, token: TOKEN, catalog: data })));
+  assert.equal(quantity(), "2", "availability must not silently remove existing quantities");
+  assert.equal(increase().disabled, true);
+  assert.equal(decrease().disabled, false);
+  await click(increase());
+  assert.equal(quantity(), "2");
+  await click(decrease());
+  assert.equal(quantity(), "1");
+  assert.equal(increase().disabled, true);
+  await click(decrease());
+  assert.equal(container.querySelector('button[aria-label="+"]'), null);
+  assert.ok(buttonByText(container, dict.availability.outOfStock)?.disabled);
+  assert.equal(buttonByText(container, dict.access.showcase.reviewOrder), null);
+  assert.equal(calls.length, 0);
 });
