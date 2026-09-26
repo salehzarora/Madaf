@@ -1,0 +1,151 @@
+/* Opt-in catalog art. Abstract packaging and glyphs are intentionally a
+   placeholder, never a fabricated product photo. Shared image defaults stay put. */
+.catalog-product-media {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  container: catalog-media / inline-size;
+  background:
+    radial-gradient(ellipse at 38% 25%, var(--color-surface) 0%, transparent 62%),
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--color-brand-100) 72%, var(--color-surface-warm)),
+      var(--color-surface-warm) 60%,
+      color-mix(in srgb, var(--color-brand-300) 24%, var(--color-surface-warm)));
+}
+.catalog-product-media::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 6%;
+  border: 1px solid color-mix(in srgb, var(--color-surface) 74%, transparent);
+  border-radius: 12px;
+  pointer-events: none;
+}
+/* A restrained warm variant follows the existing pack metadata, not mock IDs
+   or availability. Both treatments remain neutral placeholder art. */
+.catalog-product-media--placeholder[data-packaging="pack"] {
+  --catalog-media-rear-start: var(--color-accent);
+  --catalog-media-rear-end: var(--color-accent-text);
+  background: radial-gradient(ellipse at 38% 25%, var(--color-surface), transparent 62%), linear-gradient(145deg, var(--color-accent-soft), var(--color-surface-warm) 70%);
+}
+.catalog-media-orbit {
+  position: absolute;
+  inline-size: 72%;
+  aspect-ratio: 1;
+  inset-inline-start: 14%;
+  inset-block-start: 4%;
+  border: 1px solid color-mix(in srgb, var(--color-brand-600) 11%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--color-brand-100) 68%, transparent),
+    color-mix(in srgb, var(--color-surface) 35%, transparent) 70%);
+}
+.catalog-media-ground {
+  position: absolute;
+  inline-size: 66%;
+  block-size: 10%;
+  inset-inline-start: 17%;
+  inset-block-end: 10%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-band) 12%, transparent);
+  filter: blur(7px);
+}
+.catalog-media-pack {
+  position: absolute;
+  inline-size: 42%;
+  block-size: 69%;
+  border-radius: 12% 12% 10% 10%;
+}
+.catalog-media-pack--rear {
+  inset-inline-start: 22%;
+  inset-block-start: 17%;
+  transform: rotate(-13deg);
+  border: 1px solid color-mix(in srgb, var(--color-brand-700) 35%, transparent);
+  background: linear-gradient(145deg, var(--catalog-media-rear-start, var(--color-brand-500)), var(--catalog-media-rear-end, var(--color-band)));
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--color-band) 14%, transparent);
+}
+.catalog-media-pack--rear::before {
+  content: "";
+  position: absolute;
+  inset-inline: 15%;
+  inset-block-start: 13%;
+  block-size: 4%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-band-ink) 48%, transparent);
+}
+.catalog-media-pack--front {
+  display: grid;
+  place-items: center;
+  inset-inline-start: 37%;
+  inset-block-start: 11%;
+  transform: rotate(9deg);
+  border: 1px solid color-mix(in srgb, var(--color-brand-600) 20%, var(--color-surface));
+  background: linear-gradient(155deg, var(--color-surface), var(--color-surface-warm));
+  box-shadow:
+    inset 0 -5px 0 color-mix(in srgb, var(--color-brand-100) 60%, transparent),
+    0 12px 18px color-mix(in srgb, var(--color-band) 16%, transparent);
+}
+.catalog-media-pack--front::after {
+  content: "";
+  position: absolute;
+  inset-inline: 13%;
+  inset-block-end: 14%;
+  block-size: 5%;
+  border-block: 1px solid color-mix(in srgb, var(--color-brand-600) 20%, transparent);
+}
+.catalog-media-brand {
+  position: absolute;
+  inset-inline-start: 12%;
+  inset-block-start: 9%;
+  inline-size: 22%;
+  block-size: auto;
+}
+.catalog-media-glyph {
+  inline-size: 51%;
+  block-size: auto;
+  color: var(--color-brand-700);
+}
+.catalog-media-photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+  padding: clamp(6px, 7cqw, 18px);
+}
+.catalog-media-size {
+  position: absolute;
+  z-index: 3;
+  inset-inline-end: 8%;
+  inset-block-end: 7%;
+  max-inline-size: 84%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-brand-300) 55%, var(--color-surface));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-brand-50));
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--color-band) 6%, transparent);
+  color: var(--color-brand-900);
+  font-family: var(--font-mono);
+  font-size: clamp(9px, 5cqw, 11px);
+  font-weight: 600;
+  line-height: 1.3;
+}
+/* Thumbnails retain a recognizable silhouette, without tiny decorative detail. */
+@container catalog-media (max-width: 80px) {
+  .catalog-media-orbit, .catalog-media-ground, .catalog-media-pack--rear, .catalog-media-brand { display: none; }
+  .catalog-media-pack--front {
+    inline-size: 60%;
+    block-size: 72%;
+    inset-inline-start: 20%;
+    inset-block-start: 14%;
+    transform: none;
+    box-shadow: 0 3px 5px color-mix(in srgb, var(--color-band) 12%, transparent);
+  }
+  .catalog-media-pack--front::after { display: none; }
+  .catalog-media-glyph { inline-size: 57%; }
+  .catalog-media-size { padding: 1px 4px; font-size: 8px; }
+}

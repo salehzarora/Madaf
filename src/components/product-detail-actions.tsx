@@ -28,6 +28,7 @@ export function ProductDetailActions({
       <div className="flex flex-wrap items-center gap-3">
         <QuantityStepper
           value={quantity}
+          increaseDisabled={soldOut}
           onChange={(next) => setQuantity(product.id, next)}
         />
         <Link

@@ -23,7 +23,7 @@ export function CartLink({
       href={`/${locale}/cart`}
       aria-label={label}
       className={cn(
-        "relative inline-flex h-11 items-center gap-2 rounded-field bg-ink px-3.5 text-sm font-bold text-background transition-colors hover:bg-band",
+        "relative inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-field bg-band px-3 text-sm font-bold text-band-ink transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 sm:px-3.5",
         className,
       )}
     >
