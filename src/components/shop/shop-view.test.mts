@@ -81,13 +81,13 @@ function catalog(): TokenCatalog {
 }
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
-function mount(token = TOKEN): HTMLElement {
+function mount(token = TOKEN, data = catalog()): HTMLElement {
   const container = dom.window.document.createElement("div");
   dom.window.document.body.appendChild(container);
   const root = createRoot(container);
   mounted.push({ root, container });
   act(() => {
-    root.render(React.createElement(ShopView, { locale: "en", dict, token, catalog: catalog() }));
+    root.render(React.createElement(ShopView, { locale: "en", dict, token, catalog: data }));
   });
   return container;
 }
@@ -224,4 +224,43 @@ test("the submission key never appears in the rendered DOM, and the raw token is
     assert.ok(!k.includes(TOKEN), "raw token not in a storage key");
     assert.ok(!(ss.getItem(k) ?? "").includes(TOKEN), "raw token not in a storage value");
   }
+});
+
+test("sold-out initial Add remains disabled", async () => {
+  const data = catalog();
+  data.products = [{ ...inStockProduct, availability: "outOfStock" }];
+  const container = mount(TOKEN, data);
+  const add = buttonByText(container, dict.availability.outOfStock);
+  assert.ok(add?.disabled);
+  await click(add);
+  assert.equal(container.querySelector('button[aria-label="+"]'), null);
+  assert.equal(buttonByText(container, dict.access.shop.submit), null);
+});
+
+test("a selected product becoming sold out preserves quantity, blocks increment and allows decrement/removal", async () => {
+  const container = mount();
+  await click(buttonByText(container, dict.catalog.addToCart)!);
+  const increase = () => container.querySelector<HTMLButtonElement>('button[aria-label="+"]')!;
+  const decrease = () => container.querySelector<HTMLButtonElement>('button[aria-label="−"]')!;
+  const quantity = () => increase().parentElement?.querySelector('[dir="ltr"]')?.textContent;
+  assert.equal(increase().disabled, false);
+  await click(increase());
+  assert.equal(quantity(), "2");
+
+  const data = catalog();
+  data.products = [{ ...inStockProduct, availability: "outOfStock" }];
+  act(() => mounted[0].root.render(React.createElement(ShopView, { locale: "en", dict, token: TOKEN, catalog: data })));
+  assert.equal(quantity(), "2", "an availability change must not silently remove selected packages");
+  assert.equal(increase().disabled, true);
+  assert.equal(decrease().disabled, false);
+  await click(increase());
+  assert.equal(quantity(), "2");
+  await click(decrease());
+  assert.equal(quantity(), "1");
+  assert.equal(increase().disabled, true);
+  await click(decrease());
+  assert.equal(container.querySelector('button[aria-label="+"]'), null);
+  assert.ok(buttonByText(container, dict.availability.outOfStock)?.disabled);
+  assert.equal(buttonByText(container, dict.access.shop.submit), null);
+  assert.equal(calls.length, 0);
 });
