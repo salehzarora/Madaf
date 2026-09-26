@@ -3,13 +3,16 @@
 import { dom } from "@/test-support/jsdom-env";
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
+import ts from "typescript";
 import { AppShell } from "@/components/app-shell";
 import { CustomerPicker } from "@/components/customer-picker";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { StorefrontCatalogLink } from "@/components/storefront-catalog-link";
 import { dirFor, localeNames, locales, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { CartProvider, useCart } from "@/lib/cart-context";
@@ -86,7 +89,57 @@ function escape(element: HTMLElement) {
   return event;
 }
 
+test("AppShell stays server-renderable and passes only locale/label to the catalog client boundary", () => {
+  const source = ts.createSourceFile("app-shell.tsx", readFileSync(new URL("./app-shell.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  for (const statement of source.statements) {
+    if (ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression)) {
+      assert.notEqual(statement.expression.text, "use client", "the shell must not become a client entry point");
+    }
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      assert.notEqual(statement.moduleSpecifier.text, "next/navigation", "pathname hooks belong in the catalog link");
+      if (statement.moduleSpecifier.text === "react") {
+        assert.equal(statement.importClause?.isTypeOnly, true, "the shell must not import React client hooks");
+      }
+    }
+  }
+
+  // Execute the shell outside a React render: hooks must remain in its children.
+  const dict = getDictionary("en");
+  const tree = AppShell({ locale: "en", dict, children: <p>Route content</p> });
+  const catalogProps: unknown[] = [];
+  function visit(children: React.ReactNode) {
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement<{ children?: React.ReactNode }>(child)) return;
+      if (child.type === StorefrontCatalogLink) catalogProps.push(child.props);
+      visit(child.props.children);
+    });
+  }
+  visit(tree);
+  assert.deepEqual(catalogProps, [{ locale: "en", label: dict.nav.catalog }]);
+});
+
 for (const locale of locales) {
+  test(`${locale}: catalog link tracks pathname changes and only marks the exact catalog route active`, () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    cleanups.push(() => { act(() => root.unmount()); container.remove(); });
+    const label = getDictionary(locale).nav.catalog;
+    const href = `/${locale}/catalog`;
+    for (const path of [href, `/${locale}/cart`, `/${locale}/product/product`, `/${locale}/checkout`, `${href}/other`, null, href]) {
+      act(() => root.render(
+        <PathnameContext.Provider value={path}>
+          <StorefrontCatalogLink locale={locale} label={label} />
+        </PathnameContext.Provider>,
+      ));
+      const link = container.querySelector("a");
+      assert.ok(link);
+      assert.equal(link.getAttribute("href"), href);
+      assert.equal(link.textContent, label);
+      assert.equal(link.getAttribute("aria-current"), path === href ? "page" : null);
+    }
+  });
+
   test(`${locale}: shared header retains navigation and children across catalog/product/cart/checkout paths`, () => {
     for (const suffix of ["catalog", "product/product", "cart", "checkout"]) {
       const path = `/${locale}/${suffix}`;

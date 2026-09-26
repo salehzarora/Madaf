@@ -1,15 +1,12 @@
-"use client";
-
 import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { CartLink } from "@/components/cart-link";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { LogoMark, LogoWordmark } from "@/components/logo";
+import { StorefrontCatalogLink } from "@/components/storefront-catalog-link";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { cn } from "@/lib/utils";
 
 /**
  * Storefront shell — sticky top bar with brand, catalog nav, cart and
@@ -24,9 +21,6 @@ export function AppShell({
   dict: Dictionary;
   children: ReactNode;
 }) {
-  const pathname = usePathname();
-  const catalogActive = pathname === `/${locale}/catalog`;
-
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 flex h-[var(--storefront-header-height)] shrink-0 flex-col border-b border-line bg-surface-warm/95 backdrop-blur">
@@ -47,16 +41,7 @@ export function AppShell({
           </Link>
 
           <nav className="ms-2 hidden items-center gap-1 md:flex">
-            <Link
-              href={`/${locale}/catalog`}
-              aria-current={catalogActive ? "page" : undefined}
-              className={cn(
-                "inline-flex min-h-11 items-center rounded-field px-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                catalogActive ? "bg-brand-50 text-brand-800" : "text-ink-soft hover:bg-surface-sunken hover:text-ink",
-              )}
-            >
-              {dict.nav.catalog}
-            </Link>
+            <StorefrontCatalogLink locale={locale} label={dict.nav.catalog} />
           </nav>
 
           <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
