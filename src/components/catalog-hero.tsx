@@ -70,7 +70,7 @@ export function CatalogHero({
             <span className="text-[11px] font-semibold text-brand-700">
               {dict.catalog.title}
             </span>
-            <h1 className="catalog-hero-name text-xl font-extrabold leading-snug tracking-tight text-ink sm:text-2xl lg:text-[28px]">
+            <h1 className="catalog-hero-name text-xl font-extrabold leading-snug tracking-tight text-ink sm:text-2xl lg:text-[28px]" title={supplier.name || dict.catalog.title}>
               {supplier.name || dict.catalog.title}
             </h1>
           </div>
@@ -86,6 +86,7 @@ export function CatalogHero({
         </p>
       </div>
       <div className="catalog-hero-visual relative overflow-hidden bg-band" aria-hidden>
+        <div className="catalog-hero-watermark" />
         <div className="catalog-hero-halo absolute rounded-full border border-band-muted/20" />
         <div className="catalog-hero-shelf absolute rounded-full bg-accent/70" />
         {art.length > 0 ? art.map((product, index) => (

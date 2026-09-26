@@ -126,7 +126,9 @@ export function CatalogToolbar({
           onClick={() => onCategoryChange(null)}
           className={cn(categoryButton, categoryId === null ? "border-band bg-band text-band-ink" : "border-line bg-surface text-ink-soft hover:border-brand-600")}
         >
-          <Grid2X2 className="size-5 shrink-0" aria-hidden />
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-badge">
+            <Grid2X2 className="size-5" aria-hidden />
+          </span>
           {dict.common.all}
         </button>
         {categories.map((category) => {
@@ -157,6 +159,7 @@ export function CatalogToolbar({
           <div className="flex min-w-0 items-center gap-1.5">
             <details
               ref={disclosureRef}
+              data-filtered={manufacturerIds.size > 0 || undefined}
               className="catalog-manufacturer-disclosure group"
               onKeyDown={(event) => {
                 if (event.key === "Escape" && event.currentTarget.open) {
@@ -171,7 +174,7 @@ export function CatalogToolbar({
                 <span className="hidden sm:inline">{t.manufacturers}</span>
                 <span className="sm:hidden">{dict.common.filters}</span>
                 {manufacturerIds.size > 0 ? (
-                  <span dir="ltr" className="flex min-w-5 items-center justify-center rounded-badge bg-brand-600 px-1 font-mono text-[11px] text-white">
+                  <span dir="ltr" className="catalog-manufacturer-count flex min-w-5 items-center justify-center rounded-badge bg-brand-600 px-1 font-mono text-[11px] text-white">
                     {manufacturerIds.size}
                   </span>
                 ) : null}
