@@ -27,14 +27,14 @@ const initialItems = [{ productId: product.id, quantity: 2 }, { productId: sold.
 const cleanups: (() => void)[] = [];
 type Cart = ReturnType<typeof useCart>;
 
-function setup(locale: Locale, items: CartItem[] = initialItems, hydrate = false) {
+function setup(locale: Locale, items: CartItem[] = initialItems, hydrate = false, products = [product, sold]) {
   localStorageSeed(items);
   const container = document.createElement("div");
   document.body.append(container);
   const captured: { current: Cart | null } = { current: null };
   function Probe() { const cart = useCart(); useEffect(() => { captured.current = cart; }); return null; }
   const dict = getDictionary(locale);
-  const tree = <ShopDataProvider products={[product, sold]} categories={[]} manufacturers={[]} customers={customers}>
+  const tree = <ShopDataProvider products={products} categories={[]} manufacturers={[]} customers={customers}>
     <CartProvider><Probe /><CartView locale={locale} dict={dict} /></CartProvider>
   </ShopDataProvider>;
   const errors: unknown[] = [];
@@ -162,4 +162,29 @@ test("notes remain uncontrolled and do not enter cart persistence or submission 
   assert.deepEqual(Object.keys(stored()).sort(), Object.keys(before).sort());
   assert.ok(!JSON.stringify(stored()).includes(notes.value));
   assertIdentity(h.cart());
+});
+test("cart thumbnails opt into shared media, preserve real sources and fall back after failure", () => {
+  const imageUrl = "https://example.test/opaque-package.jpg";
+  const h = setup("en", initialItems, false, [{ ...product, imageUrl }, sold]);
+  const photo = line(h.container, "first").querySelector("img")!;
+  assert.ok(photo);
+  assert.equal(photo.getAttribute("src"), imageUrl);
+  assert.equal(photo.alt, "");
+  assert.equal(photo.className, "storefront-media-photo");
+  assert.ok(photo.parentElement?.hasAttribute("aria-hidden"));
+  assert.equal(h.container.querySelector(".storefront-media-size"), null);
+  assert.ok(line(h.container, "sold").querySelector(".storefront-placeholder"));
+  act(() => photo.dispatchEvent(new dom.window.Event("error")));
+  assert.equal(line(h.container, "first").querySelector("img"), null);
+  assert.ok(line(h.container, "first").querySelector(".storefront-placeholder"));
+});
+test("clearing a selected customer preserves quantities, key and checkout navigation", () => {
+  const h = setup("en");
+  click(h.container.querySelector<HTMLButtonElement>("button[aria-expanded]")!);
+  click(button(h.container.querySelector("[role=dialog]")!, h.dict.common.clear));
+  assert.equal(h.cart().customerId, null);
+  assert.equal(stored().customerId, null);
+  assert.deepEqual(stored().items, initialItems);
+  assert.equal(stored().submissionKey, key);
+  assert.ok(h.container.querySelector("a[href='/en/checkout']"));
 });
