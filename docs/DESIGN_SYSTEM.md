@@ -16,6 +16,11 @@ Tokens live in [`src/app/globals.css`](../src/app/globals.css) as Tailwind v4
 — with TWO deliberate exceptions: the category identity colors below
 (`category-style.ts`) and manufacturer brand tiles.
 
+The [Catalog Ordering Presentation Layer](#catalog-ordering-presentation-layer)
+below is the current, scoped exception for `/[locale]/catalog`. Its local CSS
+tokens and rules take precedence over older catalog descriptions in this file;
+the global Madaf Ledger system continues to apply elsewhere.
+
 ## Madaf Ledger visual system (sitewide refresh)
 
 The current visual language is **"Madaf Ledger"** — a wholesale supplier's
@@ -65,6 +70,128 @@ cards/tabs. Product art (`product-image.tsx`) is now a **neutral** paper
 placeholder (faint package glyph + mono unit-size tag), no gradient/pattern.
 The older `categoryStyle()` gradient/chip palette is retained only where the
 landing tiles and storefront still consume it.
+
+## Catalog Ordering Presentation Layer
+
+The authenticated customer/sales ordering catalog at `/[locale]/catalog`
+intentionally uses its own presentation while preserving Madaf's logo, Rubik
+typography, trilingual content and existing ordering behavior. In mock mode the
+same surface remains available as the zero-configuration demo. This is a visual
+layer, not a new storefront, theme switch, data model or order flow.
+
+The implementation sources are
+[`catalog-workspace.css`](../src/components/catalog-workspace.css),
+[`catalog-product-media.css`](../src/components/catalog-product-media.css),
+[`product-card.tsx`](../src/components/product-card.tsx) and
+[`order-pad.tsx`](../src/components/order-pad.tsx). Use their scoped
+`--catalog-ui-*` / `--catalog-card-*` tokens; do not replace global brand or
+semantic tokens to extend this treatment.
+
+### Palette and usage
+
+| Role | Color | Use |
+| --- | --- | --- |
+| Navy | `#182444` | Structural anchors, primary text, active navigation |
+| Indigo | `#273A68` | Supporting dark surfaces and control states |
+| Pale lilac | `#F5F3FA` | Catalog canvas and light wells |
+| Warm wash | `#FFF8F2` | Restrained light surface warmth |
+| Peach | `#FFB38C` | Primary action accent |
+| Selected lilac | `#EEE9FF` | Selected products/customer context and controls |
+| Violet edge | `#5D56A7` | Selection and interactive border feedback |
+| Slate | `#58617A` | Secondary text and metadata |
+| Cool edge | `#DCE0ED` | Neutral dividers and borders |
+| Focus violet | `#5144B2` | Focus on light surfaces |
+
+Navy anchors the hero, ordering header/footer and sticky cart; white/lilac carry
+the content. Peach is the action accent, never a substitute for a stock/status
+color. The approved treatment also uses small peach cart-count/icon/package
+details and a faint static hero/canvas wash; do not expand it into large content
+fills or promotional claims. Violet is reserved for selection/focus interaction
+feedback, including hover borders. Semantic warning/danger colors still mean
+low stock, expiry attention, sold out or destructive action as appropriate;
+they are not decorative labels. Focus indicators on dark controls must remain
+legible: the card increment retains its contrasting peach outline, while the
+ordering stepper uses a light focus surface with a violet outline.
+
+### Scope and boundaries
+
+This layer covers only the authenticated ordering catalog, its catalog-specific
+header treatment, OrderPad, mobile sticky cart and catalog review sheet. It does
+**not** redefine admin, private shop, showcase, product detail, checkout,
+standalone cart or documents/legal UI.
+
+Header rules are gated by
+`body:has(.catalog-workspace) .storefront-header`; the actual Madaf logo is
+unchanged. AppShell remains a Server Component. Only StorefrontCatalogLink owns
+pathname-dependent active navigation, receiving `locale` and the catalog label.
+CartLink and LocaleSwitcher remain their existing client children.
+
+Only ProductCard opts into ProductImage's `catalog-card` presentation. Existing
+`default` and `catalog` presentations retain their separate consumers; hero and
+OrderPad media receive only their scoped treatment. QuantityStepper ordering
+styles are opt-in classes, never global overrides. Cart/customer providers,
+submission keys, authorization and server order operations are unchanged.
+
+### Product Card V3
+
+- Integrated **5:4** media, with a **4:3** media fallback below 360px. Real images
+  are centered with `object-fit: contain` and `5cqw` padding; tall/wide products
+  remain uncropped. Transparency is preserved, and baked-in backgrounds or
+  source margins are not removed.
+- Missing or failed images use static, abstract branded package artwork. The
+  media is decorative; the product link/name supplies the accessible label.
+- A two-line product name, optional manufacturer, compact wholesale package
+  details, prominent package price and secondary unit price preserve ordering
+  context. Prices and identifiers remain bidi-safe.
+- A peach Add action becomes the package quantity control when selected. Lilac
+  surfaces and a violet edge indicate selection; the line total remains visible.
+- Sold-out products cannot be initially added or incremented. Existing cart
+  quantities remain decrementable/removable; visual status never changes those
+  rules or the submission-key lifecycle.
+
+### Responsive layout and ordering surfaces
+
+| Viewport | Product grid / ordering surface |
+| --- | --- |
+| Width below 360px | One column; sticky cart and review |
+| Width 360–639px | Two columns; sticky cart and review |
+| Width at least 640px | Three columns; review is a centered modal |
+| Width at least 1024px **and** height at least 650px | Three columns plus sticky OrderPad |
+| Width at least 1280px **and** height at least 650px | Four columns plus OrderPad |
+| Width at least 1600px **and** height at least 650px | Five columns plus OrderPad |
+
+The workspace has a 1720px maximum width. Short wide viewports retain the
+three-column grid and sticky cart instead of squeezing in a side panel. Logical
+layout places the panel left in Arabic/Hebrew and right in English. Only its
+line list scrolls; customer context and totals stay fixed.
+
+The hero uses static branded decoration and up to three actual catalog products
+(one on phones); dimensions are content-aware minimums. Search, horizontal
+category scrolling, manufacturer disclosure and sort remain the existing
+discovery controls. Stock/availability labels follow product data.
+
+The sticky cart reviews the same cart state. Its existing Review Cart trigger
+opens a native dialog: bottom sheet on phones, centered modal from 640px, with
+24px corners and a navy backdrop. View Cart continues to the existing cart route;
+it is not a payment or order-submission action. Keep native focus containment,
+nested customer-popover Escape behavior, focus return, scroll restoration and
+closing on a usable side-panel orientation. Emptying the cart hides the sticky
+bar while an already-open review safely retains its empty state.
+
+### Accessibility and performance
+
+Primary actions and quantity buttons retain 44px touch targets. Use logical CSS
+for spacing, radii and positioning; keep AR/HE RTL and EN LTR, including isolated
+numbers. Retain native semantics, meaningful labels, disabled states and visible
+keyboard focus. Honor reduced-motion preferences; decoration is static and adds
+no animation dependency. Real photos remain lazy-loaded.
+
+Keep catalog CSS and presentation variants scoped. Verify changes in Chromium
+and genuine WebKit where available, especially `:has()`, `color-mix()`, container
+queries, native dialog/popover behavior, `100dvh` and safe-area bottom spacing.
+Device emulation does not prove physical iPhone Safari chrome, keyboard or
+nonzero safe-area behavior. Do not add compatibility workarounds without a
+demonstrated defect, or infer hosted/release approval from local visual QA.
 
 ## Category identity system (M0.2)
 

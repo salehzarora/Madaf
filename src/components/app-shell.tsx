@@ -23,7 +23,7 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 flex h-[var(--storefront-header-height)] shrink-0 flex-col border-b border-line bg-surface-warm/95 backdrop-blur">
+      <header className="storefront-header sticky top-0 z-40 flex h-[var(--storefront-header-height)] shrink-0 flex-col border-b border-line bg-surface-warm/95 backdrop-blur">
         {/* Bottle-green shelf edge */}
         <div className="h-1 shrink-0 bg-band" aria-hidden />
         <div className="mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 items-center gap-2 px-4 sm:gap-3 sm:px-6">
