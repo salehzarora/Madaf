@@ -1,5 +1,5 @@
-/* Opt-in storefront presentation. AppShell owns this boundary; admin, auth
- * and token routes retain the global Ledger defaults. Route bodies opt in
+/* Opt-in storefront presentation. AppShell and the private shop own explicit
+ * boundaries; admin, auth and other public routes retain Ledger defaults. Bodies opt in
  * separately: do not override global brand, status or primitive tokens here. */
 body:has(> .storefront-theme),
 .storefront-theme {
@@ -20,7 +20,7 @@ body:has(> .storefront-theme),
 
 /* Body canvas propagation also paints the reserved scrollbar gutter during
  * native-dialog scroll lock. Keep that approved paint origin, gated strictly
- * by the mounted AppShell; admin/auth/token routes retain their own canvas. */
+ * by an explicit theme boundary; other routes retain their own canvas. */
 body:has(> .storefront-theme) {
   background-color: var(--storefront-canvas);
   background-image:
