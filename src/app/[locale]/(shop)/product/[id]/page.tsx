@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { ProductDetailActions } from "@/components/product-detail-actions";
 import { ProductImage } from "@/components/product-image";
+import { StorefrontProductTile } from "@/components/storefront-product-tile";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { packageLabel, productName } from "@/lib/catalog-helpers";
@@ -72,28 +72,28 @@ export default async function ProductPage({
   ];
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+    <div className="storefront-product-page">
       <Link
         href={`/${locale}/catalog`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+        className="storefront-product-back"
       >
         <ArrowRight className="size-4 ltr:-scale-x-100" aria-hidden />
         {dict.product.backToCatalog}
       </Link>
 
-      <div className="mt-5 grid gap-8 lg:grid-cols-2">
+      <div className="storefront-product-layout">
         <ProductImage
           product={product}
           category={category}
-          className="aspect-[4/3] w-full rounded-card border border-line shadow-card"
-          iconClassName="text-7xl"
+          presentation="storefront"
+          className="storefront-detail-media"
         />
 
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-between gap-2">
+        <div className="storefront-product-info">
+          <div className="storefront-product-heading">
+            <div className="storefront-product-identity">
               {manufacturer ? (
-                <p className="truncate text-[11px] font-bold uppercase tracking-[0.06em] text-brand-700">
+                <p className="storefront-product-brand">
                   {manufacturer.name[locale]}
                 </p>
               ) : (
@@ -105,15 +105,15 @@ export default async function ProductPage({
                 aria-hidden
               />
             </div>
-            <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.02em] text-ink">
+            <h1 className="storefront-product-name">
               {productName(product, locale)}
             </h1>
-            <p className="mt-1 text-sm text-ink-soft">
+            <p className="storefront-product-package">
               {packageLabel(product, dict)}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="storefront-product-status">
             <AvailabilityBadge
               availability={product.availability}
               dict={dict.availability}
@@ -125,37 +125,34 @@ export default async function ProductPage({
             ) : null}
           </div>
 
-          <Card className="p-5">
-            <p className="text-3xl font-extrabold tabular-nums tracking-tight text-ink">
-              {formatCurrency(product.wholesalePrice, locale)}
-              <span className="ms-2 text-sm font-normal text-ink-muted">
+          <div className="storefront-product-purchase">
+            <p className="storefront-product-price">
+              <bdi dir="ltr">{formatCurrency(product.wholesalePrice, locale)}</bdi>
+              <span>
                 / {dict.packaging[product.packageType]}
               </span>
             </p>
-            <p className="mt-1 text-sm text-ink-soft">
-              {formatCurrency(
+            <p className="storefront-product-unit-price">
+              <bdi dir="ltr">{formatCurrency(
                 product.wholesalePrice / product.unitsPerPackage,
                 locale,
-              )}{" "}
+              )}</bdi>{" "}
               / {dict.units[product.baseUnit]}
             </p>
-            <div className="mt-5">
+            <div className="storefront-product-controls">
               <ProductDetailActions
                 product={product}
                 locale={locale}
                 dict={dict}
               />
             </div>
-          </Card>
+          </div>
 
-          <dl className="divide-y divide-line-hair rounded-card border border-line bg-surface text-sm shadow-card">
+          <dl className="storefront-product-specs">
             {specs.map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-4 px-5 py-3"
-              >
-                <dt className="text-ink-soft">{label}</dt>
-                <dd className="font-medium text-ink">{value}</dd>
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
               </div>
             ))}
           </dl>
@@ -164,29 +161,17 @@ export default async function ProductPage({
 
       {/* Related */}
       {related.length > 0 ? (
-        <section className="mt-12">
-          <h2 className="text-lg font-bold text-ink">{dict.product.related}</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+        <section className="storefront-product-related">
+          <h2>{dict.product.related}</h2>
+          <div className="storefront-related-grid">
             {related.map((rel) => (
-              <Link
+              <StorefrontProductTile
                 key={rel.id}
-                href={`/${locale}/product/${rel.id}`}
-                className="group overflow-hidden rounded-card border border-line bg-surface shadow-card transition-shadow hover:shadow-float"
-              >
-                <ProductImage
-                  product={rel}
-                  category={category}
-                  className="aspect-[4/3] w-full"
-                />
-                <div className="p-3">
-                  <p className="line-clamp-2 text-sm font-medium text-ink group-hover:text-brand-700">
-                    {productName(rel, locale)}
-                  </p>
-                  <p className="mt-1 text-sm font-bold text-ink">
-                    {formatCurrency(rel.wholesalePrice, locale)}
-                  </p>
-                </div>
-              </Link>
+                product={rel}
+                manufacturer={rel.manufacturerId === manufacturer?.id ? manufacturer : undefined}
+                locale={locale}
+                dict={dict}
+              />
             ))}
           </div>
         </section>

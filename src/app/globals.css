@@ -2,6 +2,8 @@
 @import "../components/storefront-theme.css";
 @import "../components/catalog-workspace.css";
 @import "../components/catalog-product-media.css";
+@import "../components/storefront-product-media.css";
+@import "../components/storefront-product.css";
 
 :root { --storefront-header-height: 56px; }
 @media (min-width: 640px) {
