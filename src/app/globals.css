@@ -8,6 +8,7 @@
 @import "../components/storefront-checkout.css";
 @import "../components/storefront-landing.css";
 @import "../components/shop/private-shop.css";
+@import "../components/shop/showcase-storefront.css";
 
 :root { --storefront-header-height: 56px; }
 @media (min-width: 640px) {

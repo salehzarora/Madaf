@@ -73,7 +73,7 @@
     "test:cart-submission-key": "tsx --test src/lib/cart-submission-key.test.tsx",
     "test:order-submission-key": "tsx --test src/lib/client/order-submission-key.test.ts",
     "test:shop-view": "tsx --experimental-test-module-mocks --test src/components/shop/shop-view.test.mts src/components/shop/shop-page.test.mts",
-    "test:showcase-view": "tsx --experimental-test-module-mocks --test src/components/shop/showcase-view.test.mts",
+    "test:showcase-view": "tsx --experimental-test-module-mocks --test src/components/shop/showcase-view.test.mts src/components/shop/showcase-page.test.mts",
     "test:order-submission": "tsx --conditions=react-server --test src/lib/actions/order-submission.test.ts",
     "test:timezone-matrix": "tsx --conditions=react-server --test src/lib/timezone-matrix.test.ts"
   },
