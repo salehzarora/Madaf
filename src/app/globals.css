@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../components/storefront-theme.css";
 @import "../components/catalog-workspace.css";
 @import "../components/catalog-product-media.css";
 

@@ -106,6 +106,8 @@ test("AppShell stays server-renderable and passes only locale/label to the catal
   // Execute the shell outside a React render: hooks must remain in its children.
   const dict = getDictionary("en");
   const tree = AppShell({ locale: "en", dict, children: <p>Route content</p> });
+  assert.equal(tree.type, "div");
+  assert.ok(tree.props.className.split(/\s+/).includes("storefront-theme"));
   const catalogProps: unknown[] = [];
   function visit(children: React.ReactNode) {
     React.Children.forEach(children, (child) => {
@@ -116,6 +118,45 @@ test("AppShell stays server-renderable and passes only locale/label to the catal
   }
   visit(tree);
   assert.deepEqual(catalogProps, [{ locale: "en", label: dict.nav.catalog }]);
+});
+
+test("storefront presentation is opt-in at AppShell, outside the root and Admin boundaries", () => {
+  const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.match(source("../app/[locale]/(shop)/layout.tsx"), /<AppShell\b/);
+  for (const path of ["../app/[locale]/layout.tsx", "../app/[locale]/admin/layout.tsx", "./admin-shell.tsx"]) {
+    assert.doesNotMatch(source(path), /\bAppShell\b|storefront-theme/, path);
+  }
+  const css = source("./storefront-theme.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const selectors = Array.from(css.matchAll(/([^{}]+)\{/g), (m) => m[1]);
+  assert.ok(selectors.length > 0);
+  for (const selector of selectors) {
+    // Comma-separated selectors must each be anchored; :is() commas are nested.
+    const individualSelectors = selector.replace(/:is\([^)]*\)/g, ":is(*)").split(",");
+    for (const scoped of individualSelectors) {
+      assert.match(scoped.trim(), /^(?:\.storefront-theme(?:\s|$)|body:has\(> \.storefront-theme\)$)/);
+    }
+  }
+  assert.doesNotMatch(css, /--color-[\w-]+\s*:/, "global brand, status and primitive tokens remain untouched");
+});
+
+test("catalog workspace and cards alias the single shared Storefront V3 palette", () => {
+  const theme = readFileSync(new URL("./storefront-theme.css", import.meta.url), "utf8");
+  const catalog = readFileSync(new URL("./catalog-workspace.css", import.meta.url), "utf8");
+  const palette = {
+    navy: "#182444", indigo: "#273A68", canvas: "#F5F3FA", warm: "#FFF8F2",
+    action: "#FFB38C", selected: "#EEE9FF", "selected-edge": "#5D56A7",
+    muted: "#58617A", edge: "#DCE0ED", focus: "#5144B2",
+  };
+  for (const [name, value] of Object.entries(palette)) {
+    const declarations = Array.from(theme.matchAll(new RegExp(`--storefront-${name}:\\s*([^;]+);`, "g")));
+    assert.deepEqual(declarations.map((m) => m[1]), [value]);
+    assert.ok(!catalog.toLowerCase().includes(value.toLowerCase()), `catalog must alias ${name}`);
+    const uiName = ({ action: "peach", selected: "lilac", "selected-edge": "selected", muted: "slate" } as Record<string, string>)[name] ?? name;
+    for (const alias of [`--catalog-ui-${uiName}`, `--catalog-card-${name}`]) {
+      assert.match(catalog, new RegExp(`${alias}:\\s*var\\(--storefront-${name}\\);`));
+    }
+  }
+  assert.doesNotMatch(catalog, /body:has\(\.catalog-workspace\)/, "catalog no longer owns global canvas/header paint");
 });
 
 for (const locale of locales) {
@@ -140,20 +181,41 @@ for (const locale of locales) {
     }
   });
 
-  test(`${locale}: shared header retains navigation and children across catalog/product/cart/checkout paths`, () => {
-    for (const suffix of ["catalog", "product/product", "cart", "checkout"]) {
-      const path = `/${locale}/${suffix}`;
+  test(`${locale}: shared theme and header retain navigation and children across all storefront route families`, () => {
+    for (const suffix of ["", "/catalog", "/product/product", "/cart", "/checkout", "/order-success"]) {
+      const path = `/${locale}${suffix}`;
       const { container, dict } = mount(locale, path);
+      assert.equal(container.querySelectorAll(".storefront-theme").length, 1);
+      const theme = container.querySelector(".storefront-theme");
+      assert.ok(theme);
+      for (const landmark of ["header", "main", "footer"]) {
+        assert.equal(theme.querySelector(landmark)?.parentElement, theme);
+      }
       const header = container.querySelector("header");
       assert.ok(header);
+      assert.equal(header.querySelector(`a[aria-label='${dict.meta.appName}']`)?.getAttribute("href"), `/${locale}`);
       const catalog = header.querySelector(`a[href='/${locale}/catalog']`);
       assert.ok(catalog);
-      assert.equal(catalog.getAttribute("aria-current"), suffix === "catalog" ? "page" : null);
+      assert.equal(catalog.getAttribute("aria-current"), suffix === "/catalog" ? "page" : null);
       assert.equal(header.querySelector(`a[aria-label='${dict.nav.cart}']`)?.getAttribute("href"), `/${locale}/cart`);
+      assert.equal(header.querySelectorAll(".storefront-cart-link").length, 1);
+      assert.equal(header.querySelector(".storefront-cart-link")?.getAttribute("aria-label"), dict.nav.cart);
+      assert.equal(header.querySelector("nav[aria-label] .storefront-cart-link"), null, "locale links on /cart must not inherit cart-button paint");
       assert.equal(header.querySelector(`a[aria-label='${dict.nav.admin}']`)?.getAttribute("href"), `/${locale}/admin`);
       assert.equal(container.querySelector("main [data-testid='route-content']")?.textContent, path);
       assert.ok(button(header, `${dict.common.language}: ${localeNames[locale]}`));
     }
+  });
+
+  test(`${locale}: themed footer preserves only the existing app/tagline and demo notice`, () => {
+    const { container, dict } = mount(locale);
+    const footer = container.querySelector(".storefront-theme footer.storefront-footer");
+    assert.ok(footer);
+    assert.deepEqual(Array.from(footer.querySelectorAll("p"), (p) => p.textContent), [
+      `${dict.meta.appNameNative} · ${dict.meta.tagline}`,
+      dict.common.mockNotice,
+    ]);
+    assert.equal(footer.querySelector("a, button, nav"), null);
   });
 
   test(`${locale}: compact locale disclosure preserves path, drops query and returns focus on Escape`, () => {
@@ -202,6 +264,8 @@ test("header badge follows the same hydrated cart through quantity changes and r
   assert.equal(cartLink.querySelector("span[dir='ltr']")?.textContent, "2");
   act(() => h.cart().setQuantity("product", 5));
   assert.equal(cartLink.querySelector("span[dir='ltr']")?.textContent, "5");
+  act(() => h.cart().setQuantity("product", 100));
+  assert.equal(cartLink.querySelector("span[dir='ltr']")?.textContent, "99+");
   act(() => h.cart().removeItem("product"));
   assert.equal(cartLink.querySelector("span[dir='ltr']"), null);
   assert.equal(h.cart().submissionKey, KEY);
