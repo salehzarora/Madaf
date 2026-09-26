@@ -31,7 +31,7 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
     <article className={cn("catalog-product", quantity > 0 && "catalog-product-selected")}>
       <Link href={`/${locale}/product/${product.id}`} aria-label={name} className="catalog-product-detail">
         <div className="catalog-product-frame relative">
-          <ProductImage product={product} category={category} presentation="catalog" className="catalog-product-image" />
+          <ProductImage product={product} category={category} presentation="catalog-card" className="catalog-product-image" />
           <div className="catalog-product-badges">
             {product.availability !== "inStock" ? (
               <span className={cn("rounded-badge px-2 py-1 text-[11px] font-semibold", soldOut ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning")}>
@@ -46,10 +46,10 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
           </div>
         </div>
         <div className="catalog-product-copy">
-          <p className="catalog-product-brand min-h-4 truncate text-[11px] font-semibold text-brand-700">
-            {manufacturer ? <span>{manufacturer.name[locale]}</span> : "\u00a0"}
-          </p>
-          <h3 className="catalog-product-name line-clamp-2 min-h-[2.7em] text-sm font-bold leading-snug text-ink" title={name}>{name}</h3>
+          {manufacturer?.name[locale] ? (
+            <p className="catalog-product-brand truncate text-[11px] font-semibold"><span>{manufacturer.name[locale]}</span></p>
+          ) : null}
+          <h3 className="catalog-product-name line-clamp-2 text-sm font-bold leading-snug" title={name}>{name}</h3>
           <p className="catalog-package-label">{packageLabel(product, dict)}</p>
         </div>
       </Link>

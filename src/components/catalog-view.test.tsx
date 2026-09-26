@@ -10,6 +10,7 @@ import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { CatalogView } from "@/components/catalog-view";
 import { CartLink } from "@/components/cart-link";
+import { ProductImage } from "@/components/product-image";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { dirFor, type Locale } from "@/i18n/config";
 import { CartProvider, useCart } from "@/lib/cart-context";
@@ -413,6 +414,7 @@ for (const locale of ["ar", "he", "en"] as const) {
     const h = mount({ locale, products: [unusual] });
     assert.deepEqual(names(h), [unusual.translations[locale].name]);
     assert.equal(card(h, unusual.id).querySelector("img"), null);
+    assert.equal(card(h, unusual.id).querySelector(".catalog-product-brand"), null, "missing manufacturer does not reserve an empty identity row");
     assert.ok(!h.container.textContent?.includes("undefined"));
     click(labelledButton(card(h, unusual.id), h.dict.catalog.addToCart));
     assertSummary(h, 1, 36);
@@ -433,4 +435,43 @@ test("failed product images fall back safely and an empty catalog keeps cart dis
   assert.deepEqual(names(empty), []);
   assert.ok(empty.container.textContent?.includes(empty.dict.catalog.noResults));
   assert.ok(orderPad(empty).textContent?.includes(empty.dict.cart.empty));
+});
+
+test("V3 media is limited to product cards while hero and order thumbnails retain their existing presentation", () => {
+  const h = mount();
+  assert.equal(h.container.querySelectorAll(".catalog-product .catalog-card-media").length, products.length);
+  assert.equal(h.container.querySelector(".catalog-hero .catalog-card-media"), null);
+  assert.ok(h.container.querySelector(".catalog-hero .catalog-product-media"));
+  click(labelledButton(card(h, "juice"), h.dict.catalog.addToCart));
+  assert.ok(orderPad(h).querySelector(".catalog-product-media"));
+  assert.equal(orderPad(h).querySelector(".catalog-card-media"), null);
+});
+
+test("shared default and legacy catalog images keep their photo/fallback contracts when card media is opted in", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(() => { act(() => root.unmount()); container.remove(); });
+  const modes = ["default", "catalog", "catalog-card"] as const;
+  for (const hasPhoto of [false, true]) {
+    act(() => root.render(<>{modes.map((presentation) => (
+      <ProductImage key={`${presentation}-${hasPhoto}`} product={{ ...products[0], imageUrl: hasPhoto ? products[0].imageUrl : undefined }} presentation={presentation} showSizeTag={false} />
+    ))}</>));
+    const [plain, legacy, cardMedia] = Array.from(container.children);
+    for (const media of [plain, legacy, cardMedia]) assert.equal(media.getAttribute("aria-hidden"), "true");
+    assert.equal(plain.classList.contains("catalog-card-media"), false);
+    assert.equal(legacy.classList.contains("catalog-card-media"), false);
+    assert.equal(cardMedia.classList.contains("catalog-card-media"), true);
+    assert.equal(container.querySelector("[dir='ltr']"), null, "size tags remain optional in every presentation");
+    if (hasPhoto) {
+      assert.equal(plain.querySelector("img")?.className, "size-full object-cover");
+      assert.equal(legacy.querySelector("img")?.className, "catalog-media-photo");
+      assert.equal(cardMedia.querySelector("img")?.className, "catalog-card-media-photo");
+      act(() => container.querySelectorAll("img").forEach((img) => img.dispatchEvent(new dom.window.Event("error"))));
+      assert.equal(container.querySelector("img"), null);
+    }
+    assert.ok(container.children[0].querySelector("svg"));
+    assert.ok(container.children[1].classList.contains("catalog-product-media--placeholder"));
+    assert.ok(container.children[2].classList.contains("catalog-card-media--placeholder"));
+  }
 });

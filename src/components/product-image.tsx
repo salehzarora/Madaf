@@ -29,8 +29,8 @@ export function ProductImage({
   iconClassName?: string;
   /** The unit-size shelf tag — turn off for tiny thumbnails. */
   showSizeTag?: boolean;
-  /** Opt-in catalog framing; other shared surfaces retain their existing art. */
-  presentation?: "default" | "catalog";
+  /** Card-only styling is separate from the existing hero/cart presentation. */
+  presentation?: "default" | "catalog" | "catalog-card";
 }) {
   const [broken, setBroken] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -47,7 +47,7 @@ export function ProductImage({
     showSizeTag && product.unitSize ? (
       <span
         dir="ltr"
-        className={presentation === "catalog"
+        className={presentation === "catalog-card" ? "catalog-card-media-size" : presentation === "catalog"
           ? "catalog-media-size"
           : "absolute bottom-2 end-2 rounded-badge bg-ink px-1.5 py-0.5 font-mono text-[11px] font-semibold text-background"}
       >
@@ -62,7 +62,7 @@ export function ProductImage({
         aria-hidden
         className={cn(
           "relative overflow-hidden",
-          presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
+          presentation === "catalog-card" ? "catalog-card-media catalog-card-media--photo" : presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
           className,
         )}
       >
@@ -74,8 +74,20 @@ export function ProductImage({
           alt=""
           loading="lazy"
           onError={() => setBroken(true)}
-          className={presentation === "catalog" ? "catalog-media-photo" : "size-full object-cover"}
+          className={presentation === "catalog-card" ? "catalog-card-media-photo" : presentation === "catalog" ? "catalog-media-photo" : "size-full object-cover"}
         />
+        {sizeTag}
+      </div>
+    );
+  }
+
+  if (presentation === "catalog-card") {
+    return (
+      <div aria-hidden className={cn("catalog-card-media catalog-card-media--placeholder", className)}>
+        <span className="catalog-card-placeholder">
+          <LogoMark className="catalog-card-placeholder-brand" />
+          <Package className={cn("catalog-card-placeholder-glyph", iconClassName)} strokeWidth={1.25} aria-hidden />
+        </span>
         {sizeTag}
       </div>
     );
