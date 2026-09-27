@@ -25,6 +25,17 @@ import type {
 
 const TZ = "Asia/Jerusalem"; // UTC+3 in July
 
+test("historical inactive products retain non-cancelled revenue in the ranked aggregate", () => {
+  const result = computeDashboardMetrics({
+    products: [product("historic", "Historical", false)], customers: [], inventory: [],
+    orders: [order("historical-order", "delivered", "", "2026-07-01T12:00:00Z", [{ productId: "historic", quantity: 3, unitPrice: 25 }])],
+    timeZone: TZ, monthPrefix: "2026-07", today: "2026-07-01",
+  });
+  assert.deepEqual(result.topProducts, [{ productId: "historic", name: { ar: "Historical-ar", he: "Historical-he", en: "Historical" }, revenue: 75 }]);
+  assert.equal(result.activeProductCount, 0);
+  assert.deepEqual(result.topShops, []);
+});
+
 function product(id: string, name: string, isActive = true): Product {
   return {
     id,

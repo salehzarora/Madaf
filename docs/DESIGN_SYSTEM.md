@@ -1,8 +1,10 @@
-# Madaf Design System — Storefront V3 and Ledger defaults
+# Madaf Design System — Storefront V3, Admin V3 and Ledger surfaces
 
 > ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
 > The **Storefront Ordering Presentation Layer** is current for the customer
-> routes listed below; **Madaf Ledger** remains the default for excluded surfaces.
+> routes listed below. The **Admin V3 Presentation Layer** covers AdminShell and
+> the Dashboard body; **Madaf Ledger** remains the default for other Admin bodies
+> and for other excluded surfaces.
 > Material from **"Category identity system (M0.2)"** onward records earlier
 > milestones, including conflicting palette, typography, product-art and layout
 > descriptions. It does not override either current scoped section. Implementation
@@ -20,11 +22,234 @@ The [Storefront Ordering Presentation Layer](#storefront-ordering-presentation-l
 below governs the approved Landing, Catalog, Product, Cart, Checkout, Success,
 Private Shop and Showcase presentation. Its shared tokens and scoped rules take
 precedence over older storefront descriptions; global Ledger primitives remain
-available to Admin, auth/onboarding and legal/document UI.
+available to Admin page bodies, auth/onboarding and legal/document UI.
+
+## Admin V3 Presentation Layer
+
+ADMIN-DASHBOARD-STYLE-005 establishes shared Admin chrome and the Dashboard V3
+body. It preserves Rubik typography, typed AR/HE/EN dictionaries, logical CSS,
+tenant data boundaries and existing navigation. This is a presentation contract,
+not approval to merge, deploy or admit real customers; the Pilot runbook remains
+the operational authority.
+
+### Scope and architecture
+
+| Surface | Coverage |
+| --- | --- |
+| Shared AdminShell | Every `/[locale]/admin` route and its descendants: sidebar, desktop top bar, mobile/tablet header, drawer and bottom navigation |
+| Dashboard V3 body | Only `/[locale]/admin`: heading/actions, primary/secondary KPIs, operational alerts, Trend Chart, Status Donut, Low Stock, Top Shops, Top Products and Recent Orders |
+| Deferred bodies | Products, Orders, Manufacturers, Inventory, Customers, Documents, Team, Business Settings and Tax Settings retain their current Ledger/internal presentation; they inherit the V3 shell only |
+
+- `AdminLayout` remains a Server Component and the existing authentication and
+  membership gate. Supabase users without a session go to Login; those without
+  membership go to Onboarding. Mock mode retains its zero-configuration demo.
+- `AdminShell` retains its existing client boundary for navigation and dialog
+  lifecycle. The Dashboard page and its presentation components remain
+  server-rendered; aggregates do not move into client state.
+- The page still calls unchanged `getDashboardMetrics()`, a bounded recent-order
+  read with `pageSize: "6"`, and server-derived `getTenantTimeZone()`. The aggregate
+  uses the existing tenant-scoped RPC in Supabase mode and matching mock
+  definitions. No full order-history read is introduced by presentation.
+- Pending signup counts are requested only for Supabase owner/admin. The exact
+  server-side count reads no signup rows/PII; unauthorized and mock states have
+  no signup card or reserved slot.
+- CSS imports are global, but `.admin-v3` plus named shell/dashboard selectors
+  make styling opt-in. Do not override global Ledger or Storefront tokens,
+  shared Button/Input/Card defaults, or arbitrary child-page elements. The
+  Storefront presentation layer below remains independent.
+
+| Responsibility | Implementation under `src/components/` |
+| --- | --- |
+| Shell/theme | `admin-shell.tsx`, `admin/admin-theme.css` |
+| Heading, KPIs and alerts | `dashboard/dashboard-top.tsx`, `dashboard/dashboard-top.css`, `dashboard/kpi-card.tsx`, `metric-card.tsx`, `dashboard/operational-alert-card.tsx` |
+| Analytics | `dashboard/dashboard-analytics.tsx`, `dashboard/analytics-card.tsx`, `dashboard/trend-chart.tsx`, `dashboard/status-donut.tsx`, `dashboard/dashboard-analytics.css` |
+| Operational widgets | `dashboard/dashboard-widgets.tsx`, `dashboard/dashboard-widgets.css` |
+
+### Palette and usage
+
+[`admin/admin-theme.css`](../src/components/admin/admin-theme.css) owns these
+scoped tokens. Components consume tokens rather than introducing another palette.
+
+| Name | Token | Color | Use |
+| --- | --- | --- | --- |
+| Navy Deep | `--admin-navy-deep` | `#0B1828` | Dark navigation structure |
+| Navy | `--admin-navy` | `#152442` | Headings and primary text |
+| Indigo | `--admin-indigo` | `#28365D` | Supporting dark structure/analytical ink |
+| Emerald | `--admin-emerald` | `#007A63` | Primary actions and active navigation |
+| Teal | `--admin-teal` | `#087F83` | Primary-action hover and positive operational accent |
+| Cyan | `--admin-cyan` | `#E6F7FA` | Mint/positive supporting surfaces |
+| Blue | `--admin-blue` | `#3565CF` | Informational and new-order signals |
+| Lilac | `--admin-lilac` | `#ECEBFF` | Analytical/supporting surfaces |
+| Lilac Strong | `--admin-lilac-strong` | `#8177C8` | Supporting/categorical accents |
+| Peach | `--admin-peach` | `#FFF0E5` | Warning surfaces |
+| Warning | `--admin-warning` | `#A34717` | Warning text and low-stock accents |
+| Danger | `--admin-danger` | `#B83242` | Actual danger/out-of-stock emphasis |
+| Canvas | `--admin-canvas` | `#F4F7FC` | Cool page background |
+| Surface | `--admin-surface` | `#FFFFFF` | Cards and controls |
+| Muted | `--admin-muted` | `#596782` | Supporting text and metadata |
+| Border | `--admin-border` | `#DFE6F1` | Neutral edges and dividers |
+| Focus | `--admin-focus` | `#3758C8` | Focus on light surfaces |
+| Focus-on-dark | `--admin-focus-on-dark` | `#99E8D3` | Focus on dark navigation |
+
+Navy carries structure/headings; Emerald carries primary actions/active states.
+Teal and mint support analytics and positive operational accents. Blue indicates
+information/new orders, Lilac supports analysis, and Peach supports warnings.
+Semantic success, warning and danger retain their meaning. Chart categories are
+not replacements for status-badge semantics. Navigation also uses dedicated
+light ink/muted tokens and a restrained dark gradient; the canvas washes are
+static. None of these rules redefines the Storefront palette.
+
+### AdminShell contract
+
+- **Desktop, >=1280px:** a permanent 240px sticky sidebar at logical inline-start
+  (AR/HE right, EN left), internally scrollable navigation and a desktop top bar.
+- **Below 1280px:** mobile/tablet top bar, modal drawer and bottom navigation.
+  Destinations remain **Dashboard, Orders, Products, Customers, Menu**. Active
+  links use `aria-current="page"`, a visible indicator and stronger text as well
+  as color. Bottom controls are at least 44px; the page clearance and navigation
+  padding both include the bottom safe-area inset.
+- The native dialog has an accessible name and modal semantics. Opening locks
+  document scroll and focuses Close. Explicit Tab/Shift+Tab traversal contains
+  focus among eligible controls, including links when native WebKit Tab behavior
+  omits anchors. Disabled, hidden, inert and negative-tabindex controls are skipped.
+- Escape, Close, backdrop, route navigation and the desktop transition dismiss
+  the drawer. Cleanup releases the scroll lock; same-route dismissal restores
+  opener/scroll, while destination navigation retains its own focus/scroll.
+  Crossing 1280px restores focus to the active sidebar link if the opener is hidden.
+- At viewport heights <=600px the complete drawer scrolls, preventing long tenant
+  and identity text from squeezing navigation. Drawer language-link focus rings
+  stay inset within their light pill. Other dark-surface controls use mint focus.
+- Existing route matching, role visibility, tenant switcher, locale switcher and
+  logout are preserved. No search, notification, command palette or promo CTA is added.
+
+### Dashboard heading, cards and alerts
+
+`DashboardTop` presents the existing heading and Add Product / Review Orders /
+Open Catalog links. Heading/actions wrap; actions retain 44px minimum height.
+Primary KPIs use 20px rounded cards with Blue, Mint, Lilac and Peach washes;
+secondary KPIs use smaller white 16px tiles. Navy text, cool borders, restrained
+shadows and component-scoped surfaces form the shared visual grammar.
+
+Values retain full formatted ILS/counts, tabular digits and LTR bidi isolation.
+Responsive value sizing handles large amounts without clipping; labels wrap.
+Open orders display real new/confirmed/preparing shares with textual counts.
+The month card shows actual revenue and order count. Alerts retain their existing
+destinations; positive counts receive badges and zero uses calm explanatory copy.
+No totals are recomputed from a bounded widget preview.
+
+### Dashboard charts
+
+`DashboardAnalytics` composes white 22px `AnalyticsCard` sections with Navy
+headings and scoped chart colors. Trend consumes the existing ascending series
+of at most 14 **populated tenant-local dates with orders**, using non-cancelled
+subtotals. It does not fill missing dates, filter or re-aggregate the supplied data.
+The footer names the latest recorded date; Month Revenue is not a chart total.
+
+Mint bars and an Emerald maximum sit on quiet grid lines. Each point has a full
+calendar date, compact visible amount and accessible exact ILS value. The named,
+focusable region scrolls internally with readable lanes, including long values;
+it must never widen the document. A native keyboard-operable exact-value
+disclosure exposes the date/value table. Dates remain calendar dates and display
+LTR; removal of formatting direction marks affects display only. Empty series
+have localized copy and actual zero values remain visible.
+
+The 156px donut uses new/confirmed/preparing/delivered/cancelled in categorical
+Blue/Emerald/Peach/Lilac/Gray. Exact proportional, butt-ended arcs have no fixed
+gaps that erase tiny positive shares. The localized total and all five legend
+counts remain available, including zeros. Total zero shows a neutral ring and
+localized explanation. Legends wrap at 13px; cards >=500px wide place ring and
+legend side by side. Charts are static and add no library, animation, date-range
+selector, query or client boundary.
+
+### Dashboard operational widgets
+
+White 22px section cards continue the chart surfaces with Navy labels, neutral
+local SVG icons and Emerald accents. Each widget has a localized empty state.
+
+- **Low Stock:** up to four supplied rows, in supplied order, with localized names,
+  available locations and each product's own threshold. Bar width is stock/threshold
+  clamped only for drawing, without a positive floor. Zero is zero and has explicit
+  out-of-stock text; Danger is reserved for actual zero stock. The link remains
+  `/admin/inventory?low=1` beneath the active locale.
+- **Top Shops / Customers:** the top four supplied stored names, order counts and
+  subtotals, with guests excluded by existing metrics.
+- **Top Products:** the top five supplied products by non-cancelled line revenue,
+  including historical inactive products. Ranked rows show explicit ranks and exact
+  ILS values. No new thumbnail/avatar reads or ranked-row links are introduced.
+- **Recent Orders:** the bounded six-order read remains full width. Each linked
+  row exposes reference, customer, tenant-zone timestamp, line count, stored
+  subtotal and status. Customer fallback is `customerName → snapshot name → "—"`,
+  specifically `customerName ?? customerSnapshot?.name ?? "—"`; preserve empty strings.
+  IDs, amounts and numeric timestamps remain bidi-safe; mixed-language stored
+  names use automatic direction. Existing status semantics remain; only the
+  Dashboard preparing badge uses Admin Warning ink to reach 5.21:1 contrast,
+  and the local wrapper rounds badge corners. Shared Badge defaults stay unchanged.
+
+### Responsive contract
+
+Dashboard content remains bounded to **1096px**. Phone content uses 16px gutters,
+24px from 640px and 32px from 1024px. Below the desktop shell breakpoint the
+bottom content padding is `104px + safe-area-inset-bottom`; desktop uses 32px.
+
+| CSS viewport width | Shell | Primary / secondary KPIs | Alerts | Analytics | Lower widgets / Recent Orders |
+| --- | --- | --- | --- | --- | --- |
+| <360px | Header, drawer, bottom nav | 1 / 1 column | 1 column | Stacked | Stacked widgets; all order fields stacked |
+| 360–639px | Header, drawer, bottom nav | 2 / 2 columns | 1 column | Stacked | Stacked widgets; all order fields stacked |
+| 640–767px | Header, drawer, bottom nav | 2 / 2 columns | 2 columns | Stacked | Stacked widgets; all order fields stacked |
+| 768–1023px, tablet portrait | Header, drawer, bottom nav | 2 / 2 columns | 2 columns | Stacked | 2-column widgets; third card spans; Recent Orders full-width field grid |
+| 1024–1279px, tablet landscape | Header, drawer, bottom nav | 4 / 4 columns | 3 columns | 1.6:1, approximately 62/38 | 3 widgets; full-width Recent Orders |
+| >=1280px, desktop | 240px sidebar and top bar | 4 / 4 columns | 3 columns | 1.6:1 split | 3 widgets; full-width Recent Orders |
+
+At wide desktop the bounded content prevents giant stretched cards. Zoom reflows
+through the same CSS breakpoints; browser zoom is never disabled. Analytics and
+lower-widget min-width rules keep scrolling local to the chart.
+
+### Data truthfulness rules
+
+- **No fake growth percentages.** Show only supported stored/derived metrics.
+- **No fake date-range selector.** Trend means latest populated dates with orders,
+  not automatically “last N days.”
+- **No fake search, notification or command palette.** Do not imply absent features.
+- **Latest trend point is not today** unless its date actually matches the current
+  tenant-local day. Browser or machine timezone is never business-date authority.
+- **Low stock means strictly below each product's individual threshold**, not a
+  shared display threshold or count inferred from the four-row preview.
+- **Chart colors are categorical**, not substitutes for semantic status colors.
+- **Recent Orders uses stored subtotal and tenant-local time**; preserve the
+  `customerName → snapshot name → "—"` nullish fallback without inventing a customer
+  or replacing a stored empty string.
+
+### Accessibility, QA and future Admin pages
+
+Keep visible focus on light and dark surfaces, 44px primary/shell controls,
+keyboard-operable disclosures and chart scrolling, modal lifecycle cleanup,
+safe-area clearance, full accessible values and RTL/LTR isolation. No essential
+interaction depends on motion. The existing loading skeleton remains compatible;
+its opacity pulse is decorative and was not redesigned by this milestone.
+
+Use `test:dashboard-metrics`, `test:signup-count` and `test:dashboard-ui` alongside
+the full suite, timezone matrix, lint, typecheck, build and production dependency
+audit. JSDOM tests cover semantics, data binding and lifecycle; actual modal
+layout/inertness, focus, overflow, zoom and cross-route containment require browser
+checks. Windows Playwright WebKit is **not physical Safari verification**; do not
+claim physical iPhone/iPad coverage from it. Local QA does not establish hosted
+migration parity, backup readiness, release approval or real-customer GO.
+
+Later approved Admin-body milestones should reuse these tokens, the existing
+shell, the Dashboard heading/action grammar and section-card grammar. Extend
+consistent form/table/filter conventions when those bodies are implemented;
+there is no new universal V3 form/table/filter kit in this milestone. Do not
+create speculative components or apply Dashboard selectors to unrelated bodies.
+The existing Product/Add permission UX issue remains separate: the Dashboard
+Add Product link is visible to sales reps, while the unchanged destination denies
+that role and the Products list already hides its Add action. This is a navigation
+inconsistency, not an authorization bypass; presentation does not change role
+policy or authorize product writes.
+
 
 ## Madaf Ledger visual system (sitewide refresh)
 
-The default visual language outside the Storefront V3 scopes is **"Madaf
+The default visual language outside Storefront V3 and the scoped Admin V3 surfaces is **"Madaf
 Ledger"** — a wholesale supplier's paper ledger digitized. The original spec lives in
 [`docs/design/madaf-ledger/`](design/madaf-ledger/).
 
@@ -33,8 +258,8 @@ Ledger"** — a wholesale supplier's paper ledger digitized. The original spec l
   `bg-surface` with `border-line` + `shadow-card` (no floating white-on-white).
   Warm fills: `bg-surface-warm` (strip headers, table heads, footers),
   `bg-surface-sunken` (wells).
-- **Band** — deep bottle-green `--color-band: #12312A` for the admin
-  sidebar and other Ledger "spine" surfaces;
+- **Band** — deep bottle-green `--color-band: #12312A` for legacy Ledger
+  "spine" surfaces (AdminShell uses the scoped Admin V3 palette above);
   text on it is `text-band-ink` / `text-band-muted`.
 - **Accent** — amber `--color-accent: #E8A33D` for the active-nav marker,
   cart count, and invoice-draft emphasis. Amber text on light uses

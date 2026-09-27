@@ -242,9 +242,27 @@ export interface Dictionary {
     dashboard: {
       trend: string;
       trendSub: string;
+      charts: {
+        latestRecorded: string;
+        trendEmpty: string;
+        statusEmpty: string;
+        totalOrders: string;
+        exactValues: string;
+        date: string;
+        value: string;
+        scrollHint: string;
+        scrollLabel: string;
+      };
       statusMix: string;
       topProducts: string;
       topCustomers: string;
+      widgets: {
+        stockThreshold: string;
+        noLowStock: string;
+        noShops: string;
+        noProducts: string;
+        noOrders: string;
+      };
       byRevenue: string;
       today: string;
       lowSub: string;
@@ -270,7 +288,7 @@ export interface Dictionary {
         signupRequestsCount: string;
         signupRequestsNone: string;
         lowStock: string;
-        /** `{count}` products at/below their threshold. */
+        /** `{count}` active products strictly below their individual thresholds. */
         lowStockCount: string;
         lowStockNone: string;
       };

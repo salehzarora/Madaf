@@ -1,76 +1,78 @@
-import { cn } from "@/lib/utils";
+import type { Locale } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/types";
+import type { DashboardMetrics } from "@/lib/data/dashboard";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatDateOnly } from "@/lib/time";
 
-/**
- * Orders-trend bars (Dashboard v2) — pure flexbox, no chart library. Bar
- * chronology follows reading direction (right→left in he/ar is intentional).
- * Value labels + day labels are Latin identifiers → dir="ltr".
- */
-export interface TrendDay {
-  /** dd/M day label. */
-  dayLabel: string;
-  value: number;
-  /** Compact value label, e.g. "2.9K". */
-  compact: string;
-  /** Full currency string for the title tooltip. */
-  full: string;
-  isToday?: boolean;
+/** Existing compact convention; full ILS values remain available in text. */
+function compact(value: number, locale: Locale): string {
+  if (value >= 1000) return `${formatNumber(Math.round(value / 100) / 10, locale)}K`;
+  return formatNumber(Math.round(value), locale);
 }
 
-export function TrendChart({ days }: { days: TrendDay[] }) {
-  const max = Math.max(1, ...days.map((d) => d.value));
+/** Pure server presentation of the bounded series, in its supplied chronology.
+ * Dates are calendar dates, never converted through a browser/server timezone. */
+export function TrendChart({ days, locale, labels }: {
+  days: DashboardMetrics["trend"];
+  locale: Locale;
+  labels: Dictionary["admin"]["dashboard"]["charts"];
+}) {
+  if (!days.length) return <p className="dashboard-chart-empty">{labels.trendEmpty}</p>;
+
+  const max = Math.max(1, ...days.map(day => day.total));
+  const points = days.map(day => ({
+    ...day,
+    // Intl may insert RTL marks; these numeric labels already have explicit
+    // LTR isolation. Remove the marks so day/month/year keep their visual order.
+    dateLabel: formatDateOnly(day.day, locale).replace(/[\u200e\u200f\u061c]/g, ""),
+    compact: compact(day.total, locale),
+    full: formatCurrency(day.total, locale),
+  }));
+  // Give every date/value its own readable lane. Long compact values widen the
+  // inner plot rather than clipping or widening the document.
+  const pointWidth = Math.max(86, ...points.map(point => point.compact.length * 8 + 20));
+  const latest = points[points.length - 1];
+
   return (
-    <div className="overflow-x-auto">
-      {/* min-width floor keeps 14 bars legible; scrolls inside the card on
-          narrow viewports instead of overflowing the page. */}
-      <div className="min-w-[440px]">
-      <div className="flex h-[150px] items-end gap-2 border-b-[1.5px] border-line-strong">
-        {days.map((d, i) => {
-          const pct = d.value > 0 ? Math.max((d.value / max) * 100, 2) : 0;
-          const isMax = d.value === max && d.value > 0;
-          return (
-            <div
-              key={i}
-              className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
-              title={d.full}
-            >
-              <span
-                className={cn(
-                  "font-mono text-[10px] font-semibold tabular-nums",
-                  d.isToday ? "text-accent-text" : "text-ink-muted",
-                )}
-                dir="ltr"
-              >
-                {d.value > 0 ? d.compact : ""}
+    <div className="dashboard-trend">
+      <p className="dashboard-chart-scroll-hint">{labels.scrollHint}</p>
+      <div className="dashboard-trend-scroll" role="region" aria-label={labels.scrollLabel} tabIndex={0}>
+        <ol className="dashboard-trend-plot" style={{ minInlineSize: Math.max(240, points.length * pointWidth) }}>
+          {points.map(point => (
+            <li key={point.day} className="dashboard-trend-point">
+              <span className="sr-only">
+                <time dateTime={point.day}>{point.dateLabel}</time>{": "}
+                <bdi dir="ltr">{point.full}</bdi>
               </span>
-              <div
-                className={cn(
-                  "w-full max-w-11 rounded-[5px_5px_2px_2px]",
-                  d.value === 0
-                    ? "bg-line-hair"
-                    : d.isToday
-                      ? "bg-accent"
-                      : isMax
-                        ? "bg-brand-600"
-                        : "bg-brand-300",
-                )}
-                style={{ height: `${pct}%`, minHeight: d.value > 0 ? 2 : 0 }}
-              />
-            </div>
-          );
-        })}
+              <div className="dashboard-trend-bar-area" aria-hidden>
+                <div
+                  className="dashboard-trend-bar"
+                  data-peak={point.total > 0 && point.total === max || undefined}
+                  data-zero={point.total === 0 || undefined}
+                  style={{ blockSize: `${point.total / max * 100}%` }}
+                >
+                  <span className="dashboard-trend-value" dir="ltr">{point.compact}</span>
+                </div>
+              </div>
+              <time className="dashboard-trend-date" dateTime={point.day} dir="ltr" aria-hidden>{point.dateLabel}</time>
+            </li>
+          ))}
+        </ol>
       </div>
-      <div className="mt-1.5 flex gap-2">
-        {days.map((d, i) => (
-          <span
-            key={i}
-            className="flex-1 text-center font-mono text-[10px] text-ink-muted"
-            dir="ltr"
-          >
-            {d.dayLabel}
-          </span>
-        ))}
-      </div>
-      </div>
+      <p className="dashboard-chart-latest">
+        <span>{labels.latestRecorded}</span>
+        <time dateTime={latest.day} dir="ltr">{latest.dateLabel}</time>
+      </p>
+      <details className="dashboard-chart-details">
+        <summary>{labels.exactValues}</summary>
+        <table>
+          <thead><tr><th scope="col">{labels.date}</th><th scope="col">{labels.value}</th></tr></thead>
+          <tbody>{points.map(point => <tr key={point.day}>
+            <th scope="row"><time dateTime={point.day} dir="ltr">{point.dateLabel}</time></th>
+            <td><bdi dir="ltr">{point.full}</bdi></td>
+          </tr>)}</tbody>
+        </table>
+      </details>
     </div>
   );
 }

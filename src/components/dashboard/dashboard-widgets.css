@@ -1,0 +1,64 @@
+/* Phase D: lower dashboard only. No shared Badge/Card or upper-section rules. */
+.admin-v3 .dashboard-widgets { display: grid; gap: 16px; min-inline-size: 0; }
+.admin-v3 .dashboard-widget-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; min-inline-size: 0; }
+.admin-v3 .dashboard-widget-card { min-inline-size: 0; border: 1px solid var(--admin-border); border-radius: 22px; background: var(--admin-surface); color: var(--admin-navy); box-shadow: 0 5px 22px color-mix(in srgb, var(--admin-navy) 4%, transparent); }
+.admin-v3 .dashboard-widget-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 16px 16px 10px; }
+.admin-v3 .dashboard-widget-header > div { flex: 1; min-inline-size: 100px; }
+.admin-v3 .dashboard-widget-header h2 { font-size: 16px; line-height: 1.5; font-weight: 700; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-widget-header p { margin-block-start: 3px; font-size: 13px; line-height: 1.5; color: var(--admin-muted); }
+.admin-v3 .dashboard-widget-link { display: inline-flex; align-items: center; min-block-size: 44px; margin-block: -10px; border-radius: 7px; color: var(--admin-emerald); font-size: 13px; font-weight: 600; }
+.admin-v3 .dashboard-widget-link:hover { text-decoration: underline; }
+.admin-v3 .dashboard-widget-link:focus-visible, .admin-v3 .dashboard-recent-row:focus-visible { outline: 3px solid var(--admin-focus); outline-offset: 2px; }
+.admin-v3 .dashboard-ranked-list, .admin-v3 .dashboard-stock-list { list-style: none; margin: 0; padding: 0 16px 8px; }
+.admin-v3 .dashboard-ranked-row { display: flex; align-items: flex-start; min-inline-size: 0; gap: 8px; padding-block: 12px; }
+.admin-v3 .dashboard-ranked-row + .dashboard-ranked-row, .admin-v3 .dashboard-stock-row + .dashboard-stock-row { border-block-start: 1px solid var(--admin-border); }
+.admin-v3 .dashboard-rank { flex: 0 0 20px; block-size: 20px; display: grid; place-items: center; margin-block-start: 6px; border-radius: 7px; background: var(--admin-lilac); color: var(--admin-indigo); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.admin-v3 .dashboard-ranked-row[data-leading] .dashboard-rank { background: var(--admin-emerald); color: var(--admin-surface); }
+.admin-v3 .dashboard-widget-icon { flex: 0 0 30px; block-size: 32px; display: grid; place-items: center; border-radius: 10px; color: var(--admin-muted); background: var(--admin-canvas); }
+.admin-v3 .dashboard-widget-icon svg { inline-size: 18px; block-size: 18px; stroke-width: 1.6; }
+.admin-v3 .dashboard-ranked-content, .admin-v3 .dashboard-stock-content { flex: 1; min-inline-size: 0; }
+.admin-v3 .dashboard-ranked-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.admin-v3 .dashboard-widget-name { min-inline-size: 0; flex: 1 1 85px; font-size: 14px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-widget-amount { margin-inline-start: auto; max-inline-size: 100%; font-size: 13px; font-weight: 700; line-height: 1.6; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-widget-meta { color: var(--admin-muted); font-size: 13px; line-height: 1.6; margin-block-start: 2px; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-widget-progress { block-size: 5px; margin-block-start: 7px; border-radius: 8px; background: var(--admin-canvas); overflow: hidden; }
+.admin-v3 .dashboard-widget-progress > span { display: block; block-size: 100%; border-radius: inherit; background: color-mix(in srgb, var(--admin-emerald) 35%, var(--admin-surface)); }
+.admin-v3 .dashboard-ranked-row[data-leading] .dashboard-widget-progress > span { background: var(--admin-emerald); }
+.admin-v3 .dashboard-stock-row { display: flex; align-items: flex-start; gap: 10px; min-inline-size: 0; padding-block: 12px; }
+.admin-v3 .dashboard-stock-content { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(45%); column-gap: 8px; }
+.admin-v3 .dashboard-stock-content > .dashboard-widget-name { grid-column: 1; }
+.admin-v3 .dashboard-stock-location { grid-column: 1; justify-self: start; color: var(--admin-muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; max-inline-size: 100%; }
+.admin-v3 .dashboard-stock-values { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; min-inline-size: 0; }
+.admin-v3 .dashboard-stock-content > .dashboard-widget-progress { grid-column: 1 / -1; }
+.admin-v3 .dashboard-stock-count { color: var(--admin-warning); background: var(--admin-peach); border-radius: 6px; padding: 2px 6px; font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 700; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-stock-warning { color: var(--admin-danger); font-size: 12px; line-height: 1.6; font-weight: 600; }
+.admin-v3 .dashboard-stock-row .dashboard-widget-progress > span { background: color-mix(in srgb, var(--admin-warning) 55%, var(--admin-peach)); }
+.admin-v3 .dashboard-stock-row[data-empty] .dashboard-stock-count { color: var(--admin-danger); background: color-mix(in srgb, var(--admin-danger) 8%, var(--admin-surface)); }
+.admin-v3 .dashboard-stock-row[data-empty] .dashboard-widget-progress > span { background: var(--admin-danger); }
+.admin-v3 .dashboard-widget-empty { margin: 0 16px 16px; padding: 16px; border-radius: 12px; background: var(--admin-canvas); color: var(--admin-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-recent-list { list-style: none; margin: 0; padding: 0 8px 8px; }
+.admin-v3 .dashboard-recent-list > li + li { border-block-start: 1px solid var(--admin-border); }
+.admin-v3 .dashboard-recent-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "ref status" "customer customer" "meta meta" "amount amount"; align-items: center; gap: 7px 12px; padding: 14px 8px; border-radius: 12px; min-inline-size: 0; }
+.admin-v3 .dashboard-recent-row:hover { background: var(--admin-canvas); }
+.admin-v3 .dashboard-recent-ref { grid-area: ref; justify-self: start; max-inline-size: 100%; color: var(--admin-emerald); font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-recent-customer { grid-area: customer; font-size: 14px; font-weight: 600; line-height: 1.6; min-inline-size: 0; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-recent-meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: 3px 12px; color: var(--admin-muted); font-size: 13px; line-height: 1.6; min-inline-size: 0; }
+.admin-v3 .dashboard-recent-meta > * { max-inline-size: 100%; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-recent-meta time { font-variant-numeric: tabular-nums; }
+.admin-v3 .dashboard-recent-amount { grid-area: amount; justify-self: end; max-inline-size: 100%; color: var(--admin-navy); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-recent-status { grid-area: status; justify-self: end; max-inline-size: 100%; }
+.admin-v3 .dashboard-recent-status > span { border-radius: 999px; }
+.admin-v3 .dashboard-recent-status[data-status="preparing"] > span { color: var(--admin-warning); }
+@media (min-width: 768px) {
+  .admin-v3 .dashboard-widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-v3 .dashboard-widget-grid > :last-child { grid-column: 1 / -1; }
+  .admin-v3 .dashboard-product-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+  .admin-v3 .dashboard-product-list .dashboard-ranked-row:nth-child(2) { border-block-start: 0; }
+  .admin-v3 .dashboard-recent-row { grid-template-columns: 105px minmax(0, 1fr) minmax(180px, 1.3fr) minmax(100px, .85fr) minmax(95px, .7fr); grid-template-areas: "ref customer meta amount status"; gap: 12px; }
+}
+@media (min-width: 1024px) {
+  .admin-v3 .dashboard-widget-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-v3 .dashboard-widget-grid > :last-child { grid-column: auto; }
+  .admin-v3 .dashboard-product-list { display: block; }
+  .admin-v3 .dashboard-product-list .dashboard-ranked-row:nth-child(2) { border-block-start: 1px solid var(--admin-border); }
+}

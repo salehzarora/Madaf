@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "../components/admin/admin-theme.css";
+@import "../components/dashboard/dashboard-top.css";
+@import "../components/dashboard/dashboard-analytics.css";
+@import "../components/dashboard/dashboard-widgets.css";
 @import "../components/storefront-theme.css";
 @import "../components/catalog-workspace.css";
 @import "../components/catalog-product-media.css";

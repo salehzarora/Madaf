@@ -1,72 +1,114 @@
 "use client";
 
 import {
-  Boxes,
-  Building2,
-  Factory,
-  FileText,
-  LayoutDashboard,
-  Menu,
-  Package,
-  Receipt,
-  ShoppingBag,
-  Store,
-  Users,
-  X,
+  Boxes, Building2, Factory, FileText, LayoutDashboard, Menu,
+  Package, Receipt, ShoppingBag, Store, Users, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { TenantSwitcher } from "@/components/auth/tenant-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { LogoMark } from "@/components/logo";
-import type { Locale } from "@/i18n/config";
+import { dirFor, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
-import { cn } from "@/lib/utils";
 
-/** Signed-in supplier identity shown in the admin top bar (Supabase mode). */
+const DESKTOP_QUERY = "(min-width: 1280px)";
+
+/** Signed-in supplier identity supplied by the unchanged server AdminLayout. */
 export interface AdminSession {
   email: string | null;
-  /** Membership role — keyed into `dict.access.session.roles` for display. */
   role: keyof Dictionary["access"]["session"]["roles"];
   tenantName: string;
-  /** Business logo (signed URL or external, M8E.1) shown beside the tenant
-   * name; falls back to the initial when absent. */
   logoUrl?: string;
-  /** Currently-selected tenant id + all memberships (for the switcher). */
   currentTenantId: string;
   tenants: { id: string; name: string }[];
 }
 
-/**
- * Admin shell — the "Madaf Ledger" layout: a deep bottle-green navigation
- * band on the inline start (right in he/ar) carrying the logo, tenant
- * switcher and nav; a warm top bar; a light content area. Mobile: a band top
- * bar + drawer + bottom tab bar. Dark chrome belongs to navigation only.
- */
-export function AdminShell({
-  locale,
-  dict,
-  session,
-  children,
-}: {
+/** Shared Admin V3 chrome. Children keep their existing Ledger presentation;
+ * no dashboard data or authorization moves into this existing client boundary. */
+export function AdminShell({ locale, dict, session, children }: {
   locale: Locale;
   dict: Dictionary;
   session?: AdminSession;
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const routeKey = `${pathname}:${session?.currentTenantId ?? "mock"}`;
+  const [drawerRoute, setDrawerRoute] = useState<string | null>(null);
+  const open = drawerRoute === routeKey;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const returnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const currentRouteRef = useRef(routeKey);
+  const dialogId = useId();
+  const headingId = useId();
+
+  useEffect(() => { currentRouteRef.current = routeKey; }, [routeKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    const root = rootRef.current;
+    if (!dialog || !root) return;
+    const body = document.body;
+    const page = document.documentElement;
+    const { scrollX, scrollY } = window;
+    const styles = [
+      { element: body, properties: ["position", "inset-block-start", "inset-inline-start", "inline-size", "overflow"] },
+      { element: page, properties: ["overflow", "scrollbar-gutter"] },
+    ].flatMap(({ element, properties }) => properties.map((property) => ({
+      element, property, value: element.style.getPropertyValue(property),
+      priority: element.style.getPropertyPriority(property),
+    })));
+
+    // Fixed-body locking also prevents background touch scrolling in WebKit.
+    page.style.scrollbarGutter = "stable";
+    page.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.insetBlockStart = `${-scrollY}px`;
+    body.style.insetInlineStart = `${dirFor(locale) === "rtl" ? scrollX : -scrollX}px`;
+    body.style.inlineSize = "100%";
+    body.style.overflow = "hidden";
+    dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>("[data-admin-drawer-close]")?.focus({ preventScroll: true });
+
+    const desktop = window.matchMedia(DESKTOP_QUERY);
+    function layoutChange(event: MediaQueryListEvent) {
+      if (event.matches) setDrawerRoute(null);
+    }
+    desktop.addEventListener("change", layoutChange);
+
+    return () => {
+      desktop.removeEventListener("change", layoutChange);
+      if (dialog.open) dialog.close();
+      for (const { element, property, value, priority } of styles) {
+        if (value) element.style.setProperty(property, value, priority);
+        else element.style.removeProperty(property);
+      }
+      queueMicrotask(() => {
+        // Let route effects settle: navigation owns destination scroll AND focus.
+        if (!root.isConnected || currentRouteRef.current !== routeKey) return;
+        const previousScroll = page.style.getPropertyValue("scroll-behavior");
+        const previousPriority = page.style.getPropertyPriority("scroll-behavior");
+        page.style.setProperty("scroll-behavior", "auto", "important");
+        window.scrollTo(scrollX, scrollY);
+        if (previousScroll) page.style.setProperty("scroll-behavior", previousScroll, previousPriority);
+        else page.style.removeProperty("scroll-behavior");
+        const visible = (element: HTMLElement | null): element is HTMLElement =>
+          Boolean(element?.isConnected && element.getClientRects().length);
+        const trigger = returnFocusRef.current;
+        if (visible(trigger)) trigger.focus({ preventScroll: true });
+        else root.querySelector<HTMLElement>(".admin-shell-sidebar a[aria-current='page']")?.focus({ preventScroll: true });
+      });
+    };
+  }, [open, locale, routeKey]);
 
   const base = `/${locale}/admin`;
-  // Team management is owner/admin only (Supabase mode); hidden otherwise.
   const canManageTeam = session?.role === "owner" || session?.role === "admin";
-  // Tax settings (M6B, inert): owner/admin in Supabase mode; shown in the open
-  // mock demo too (no session). Hidden for sales_rep. Nothing is issued there.
-  const canManageSettings =
-    !session || session.role === "owner" || session.role === "admin";
-  const nav = [
+  const canManageSettings = !session || session.role === "owner" || session.role === "admin";
+  const mainNav = [
     { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
     { href: `${base}/products`, label: dict.nav.products, icon: Package },
     { href: `${base}/manufacturers`, label: dict.nav.manufacturers, icon: Factory },
@@ -74,212 +116,93 @@ export function AdminShell({
     { href: `${base}/inventory`, label: dict.nav.inventory, icon: Boxes },
     { href: `${base}/customers`, label: dict.nav.customers, icon: Store },
     { href: `${base}/documents`, label: dict.nav.documents, icon: FileText },
-    ...(canManageTeam
-      ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }]
-      : []),
-    ...(canManageSettings
-      ? [
-          {
-            href: `${base}/settings/business`,
-            label: dict.admin.settings.business.navLabel,
-            icon: Building2,
-          },
-          { href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt },
-        ]
-      : []),
+    ...(canManageTeam ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }] : []),
   ];
-
-  function isActive(item: (typeof nav)[number]): boolean {
+  const settingsNav = canManageSettings ? [
+    { href: `${base}/settings/business`, label: dict.admin.settings.business.navLabel, icon: Building2 },
+    { href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt },
+  ] : [];
+  function isActive(item: { href: string; exact?: boolean }) {
     return item.exact ? pathname === item.href : pathname.startsWith(item.href);
   }
-  const activeLabel = nav.find(isActive)?.label ?? dict.nav.dashboard;
+  const activeLabel = [...mainNav, ...settingsNav].find(isActive)?.label ?? dict.nav.dashboard;
+  const close = () => setDrawerRoute(null);
+  function openDrawer(trigger: HTMLButtonElement) {
+    if (window.matchMedia(DESKTOP_QUERY).matches) return;
+    returnFocusRef.current = trigger;
+    setDrawerRoute(routeKey);
+  }
 
   const logoBlock = (
-    <Link
-      href={base}
-      onClick={() => setOpen(false)}
-      className="flex items-center gap-2.5 rounded-field p-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-    >
-      <LogoMark className="size-9" />
-      <span className="text-[17px] font-extrabold tracking-[-0.01em] text-band-ink">
-        {dict.admin.title}
-      </span>
+    <Link href={base} onClick={close} className="admin-shell-brand">
+      <LogoMark className="admin-shell-logo" />
+      <span><strong>{dict.meta.appNameNative}</strong><small>{dict.admin.title}</small></span>
     </Link>
   );
-
+  const identity = session ? (
+    <div className="admin-shell-identity">
+      <span className="admin-shell-avatar" aria-hidden>{(session.email ?? "?").slice(0, 1).toUpperCase()}</span>
+      <div><p className="admin-shell-email" dir="ltr">{session.email}</p><p className="admin-shell-role">{dict.access.session.roles[session.role]}</p></div>
+    </div>
+  ) : null;
+  const tenant = (
+    <div className="admin-shell-tenant">
+      {session ? session.tenants.length > 1 ? (
+        <div className="admin-shell-tenant-switch">
+          <TenantSwitcher locale={locale} currentTenantId={session.currentTenantId} currentName={session.tenantName} tenants={session.tenants} label={dict.access.tenant.switch} />
+        </div>
+      ) : (
+        <div className="admin-shell-tenant-name">
+          {session.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={session.logoUrl} alt="" />
+          ) : <span className="admin-shell-tenant-initial" aria-hidden>{session.tenantName.slice(0, 1)}</span>}
+          <span>{session.tenantName}</span>
+        </div>
+      ) : <span className="admin-shell-demo">{dict.common.demoBadge}</span>}
+    </div>
+  );
+  function navLinks(items: typeof mainNav) {
+    return items.map((item) => {
+      const Icon = item.icon;
+      return <Link key={item.href} href={item.href} onClick={close} aria-current={isActive(item) ? "page" : undefined} className="admin-shell-nav-link">
+        <Icon aria-hidden /><span>{item.label}</span>
+      </Link>;
+    });
+  }
   const navList = (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-      {nav.map((item) => {
-        const Icon = item.icon;
-        const active = isActive(item);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setOpen(false)}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "relative flex h-[42px] items-center gap-3 rounded-field px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-              active
-                ? "bg-band-ink/10 font-bold text-band-ink"
-                : "font-medium text-band-muted hover:bg-band-ink/[.08] hover:text-band-ink",
-            )}
-          >
-            {active ? (
-              <span
-                className="absolute start-0 top-2 bottom-2 w-[3px] rounded-full bg-accent"
-                aria-hidden
-              />
-            ) : null}
-            <Icon className="size-5 shrink-0" aria-hidden />
-            {item.label}
-          </Link>
-        );
-      })}
-      <div className="mt-auto pt-3">
-        <Link
-          href={`/${locale}/catalog`}
-          onClick={() => setOpen(false)}
-          className="flex h-11 items-center gap-3 rounded-field px-3 text-sm font-medium text-band-muted transition-colors hover:bg-band-ink/[.08] hover:text-band-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <X className="size-5 shrink-0" aria-hidden />
-          {dict.nav.exitAdmin}
-        </Link>
-      </div>
+    <nav className="admin-shell-navigation" aria-label={dict.admin.title}>
+      <div className="admin-shell-nav-group">{navLinks(mainNav)}</div>
+      {settingsNav.length > 0 ? <div className="admin-shell-nav-group admin-shell-settings">{navLinks(settingsNav)}</div> : null}
+      <Link href={`/${locale}/catalog`} onClick={close} className="admin-shell-nav-link admin-shell-exit"><X aria-hidden /><span>{dict.nav.exitAdmin}</span></Link>
     </nav>
   );
 
-  const bandTop = (
-    <div className="flex flex-col gap-3 border-b border-band-muted/15 p-4">
-      {logoBlock}
-      {session ? (
-        session.tenants.length > 1 ? (
-          <TenantSwitcher
-            locale={locale}
-            currentTenantId={session.currentTenantId}
-            currentName={session.tenantName}
-            tenants={session.tenants}
-            label={dict.access.tenant.switch}
-          />
-        ) : (
-          <span className="inline-flex max-w-full items-center gap-2 truncate rounded-field border border-band-muted/25 bg-band-ink/5 px-2.5 py-2 text-[13px] font-semibold text-band-ink">
-            {session.logoUrl ? (
-              // Business logo (M8E.1) — signed/external URL; falls back to the
-              // initial below when absent.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={session.logoUrl}
-                alt=""
-                className="size-6 shrink-0 rounded-md bg-band object-contain"
-              />
-            ) : (
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-[12px] font-extrabold text-band">
-                {session.tenantName.slice(0, 1)}
-              </span>
-            )}
-            <span className="truncate">{session.tenantName}</span>
-          </span>
-        )
-      ) : (
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-badge border border-dashed border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-accent">
-          {dict.common.demoBadge}
-        </span>
-      )}
-    </div>
-  );
-
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      {/* Desktop band sidebar (inline start — right in he/ar) */}
-      <aside className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col bg-band lg:flex">
-        {bandTop}
+    <div ref={rootRef} className="admin-v3">
+      <aside className="admin-shell-sidebar">
+        <div className="admin-shell-band-top">{logoBlock}{tenant}</div>
         {navList}
       </aside>
 
-      {/* Mobile band top bar */}
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-band px-4 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? dict.common.close : dict.common.menu}
-          className="flex size-11 items-center justify-center rounded-field text-band-ink transition-colors hover:bg-band-ink/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          {open ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
-        {logoBlock}
-      </header>
-
-      {/* Mobile drawer */}
-      {open ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-ink/50"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <aside className="absolute inset-y-0 start-0 flex w-72 flex-col bg-band shadow-float">
-            {bandTop}
-            {navList}
-            {/* Drawer footer (M8A): mobile previously had NO locale switcher
-                and NO logout — both lived only in the desktop top bar. */}
-            <div className="flex items-center gap-2.5 border-t border-band-muted/15 p-4">
-              <LocaleSwitcher current={locale} />
-              {session ? (
-                <span className="ms-auto">
-                  <LogoutButton
-                    locale={locale}
-                    label={dict.access.session.logout}
-                  />
-                </span>
-              ) : null}
-            </div>
-          </aside>
-        </div>
-      ) : null}
-
-      {/* Content column */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Warm top bar (desktop) */}
-        <header className="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-line bg-surface-warm px-7 lg:flex">
-          <div className="leading-tight">
-            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
-              {session?.tenantName ?? dict.common.demoBadge}
-            </p>
-            <p className="text-sm font-bold text-ink">{activeLabel}</p>
-          </div>
-          <div className="ms-auto flex items-center gap-2.5">
-            <LocaleSwitcher current={locale} />
-            {session ? (
-              <>
-                <div className="hidden items-center gap-2.5 md:flex">
-                  <span className="flex size-7 items-center justify-center rounded-lg bg-band text-[13px] font-bold text-accent">
-                    {(session.email ?? "?").slice(0, 1).toUpperCase()}
-                  </span>
-                  <div className="text-end leading-tight">
-                    <p
-                      className="max-w-44 truncate font-mono text-[12px] font-medium text-ink"
-                      dir="ltr"
-                    >
-                      {session.email}
-                    </p>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-soft">
-                      {dict.access.session.roles[session.role]}
-                    </p>
-                  </div>
-                </div>
-                <LogoutButton locale={locale} label={dict.access.session.logout} />
-              </>
-            ) : null}
+      <div className="admin-shell-column">
+        <header className="admin-shell-mobile-header">
+          <button type="button" onClick={(event) => openDrawer(event.currentTarget)} aria-label={dict.common.menu} aria-haspopup="dialog" aria-expanded={open} aria-controls={dialogId} className="admin-shell-menu-trigger"><Menu aria-hidden /></button>
+          {logoBlock}
+          <span className="admin-shell-page-context">{activeLabel}</span>
+        </header>
+        <header className="admin-shell-topbar">
+          <div className="admin-shell-context"><p>{session?.tenantName ?? dict.common.demoBadge}</p><strong>{activeLabel}</strong></div>
+          <div className="admin-shell-topbar-actions">
+            <LocaleSwitcher current={locale} label={dict.common.language} className="admin-shell-locales" />
+            {identity}
+            {session ? <div className="admin-shell-logout"><LogoutButton locale={locale} label={dict.access.session.logout} /></div> : null}
           </div>
         </header>
-
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-8">
-          {children}
-        </main>
+        <main className="admin-shell-content">{children}</main>
       </div>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 rounded-t-2xl border-t border-band-muted/20 bg-band px-2 py-1.5 lg:hidden">
+      <nav className="admin-shell-bottom-nav" aria-label={dict.admin.title}>
         {[
           { href: base, label: dict.nav.dashboard, icon: LayoutDashboard, exact: true },
           { href: `${base}/orders`, label: dict.nav.orders, icon: ShoppingBag },
@@ -287,32 +210,47 @@ export function AdminShell({
           { href: `${base}/customers`, label: dict.nav.customers, icon: Store },
         ].map((item) => {
           const Icon = item.icon;
-          const active = item.exact
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
-                active ? "text-accent" : "text-band-muted",
-              )}
-            >
-              <Icon className="size-[19px]" aria-hidden />
-              <span className="truncate">{item.label}</span>
-            </Link>
-          );
+          return <Link key={item.href} href={item.href} aria-current={isActive(item) ? "page" : undefined} className="admin-shell-tab"><Icon aria-hidden /><span>{item.label}</span></Link>;
         })}
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex flex-1 flex-col items-center gap-0.5 rounded-field py-1.5 text-[10px] font-semibold text-band-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-        >
-          <Menu className="size-[19px]" aria-hidden />
-          <span>{dict.common.menu}</span>
-        </button>
+        <button type="button" onClick={(event) => openDrawer(event.currentTarget)} aria-haspopup="dialog" aria-expanded={open} aria-controls={dialogId} className="admin-shell-tab"><Menu aria-hidden /><span>{dict.common.menu}</span></button>
       </nav>
+
+      <dialog ref={dialogRef} id={dialogId} aria-labelledby={headingId} aria-modal="true" dir={dirFor(locale)} tabIndex={-1} className="admin-shell-drawer"
+        onCancel={(event) => { event.preventDefault(); close(); }}
+        onClose={(event) => { if (!event.currentTarget.open) close(); }}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const targets = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]'))
+            .filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") && !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
+          // Traverse every live control explicitly: WebKit can omit links from
+          // native Tab order, otherwise escaping before reaching our last link.
+          event.preventDefault();
+          if (!targets.length) { event.currentTarget.focus(); return; }
+          const index = targets.findIndex((element) => element === document.activeElement);
+          const next = index < 0 ? (event.shiftKey ? targets.length - 1 : 0)
+            : (index + (event.shiftKey ? -1 : 1) + targets.length) % targets.length;
+          targets[next].focus();
+        }}>
+        {open ? <>
+          <div className="admin-shell-band-top">
+            <div className="admin-shell-drawer-heading"><h2 id={headingId}>{dict.common.menu}</h2><button type="button" data-admin-drawer-close onClick={close} aria-label={dict.common.close}><X aria-hidden /></button></div>
+            {logoBlock}{tenant}
+          </div>
+          {navList}
+          <div className="admin-shell-drawer-footer">
+            {identity}
+            <div className="admin-shell-drawer-actions">
+              <LocaleSwitcher current={locale} label={dict.common.language} className="admin-shell-locales" />
+              {session ? <div className="admin-shell-logout"><LogoutButton locale={locale} label={dict.access.session.logout} /></div> : null}
+            </div>
+          </div>
+        </> : null}
+      </dialog>
     </div>
   );
 }
