@@ -87,8 +87,8 @@ test("storefront media contains a real image without altering the source or lega
     <ProductImage product={photo} />
   </>);
   const images = Array.from(container.querySelectorAll("img"));
-  assert.equal(images.length, 4);
-  assert.deepEqual(images.map((img) => img.className), ["storefront-media-photo", "catalog-card-media-photo", "catalog-media-photo", "size-full object-cover"]);
+  assert.equal(images.length, 5);
+  assert.deepEqual(images.map((img) => img.className), ["storefront-media-photo", "catalog-card-media-backdrop", "catalog-card-media-photo", "catalog-media-photo", "size-full object-cover"]);
   for (const image of images) {
     assert.equal(image.getAttribute("src"), photo.imageUrl);
     assert.equal(image.alt, "");

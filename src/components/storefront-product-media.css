@@ -28,6 +28,40 @@
   object-position: center;
   padding: 5cqw;
 }
+/* Catalog cards alone let photo color reach the media edges. The contained
+ * foreground preserves the complete packshot across source aspect ratios. */
+.catalog-card-media--photo {
+  background: var(--color-surface);
+}
+.catalog-card-media--photo::before { display: none; }
+.catalog-card-media-backdrop {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  filter: blur(18px) saturate(.8);
+  transform: scale(1.12);
+}
+.catalog-card-media--photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-surface) 10%, transparent);
+  pointer-events: none;
+}
+.catalog-card-media-photo {
+  inset: auto;
+  inset-block-start: 50%;
+  left: 50%;
+  inline-size: auto;
+  block-size: 100%;
+  max-inline-size: 100%;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+}
 :is(.storefront-media-size, .catalog-card-media-size) {
   position: absolute;
   z-index: 2;
