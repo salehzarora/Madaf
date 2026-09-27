@@ -13,7 +13,13 @@ const nextConfig: NextConfig = {
   // HTTP security headers on every route (HSTS is left to Vercel's platform
   // management on *.vercel.app / custom domains — not duplicated here).
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders() }];
+    return [
+      { source: "/:path*", headers: securityHeaders() },
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ];
   },
   // M5A PDF generation (src/lib/pdf): keep pdfkit/fontkit as external Node
   // packages so their fs-based font/AFM reads keep working (bundling breaks
