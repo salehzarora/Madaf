@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Rubik } from "next/font/google";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { dirFor, isLocale, locales, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { appIdentity } from "@/lib/app-identity";
 import "../globals.css";
 
 /**
@@ -30,6 +31,10 @@ export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
+export const viewport: Viewport = {
+  themeColor: appIdentity.themeColor,
+};
+
 export async function generateMetadata({
   params,
 }: {
@@ -43,6 +48,15 @@ export async function generateMetadata({
       template: `%s · ${dict.meta.appName}`,
     },
     description: dict.meta.description,
+    applicationName: appIdentity.name,
+    appleWebApp: {
+      capable: true,
+      title: appIdentity.name,
+      statusBarStyle: "default",
+    },
+    icons: {
+      apple: { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    },
   };
 }
 
