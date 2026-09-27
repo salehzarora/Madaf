@@ -70,6 +70,12 @@ export function ProductImage({
         )}
       >
         {/* Plain <img>: sources are signed Storage URLs / arbitrary hosts. */}
+        {presentation === "catalog-card" ? (
+          // Fill the card media with the photo's own colors while the foreground
+          // remains fully visible, including tall bottles and narrow packs.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={product.imageUrl} alt="" loading="lazy" className="catalog-card-media-backdrop" />
+        ) : null}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           ref={imgRef}

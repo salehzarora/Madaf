@@ -433,9 +433,10 @@ ShopView and ShowcaseView controllers.
 ### Product Card V3
 
 - Integrated **5:4** media, with a **4:3** media fallback below 360px. Real images
-  are centered with `object-fit: contain` and `5cqw` padding; tall/wide products
-  remain uncropped. Transparency is preserved, and baked-in backgrounds or
-  source margins are not removed.
+  remain centered and uncropped with `object-fit: contain`, without added inner
+  padding. A softened copy of the same photo fills the media behind the complete
+  product, with only the foreground photo's side edges feathered into it;
+  baked-in backgrounds and source margins are not removed.
 - Missing or failed images use static, abstract branded package artwork. The
   media is decorative; the product link/name supplies the accessible label.
 - A two-line product name, optional manufacturer, compact wholesale package
@@ -449,7 +450,9 @@ ShopView and ShowcaseView controllers.
 
 ### Shared product/media system
 
-The shared V3 renderer uses centered `object-fit: contain` with `5cqw` padding.
+The shared V3 renderer uses centered `object-fit: contain` with `5cqw` padding,
+except catalog-card photos, which remove that padding and use a softened photo
+backdrop within the same media area.
 Transparent photos remain transparent; baked backgrounds and source margins
 are preserved. Missing/failed images use static abstract package artwork and
 the existing size-tag semantics. No background removal, generated image service

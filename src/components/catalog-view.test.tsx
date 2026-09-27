@@ -424,7 +424,7 @@ for (const locale of ["ar", "he", "en"] as const) {
 test("failed product images fall back safely and an empty catalog keeps cart discovery usable", () => {
   const h = mount();
   const product = card(h, "juice");
-  const img = product.querySelector("img");
+  const img = product.querySelector(".catalog-card-media-photo");
   assert.ok(img);
   act(() => img.dispatchEvent(new dom.window.Event("error")));
   assert.equal(product.querySelector("img"), null);
@@ -466,7 +466,7 @@ test("shared default and legacy catalog images keep their photo/fallback contrac
     if (hasPhoto) {
       assert.equal(plain.querySelector("img")?.className, "size-full object-cover");
       assert.equal(legacy.querySelector("img")?.className, "catalog-media-photo");
-      assert.equal(cardMedia.querySelector("img")?.className, "catalog-card-media-photo");
+      assert.deepEqual(Array.from(cardMedia.querySelectorAll("img"), (img) => img.className), ["catalog-card-media-backdrop", "catalog-card-media-photo"]);
       act(() => container.querySelectorAll("img").forEach((img) => img.dispatchEvent(new dom.window.Event("error"))));
       assert.equal(container.querySelector("img"), null);
     }
