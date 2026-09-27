@@ -1,9 +1,9 @@
-# Madaf Design System — Storefront V3, Admin V3 chrome and Ledger bodies
+# Madaf Design System — Storefront V3, Admin V3 and Ledger surfaces
 
 > ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
 > The **Storefront Ordering Presentation Layer** is current for the customer
 > routes listed below. **Admin V3 chrome** is scoped to AdminShell; **Madaf Ledger**
-> remains the default for Admin page bodies outside the Dashboard top section
+> remains the default for Admin page bodies outside the Dashboard top/analytics
 > and for other excluded surfaces.
 > Material from **"Category identity system (M0.2)"** onward records earlier
 > milestones, including conflicting palette, typography, product-art and layout
@@ -28,8 +28,8 @@ available to Admin page bodies, auth/onboarding and legal/document UI.
 
 The shared AdminShell now applies V3 chrome to every `/[locale]/admin` route and
 its descendants. Dashboard, Products, Orders, Manufacturers, Customers,
-Inventory, Documents, Team and Settings bodies retain Ledger. Phase B upgrades
-only the Dashboard top section described below; this mixed presentation is
+Inventory, Documents, Team and Settings bodies retain Ledger. Phases B/C upgrade
+only the Dashboard top and analytics sections described below; this mixed presentation is
 intentional until each body receives its own milestone.
 
 [`admin/admin-theme.css`](../src/components/admin/admin-theme.css) defines the
@@ -80,9 +80,41 @@ or other route body changes with this phase.
   server boundary. `test:dashboard-ui` covers the real server page as well as
   the Phase A shell; physical layout and large-value checks require browsers.
 
+### Dashboard analytics — ADMIN-DASHBOARD-STYLE-005C
+
+`DashboardAnalytics` composes server-compatible `AnalyticsCard`, `TrendChart`
+and `StatusDonut` surfaces using `dashboard-analytics.css`. White 22px cards,
+Navy headings, cool borders and scoped categorical chart tokens match Admin V3.
+Shared Card defaults, OrderStatusBadge colors, the Phase B top and all lower
+widgets remain unchanged.
+
+- Trend consumes the existing ascending series of at most 14 **populated**
+  tenant-local dates with non-cancelled subtotals. It neither fills missing
+  dates nor filters/re-aggregates the data. Context says latest dates with
+  orders; the footer names the latest recorded date, never implicitly today.
+  Month Revenue is not repeated as a chart total.
+- Mint bars and an Emerald maximum sit on quiet grid lines. Each point has a
+  full calendar-date label, compact visible amount and accessible full ILS
+  value. The native exact-values disclosure exposes a date/value table.
+  Numeric date labels remove Intl direction marks within explicit LTR display;
+  their underlying calendar dates and currency formatting remain unchanged.
+- The named, focusable trend region scrolls internally when needed. Each point
+  has a minimum readable lane, enlarged for long values. Positioned point
+  containers also keep visually hidden accessible text inside the scroller.
+  Empty series have calm localized copy; actual zero values remain visible.
+- Donut categories stay new/confirmed/preparing/delivered/cancelled in
+  Blue/Emerald/Peach/Lilac/Gray. Butt-ended arcs use exact count proportions
+  without fixed gaps that erase tiny shares. The 156px ring has a localized
+  total center; all five legend rows retain full labels and counts, including
+  zeros. Zero total paints only a neutral ring with localized explanation.
+- Analytics stack through 1023px, then use a 1.6:1 split. The donut stacks its
+  legend below the ring on narrower cards; cards at least 500px wide use a
+  horizontal ring/legend layout. The legend stays 13px and wraps. No chart
+  library, animation, range selector, new query or client boundary is added.
+
 ## Madaf Ledger visual system (sitewide refresh)
 
-The default visual language outside Storefront V3 and Admin V3 chrome is **"Madaf
+The default visual language outside Storefront V3 and the scoped Admin V3 surfaces is **"Madaf
 Ledger"** — a wholesale supplier's paper ledger digitized. The original spec lives in
 [`docs/design/madaf-ledger/`](design/madaf-ledger/).
 

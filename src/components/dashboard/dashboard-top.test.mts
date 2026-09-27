@@ -135,3 +135,12 @@ test("page and presentation retain server compatibility", () => {
     assert.doesNotMatch(readFileSync(new URL(path, import.meta.url), "utf8"), /["']use client["']|useEffect|useState|usePathname/);
   }
 });
+
+test("real server page binds the existing trend/status aggregates without a month-total chart header", async () => {
+  const doc = await render();
+  assert.equal(doc.querySelector(".dashboard-trend-point time")?.getAttribute("datetime"), "2025-01-02");
+  assert.equal(text(doc.querySelector(".dashboard-trend-point .sr-only bdi")), formatCurrency(55, "en"));
+  assert.equal(text(doc.querySelector(".dashboard-donut-center bdi")), "33");
+  assert.ok(!text(doc.querySelector(".dashboard-analytics")).includes(formatCurrency(metrics.month.revenue, "en")));
+  assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+});

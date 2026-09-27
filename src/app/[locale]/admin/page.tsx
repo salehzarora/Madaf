@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardTop } from "@/components/dashboard/dashboard-top";
-import { StatusDonut } from "@/components/dashboard/status-donut";
-import { TrendChart, type TrendDay } from "@/components/dashboard/trend-chart";
+import { DashboardAnalytics } from "@/components/dashboard/dashboard-analytics";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { isLocale } from "@/i18n/config";
@@ -11,23 +10,8 @@ import { getSessionContext } from "@/lib/auth/session";
 import { getDashboardMetrics, getDataMode, getTenantTimeZone, searchOrders } from "@/lib/data";
 import { countPendingSignupRequests } from "@/lib/data/customer-signup";
 import { parseOrdersQuery } from "@/lib/orders-query";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { formatTenantDateTime } from "@/lib/time";
-import type { Locale } from "@/lib/types";
-
-const STATUS_COLOR = {
-  new: "#3B62B8",
-  confirmed: "#17694F",
-  preparing: "#E8A33D",
-  delivered: "#8FC7AB",
-  cancelled: "#CBC3B0",
-} as const;
-
-/** Compact money label for chart bars: 2900 → "2.9K". */
-function compact(n: number, locale: Locale): string {
-  if (n >= 1000) return `${formatNumber(Math.round(n / 100) / 10, locale)}K`;
-  return formatNumber(Math.round(n), locale);
-}
 
 /** Admin dashboard v2 — KPIs, trend + status, widgets, recent activity.
  *
@@ -55,9 +39,6 @@ export default async function AdminDashboardPage({
   ]);
   const recent = recentResult.rows;
 
-  const sc = metrics.statusCounts;
-  const monthTotal = metrics.month.revenue;
-
   // Pending store-signup requests — supabase owner/admin only (mock has no
   // signups). An EXACT server-side count (no signup rows / PII loaded, correct
   // above the PostgREST 1000-row ceiling) — Batch C bounded-read correction.
@@ -71,27 +52,6 @@ export default async function AdminDashboardPage({
     ? await countPendingSignupRequests()
     : 0;
 
-  // Daily totals (non-cancelled), last 14 tenant-local days present in the data
-  // — computed server-side by the aggregate; the UI only formats.
-  const trendDays: TrendDay[] = metrics.trend.map((point, i) => {
-    const [, mm, dd] = point.day.split("-");
-    return {
-      dayLabel: `${Number(dd)}/${Number(mm)}`,
-      value: point.total,
-      compact: compact(point.total, locale),
-      full: formatCurrency(point.total, locale),
-      isToday: i === metrics.trend.length - 1,
-    };
-  });
-
-  // Status donut segments.
-  const statuses = ["new", "confirmed", "preparing", "delivered", "cancelled"] as const;
-  const segments = statuses.map((s) => ({
-    label: dict.status[s],
-    count: sc[s],
-    color: STATUS_COLOR[s],
-  }));
-
   const topProducts = metrics.topProducts;
   const topProdMax = Math.max(1, ...topProducts.map((x) => x.revenue));
   const topShops = metrics.topShops;
@@ -101,40 +61,7 @@ export default async function AdminDashboardPage({
     <div className="mx-auto flex w-full max-w-[1096px] flex-col gap-4">
       <DashboardTop locale={locale} dict={dict} metrics={metrics} pendingSignups={canSeeSignups ? pendingSignups : null} />
 
-      {/* Trend + status */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.8fr_1fr]">
-        <Card>
-          <CardHeader variant="strip">
-            <div>
-              <CardTitle>{d.trend}</CardTitle>
-              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted">
-                {d.trendSub}
-              </p>
-            </div>
-            <span
-              className="font-mono text-sm font-semibold text-brand-700"
-              dir="ltr"
-            >
-              {formatCurrency(monthTotal, locale)}
-            </span>
-          </CardHeader>
-          <div className="p-4">
-            <TrendChart days={trendDays} />
-          </div>
-        </Card>
-        <Card>
-          <CardHeader variant="strip">
-            <CardTitle>{d.statusMix}</CardTitle>
-          </CardHeader>
-          <div className="p-5">
-            <StatusDonut
-              segments={segments}
-              total={metrics.totalOrders}
-              totalLabel={dict.nav.orders}
-            />
-          </div>
-        </Card>
-      </div>
+      <DashboardAnalytics metrics={metrics} locale={locale} dict={dict} />
 
       {/* Widgets */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

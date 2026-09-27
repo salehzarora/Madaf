@@ -1,92 +1,62 @@
-/**
- * Order-status donut (Dashboard v2) — pure inline SVG, no chart library.
- * All circles share r=15.9; the container is rotated −90° so segments start
- * at 12 o'clock. Each segment's dasharray leaves a 1.2-unit gap.
- */
-const R = 15.9;
-const C = 2 * Math.PI * R; // ≈ 99.9
+import type { CSSProperties } from "react";
+import type { Locale } from "@/i18n/config";
+import type { OrderStatus } from "@/lib/types";
+import { formatNumber } from "@/lib/format";
+
+const RADIUS = 62;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export interface DonutSegment {
+  status: OrderStatus;
   label: string;
   count: number;
-  /** Literal chart color (intentional exception to the token rule). */
-  color: string;
 }
 
-export function StatusDonut({
-  segments,
-  total,
-  totalLabel,
-}: {
+/** Exact proportional SVG arcs; no fixed gaps or rounded caps erase/inflate
+ * small positive shares. Text center/legend provide the accessible data. */
+export function StatusDonut({ segments, total, totalLabel, emptyLabel, locale }: {
   segments: DonutSegment[];
   total: number;
   totalLabel: string;
+  emptyLabel: string;
+  locale: Locale;
 }) {
-  const fracs = segments.map((s) => (total > 0 ? s.count / total : 0));
-  // Cumulative offset before each segment (prefix sum × circumference) — pure.
-  const offsets = fracs.map(
-    (_, i) => fracs.slice(0, i).reduce((a, b) => a + b, 0) * C,
-  );
+  const formattedTotal = formatNumber(total, locale);
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">
-      <div className="relative size-[132px] shrink-0">
-        <svg viewBox="0 0 42 42" className="size-full -rotate-90">
-          <circle
-            cx="21"
-            cy="21"
-            r={R}
-            fill="none"
-            strokeWidth="6"
-            className="stroke-line-hair"
-          />
-          {segments.map((s, i) => {
-            if (s.count <= 0) return null;
-            const len = Math.max(fracs[i] * C - 1.2, 0);
-            return (
-              <circle
-                key={s.label}
-                cx="21"
-                cy="21"
-                r={R}
-                fill="none"
-                strokeWidth="6"
-                stroke={s.color}
-                strokeDasharray={`${len} ${C - len}`}
-                strokeDashoffset={-offsets[i]}
-              />
-            );
-          })}
-        </svg>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span
-            className="font-mono text-xl font-bold tabular-nums text-ink"
-            dir="ltr"
-          >
-            {total}
-          </span>
-          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-ink-muted">
-            {totalLabel}
-          </span>
+    <div className="dashboard-donut">
+      <div className="dashboard-donut-layout">
+        <div className="dashboard-donut-ring">
+          <svg viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+            <circle cx="80" cy="80" r={RADIUS} fill="none" strokeWidth="22" className="dashboard-donut-track" />
+            {total > 0 ? segments.map((segment, index) => {
+              if (segment.count <= 0) return null;
+              const length = segment.count / total * CIRCUMFERENCE;
+              const offset = segments.slice(0, index).reduce((sum, item) => sum + item.count, 0) / total * CIRCUMFERENCE;
+              return <circle
+                key={segment.status}
+                className="dashboard-donut-segment"
+                data-status={segment.status}
+                cx="80" cy="80" r={RADIUS} fill="none" strokeWidth="22"
+                strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
+                strokeDashoffset={-offset}
+                transform="rotate(-90 80 80)"
+              />;
+            }) : null}
+          </svg>
+          <div className="dashboard-donut-center">
+            <bdi dir="ltr" style={{ "--donut-total-length": formattedTotal.length } as CSSProperties}>{formattedTotal}</bdi>
+            <span>{totalLabel}</span>
+          </div>
         </div>
+        <ul className="dashboard-donut-legend">
+          {segments.map(segment => <li key={segment.status} data-status={segment.status}>
+            <span className="dashboard-donut-marker" aria-hidden />
+            <span className="dashboard-donut-label">{segment.label}</span>
+            <bdi dir="ltr">{formatNumber(segment.count, locale)}</bdi>
+          </li>)}
+        </ul>
       </div>
-      <ul className="flex w-full flex-col gap-1.5">
-        {segments.map((s) => (
-          <li key={s.label} className="flex items-center gap-2 text-[13px]">
-            <span
-              className="size-[9px] shrink-0 rounded-[2px]"
-              style={{ backgroundColor: s.color }}
-              aria-hidden
-            />
-            <span className="flex-1 truncate text-ink-soft">{s.label}</span>
-            <span
-              className="font-mono font-semibold tabular-nums text-ink"
-              dir="ltr"
-            >
-              {s.count}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {total === 0 ? <p className="dashboard-donut-empty">{emptyLabel}</p> : null}
     </div>
   );
 }
