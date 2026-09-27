@@ -72,7 +72,7 @@ function DashboardRecentOrderRow({ order, locale, dict, timeZone }: {
         <span>{interpolate(dict.admin.orders.detail.itemsCount, { count: order.itemCount })}</span>
       </span>
       <bdi className="dashboard-recent-amount" dir="ltr">{formatCurrency(order.subtotalAmount, locale)}</bdi>
-      <span className="dashboard-recent-status"><OrderStatusBadge status={order.status} dict={dict.status} /></span>
+      <span className="dashboard-recent-status" data-status={order.status}><OrderStatusBadge status={order.status} dict={dict.status} /></span>
     </Link>
   </li>;
 }

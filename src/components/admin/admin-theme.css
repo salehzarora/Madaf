@@ -109,6 +109,14 @@
 .admin-v3 :is(.admin-shell-brand, .admin-shell-menu-trigger, .admin-shell-tab, .admin-shell-locales a, .admin-shell-logout > button):focus-visible { outline: 2px solid var(--admin-focus); outline-offset: 3px; }
 .admin-v3 :is(.admin-shell-nav-link, .admin-shell-band-top a, .admin-shell-band-top button, .admin-shell-drawer-actions button):focus-visible { outline: 2px solid var(--admin-focus-on-dark); outline-offset: -3px; }
 .admin-v3 .admin-shell-tenant-switch [role="option"]:focus-visible { outline-color: var(--admin-focus); }
+/* Keep the light-surface focus ring inside the locale pill on the dark drawer. */
+.admin-v3 .admin-shell-drawer .admin-shell-locales a:focus-visible { outline-offset: -3px; }
+/* At high zoom/short heights, scroll the complete drawer so long identity and
+   tenant blocks cannot squeeze navigation into an unusable strip. */
+@media (max-height: 600px) {
+  .admin-v3 .admin-shell-drawer { overflow-y: auto; overscroll-behavior: contain; }
+  .admin-v3 .admin-shell-drawer .admin-shell-navigation { flex: 1 0 auto; overflow-y: visible; }
+}
 @media (min-width: 640px) {
   .admin-v3 .admin-shell-content { padding-inline: 24px; }
   .admin-v3 .admin-shell-mobile-header { padding-inline: 24px; }

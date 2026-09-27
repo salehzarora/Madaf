@@ -48,6 +48,7 @@
 .admin-v3 .dashboard-recent-amount { grid-area: amount; justify-self: end; max-inline-size: 100%; color: var(--admin-navy); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .admin-v3 .dashboard-recent-status { grid-area: status; justify-self: end; max-inline-size: 100%; }
 .admin-v3 .dashboard-recent-status > span { border-radius: 999px; }
+.admin-v3 .dashboard-recent-status[data-status="preparing"] > span { color: var(--admin-warning); }
 @media (min-width: 768px) {
   .admin-v3 .dashboard-widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-v3 .dashboard-widget-grid > :last-child { grid-column: 1 / -1; }

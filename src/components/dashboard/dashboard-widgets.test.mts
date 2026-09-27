@@ -83,6 +83,7 @@ for (const locale of locales) {
       assert.ok(text(row.querySelector('.dashboard-recent-meta')).includes(interpolate(dict.admin.orders.detail.itemsCount, { count: order.itemCount })));
       assert.equal(text(row.querySelector('.dashboard-recent-amount')), formatCurrency(order.subtotalAmount, locale));
       assert.equal(text(row.querySelector('.dashboard-recent-status')), dict.status[order.status]);
+      assert.equal(row.querySelector('.dashboard-recent-status')?.getAttribute('data-status'), order.status);
       assert.equal(row.querySelectorAll('[hidden]').length, 0);
     });
   });

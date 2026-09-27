@@ -227,13 +227,14 @@ export function AdminShell({ locale, dict, session, children }: {
           if (event.key !== "Tab") return;
           const targets = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]'))
             .filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") && !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
-          const first = targets[0];
-          const last = targets[targets.length - 1];
-          const active = document.activeElement;
-          if (!first) { event.preventDefault(); event.currentTarget.focus(); }
-          else if (!targets.some((element) => element === active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
-            event.preventDefault(); (event.shiftKey ? last : first).focus();
-          }
+          // Traverse every live control explicitly: WebKit can omit links from
+          // native Tab order, otherwise escaping before reaching our last link.
+          event.preventDefault();
+          if (!targets.length) { event.currentTarget.focus(); return; }
+          const index = targets.findIndex((element) => element === document.activeElement);
+          const next = index < 0 ? (event.shiftKey ? targets.length - 1 : 0)
+            : (index + (event.shiftKey ? -1 : 1) + targets.length) % targets.length;
+          targets[next].focus();
         }}>
         {open ? <>
           <div className="admin-shell-band-top">

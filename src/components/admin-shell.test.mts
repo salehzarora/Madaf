@@ -162,6 +162,33 @@ test("Tab and Shift+Tab wrap among live drawer controls", () => {
   act(() => last.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })));
   assert.equal(document.activeElement, first);
 });
+
+test("drawer Tab visits intermediate links even when native navigation omits anchors", () => {
+  const view = mount(); click(view.find(".admin-shell-menu-trigger"));
+  const first = view.find<HTMLElement>("[data-admin-drawer-close]");
+  const brand = view.find<HTMLElement>("dialog .admin-shell-brand");
+  const active = view.find<HTMLElement>("dialog .admin-shell-nav-link");
+  const tab = (element: HTMLElement, shiftKey = false) => {
+    const event = new dom.window.KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+    act(() => element.dispatchEvent(event));
+    assert.equal(event.defaultPrevented, true);
+  };
+  first.focus(); tab(first); assert.equal(document.activeElement, brand);
+  tab(brand); assert.equal(document.activeElement, active);
+  tab(active, true); assert.equal(document.activeElement, brand);
+  tab(brand, true); assert.equal(document.activeElement, first);
+});
+
+test("drawer traversal skips disabled and excluded controls", () => {
+  const view = mount(); click(view.find(".admin-shell-menu-trigger"));
+  const first = view.find<HTMLElement>("[data-admin-drawer-close]");
+  const brand = view.find<HTMLElement>("dialog .admin-shell-brand");
+  brand.tabIndex = -1;
+  const disabled = document.createElement("button"); disabled.disabled = true; brand.after(disabled);
+  first.focus();
+  act(() => first.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })));
+  assert.equal(document.activeElement, view.find("dialog .admin-shell-nav-link"));
+});
 test("close button and backdrop dismiss", () => {
   const view = mount(); click(view.find(".admin-shell-menu-trigger")); click(view.find("[data-admin-drawer-close]"));
   assert.equal(view.find<HTMLDialogElement>("dialog").open, false);
