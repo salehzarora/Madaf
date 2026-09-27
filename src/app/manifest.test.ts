@@ -13,6 +13,7 @@ const source = (path: string) => readFileSync(new URL(path, root), "utf8");
 
 test("native manifest gives MADAF a locale-neutral standalone launch identity", () => {
   const app = manifest();
+  assert.equal(app.id, "/");
   assert.equal(app.name, "MADAF");
   assert.equal(app.short_name, "MADAF");
   assert.equal(app.description, getDictionary("he").meta.description);
@@ -91,13 +92,13 @@ test("root keeps locale direction, fonts and default browser viewport behavior",
   assert.doesNotMatch(layout, /["']use client["']|maximumScale|userScalable|viewportFit/);
 });
 
-test("identity phase introduces no service worker, offline runtime or Android association", () => {
+test("native PWA has no third-party caching library or Android association", () => {
   for (const directory of ["src", "public"]) {
     const files = readdirSync(new URL(`${directory}/`, root), { recursive: true, encoding: "utf8" });
     for (const file of files) {
-      assert.doesNotMatch(file, /(^|[/\\])(sw\.[jt]s|service-worker\.[jt]s|assetlinks\.json)$/i);
+      assert.doesNotMatch(file, /(^|[/\\])assetlinks\.json$/i);
       if (/\.(?:[cm]?[jt]sx?|html)$/.test(file) && !/\.test\./.test(file)) {
-        assert.doesNotMatch(source(`${directory}/${file}`), /navigator\.serviceWorker|serviceWorker\.register|workbox|@serwist/, file);
+        assert.doesNotMatch(source(`${directory}/${file}`), /workbox|@serwist/, file);
       }
     }
   }

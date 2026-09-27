@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Rubik } from "next/font/google";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { dirFor, isLocale, locales, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { appIdentity } from "@/lib/app-identity";
@@ -83,7 +84,10 @@ export default async function RootLayout({
       dir={dirFor(locale as Locale)}
       className={`${rubik.variable} ${plexMono.variable} antialiased`}
     >
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <ServiceWorkerRegister />
+        {children}
+      </body>
     </html>
   );
 }

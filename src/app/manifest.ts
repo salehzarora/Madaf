@@ -5,6 +5,7 @@ import { appIdentity } from "@/lib/app-identity";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: appIdentity.name,
     short_name: appIdentity.name,
     description: getDictionary(defaultLocale).meta.description,
