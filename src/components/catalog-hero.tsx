@@ -98,6 +98,7 @@ export function CatalogHero({
             <ProductImage
               product={product}
               presentation="catalog"
+              fillPhoto
               className="aspect-[4/5] w-full rounded-field"
             />
           </div>

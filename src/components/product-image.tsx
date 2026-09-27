@@ -21,6 +21,7 @@ export function ProductImage({
   iconClassName,
   showSizeTag = true,
   presentation = "default",
+  fillPhoto = false,
 }: {
   product: Pick<Product, "imageUrl" | "unitSize" | "packageType">;
   /** Accepted for API compatibility; identity is a dot in the card body now. */
@@ -32,11 +33,17 @@ export function ProductImage({
   /** Shared V3 art; caller classes own geometry. catalog-card is its existing
    * compatibility alias. Default and legacy catalog consumers stay separate. */
   presentation?: "default" | "catalog" | "catalog-card" | "storefront";
+  /** Opt the hero/detail photo into the catalog-card fill without changing other media. */
+  fillPhoto?: boolean;
 }) {
   const [broken, setBroken] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const isStorefront = presentation === "storefront" || presentation === "catalog-card";
   const mediaPrefix = presentation === "catalog-card" ? "catalog-card" : "storefront";
+  const filledPhoto = presentation === "catalog-card" || (fillPhoto && (presentation === "catalog" || presentation === "storefront"));
+  const photoFillClass = fillPhoto && presentation === "catalog" ? "catalog-product-media--fill"
+    : fillPhoto && presentation === "storefront" ? "storefront-media--fill" : "";
+  const backdropClass = presentation === "catalog" ? "catalog-media-backdrop" : `${mediaPrefix}-media-backdrop`;
 
   // Media error events don't bubble and aren't replayed by React — an image
   // that failed BEFORE hydration never fires onError. Detect it on mount:
@@ -66,15 +73,16 @@ export function ProductImage({
         className={cn(
           "relative overflow-hidden",
           isStorefront ? `${mediaPrefix}-media ${mediaPrefix}-media--photo` : presentation === "catalog" ? "catalog-product-media catalog-product-media--photo" : "bg-surface-sunken",
+          photoFillClass,
           className,
         )}
       >
         {/* Plain <img>: sources are signed Storage URLs / arbitrary hosts. */}
-        {presentation === "catalog-card" ? (
-          // Fill the card media with the photo's own colors while the foreground
+        {filledPhoto ? (
+          // Fill the media with the photo's own colors while the foreground
           // remains fully visible, including tall bottles and narrow packs.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={product.imageUrl} alt="" loading="lazy" className="catalog-card-media-backdrop" />
+          <img src={product.imageUrl} alt="" loading="lazy" className={backdropClass} />
         ) : null}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
