@@ -252,6 +252,15 @@ const en: Dictionary = {
     actionViewOrders: "Review orders",
     actionOpenCatalog: "Open catalog as customer",
     dashboard: {
+      range: {
+        latestBucket: "Latest interval", liveOrders: "Non-cancelled orders", label: "Dashboard period", apply: "Apply", from: "From", to: "To",
+        presets: { "24h": "Last 24 hours", "48h": "Last 48 hours", "7d": "Last 7 days", "30d": "Last 30 days", "3m": "Last 3 months", custom: "Custom" },
+        invalid: "Invalid range. Showing the last 30 days.", customHint: "Choose up to 366 days, ending today or earlier.",
+        periodRevenue: "Sales in period", cohort: "Orders created in the selected period, grouped by their current status.",
+        current: "Current operations · across all dates", recent: "Latest 6 orders · across all dates", today: "Today · independent of the selected period",
+        hourly: "Hourly totals", daily: "Daily totals", weekly: "Weekly totals", period: "Selected period",
+        rising: "Rising", falling: "Falling", flat: "Flat", spark: "First to last bucket · {direction}",
+      },
       trend: "Orders trend",
       trendSub: "Latest dates with orders",
       charts: {

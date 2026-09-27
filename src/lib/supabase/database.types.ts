@@ -2119,6 +2119,10 @@ export type Database = {
         Args: { p_now?: string; p_tenant_id: string; p_time_zone: string }
         Returns: Json
       }
+      get_dashboard_period_metrics: {
+        Args: { p_boundaries: string[]; p_tenant_id: string }
+        Returns: Json
+      }
       get_showcase_catalog: { Args: { p_token: string }; Returns: Json }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }

@@ -1,4 +1,13 @@
-/* Phase D: lower dashboard only. No shared Badge/Card or upper-section rules. */
+/* Lower dashboard only. No shared Badge/Card or upper-section rules. */
+.admin-v3 .dashboard-widget-art { flex-shrink: 0; }
+.admin-v3 .dashboard-product-thumbnail { flex: 0 0 44px; inline-size: 44px; block-size: 44px; min-block-size: 0; padding: 4px; border: 1px solid var(--admin-border); border-radius: 12px; background: var(--admin-canvas); }
+.admin-v3 .dashboard-product-thumbnail .storefront-media-photo { inline-size: 100%; block-size: 100%; object-fit: contain; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder { position: relative; display: grid; place-items: center; inline-size: 100%; block-size: 100%; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder-brand { position: static; inline-size: 25px; block-size: 25px; color: var(--admin-muted); opacity: .65; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder-glyph { display: none; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder { background: none; border: 0; box-shadow: none; transform: none; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder::before { display: none; }
+.admin-v3 .dashboard-product-thumbnail .storefront-placeholder-brand > rect:first-child { fill: var(--admin-indigo); }
 .admin-v3 .dashboard-widgets { display: grid; gap: 16px; min-inline-size: 0; }
 .admin-v3 .dashboard-widget-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; min-inline-size: 0; }
 .admin-v3 .dashboard-widget-card { min-inline-size: 0; border: 1px solid var(--admin-border); border-radius: 22px; background: var(--admin-surface); color: var(--admin-navy); box-shadow: 0 5px 22px color-mix(in srgb, var(--admin-navy) 4%, transparent); }

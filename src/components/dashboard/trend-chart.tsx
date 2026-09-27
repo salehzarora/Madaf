@@ -12,10 +12,11 @@ function compact(value: number, locale: Locale): string {
 
 /** Pure server presentation of the bounded series, in its supplied chronology.
  * Dates are calendar dates, never converted through a browser/server timezone. */
-export function TrendChart({ days, locale, labels }: {
-  days: DashboardMetrics["trend"];
+export function TrendChart({ days, locale, labels, overview = false }: {
+  days: (DashboardMetrics["trend"][number] & { label?: string; shortLabel?: string })[];
   locale: Locale;
   labels: Dictionary["admin"]["dashboard"]["charts"];
+  overview?: boolean;
 }) {
   if (!days.length) return <p className="dashboard-chart-empty">{labels.trendEmpty}</p>;
 
@@ -24,7 +25,7 @@ export function TrendChart({ days, locale, labels }: {
     ...day,
     // Intl may insert RTL marks; these numeric labels already have explicit
     // LTR isolation. Remove the marks so day/month/year keep their visual order.
-    dateLabel: formatDateOnly(day.day, locale).replace(/[\u200e\u200f\u061c]/g, ""),
+    dateLabel: (day.label ?? formatDateOnly(day.day, locale)).replace(/[\u200e\u200f\u061c]/g, ""),
     compact: compact(day.total, locale),
     full: formatCurrency(day.total, locale),
   }));
@@ -32,14 +33,15 @@ export function TrendChart({ days, locale, labels }: {
   // inner plot rather than clipping or widening the document.
   const pointWidth = Math.max(86, ...points.map(point => point.compact.length * 8 + 20));
   const latest = points[points.length - 1];
+  const peakIndex = points.findIndex(point => point.total === max);
 
   return (
-    <div className="dashboard-trend">
-      <p className="dashboard-chart-scroll-hint">{labels.scrollHint}</p>
+    <div className="dashboard-trend" data-overview={overview || undefined}>
+      {!overview ? <p className="dashboard-chart-scroll-hint">{labels.scrollHint}</p> : null}
       <div className="dashboard-trend-scroll" role="region" aria-label={labels.scrollLabel} tabIndex={0}>
-        <ol className="dashboard-trend-plot" style={{ minInlineSize: Math.max(240, points.length * pointWidth) }}>
-          {points.map(point => (
-            <li key={point.day} className="dashboard-trend-point">
+        <ol className="dashboard-trend-plot" style={{ minInlineSize: overview ? 0 : Math.max(240, points.length * pointWidth) }}>
+          {points.map((point, index) => (
+            <li key={point.day} className="dashboard-trend-point" data-tick={!overview || index % Math.ceil(points.length / 4) === 0 || undefined}>
               <span className="sr-only">
                 <time dateTime={point.day}>{point.dateLabel}</time>{": "}
                 <bdi dir="ltr">{point.full}</bdi>
@@ -51,10 +53,10 @@ export function TrendChart({ days, locale, labels }: {
                   data-zero={point.total === 0 || undefined}
                   style={{ blockSize: `${point.total / max * 100}%` }}
                 >
-                  <span className="dashboard-trend-value" dir="ltr">{point.compact}</span>
+                  {(!overview || index === peakIndex) ? <span className="dashboard-trend-value" dir="ltr">{point.compact}</span> : null}
                 </div>
               </div>
-              <time className="dashboard-trend-date" dateTime={point.day} dir="ltr" aria-hidden>{point.dateLabel}</time>
+              <time className="dashboard-trend-date" dateTime={point.day} dir="ltr" aria-hidden>{point.shortLabel ?? point.dateLabel}</time>
             </li>
           ))}
         </ol>

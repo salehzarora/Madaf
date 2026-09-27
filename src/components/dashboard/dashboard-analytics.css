@@ -62,3 +62,15 @@
 @media (min-width: 1024px) {
   .admin-v3 .dashboard-analytics { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
 }
+
+.admin-v3 .dashboard-bucket-table-scroll { overflow: auto; max-inline-size: 100%; }
+.admin-v3 .dashboard-bucket-table-scroll:focus-visible { outline: 3px solid var(--admin-focus); outline-offset: -3px; }
+.admin-v3 .dashboard-bucket-table-scroll table { min-inline-size: 540px; }
+.admin-v3 .dashboard-bucket-details { margin-block-start: 8px; }
+
+.admin-v3 .dashboard-trend-date { white-space: normal; overflow-wrap: anywhere; }
+.admin-v3 .dashboard-trend[data-overview] .dashboard-trend-plot { gap: 0; padding-inline: 32px; }
+.admin-v3 .dashboard-trend[data-overview] .dashboard-trend-bar { inline-size: 80%; max-inline-size: 32px; min-inline-size: 0; }
+.admin-v3 .dashboard-trend[data-overview] .dashboard-trend-point { padding-block-end: 36px; }
+.admin-v3 .dashboard-trend[data-overview] .dashboard-trend-date { position: absolute; inline-size: 64px; inset-inline-start: calc(50% - 32px); margin-inline-start: 0; font-size: 10px; }
+.admin-v3 .dashboard-trend[data-overview] .dashboard-trend-point:not([data-tick]) .dashboard-trend-date { display: none; }
