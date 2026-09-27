@@ -1,8 +1,9 @@
-# Madaf Design System — Storefront V3 and Ledger defaults
+# Madaf Design System — Storefront V3, Admin V3 chrome and Ledger bodies
 
 > ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
 > The **Storefront Ordering Presentation Layer** is current for the customer
-> routes listed below; **Madaf Ledger** remains the default for excluded surfaces.
+> routes listed below. **Admin V3 chrome** is scoped to AdminShell; **Madaf Ledger**
+> remains the default for Admin page bodies and other excluded surfaces.
 > Material from **"Category identity system (M0.2)"** onward records earlier
 > milestones, including conflicting palette, typography, product-art and layout
 > descriptions. It does not override either current scoped section. Implementation
@@ -20,11 +21,40 @@ The [Storefront Ordering Presentation Layer](#storefront-ordering-presentation-l
 below governs the approved Landing, Catalog, Product, Cart, Checkout, Success,
 Private Shop and Showcase presentation. Its shared tokens and scoped rules take
 precedence over older storefront descriptions; global Ledger primitives remain
-available to Admin, auth/onboarding and legal/document UI.
+available to Admin page bodies, auth/onboarding and legal/document UI.
+
+## Admin V3 shell — ADMIN-DASHBOARD-STYLE-005A
+
+The shared AdminShell now applies V3 chrome to every `/[locale]/admin` route and
+its descendants. Dashboard, Products, Orders, Manufacturers, Customers,
+Inventory, Documents, Team and Settings **bodies remain Ledger** in this phase.
+This mixed presentation is intentional until each body receives its own milestone.
+
+[`admin/admin-theme.css`](../src/components/admin/admin-theme.css) defines the
+approved `--admin-*` palette beneath `.admin-v3`: deep navy/indigo navigation,
+emerald active states, white controls and a cool canvas with static cyan/lilac
+washes. Only named shell elements are styled. No global Ledger or Storefront
+token, shared primitive default, or child-page selector is overridden.
+
+- At **1280px and above**, a 240px sticky sidebar occupies logical inline-start
+  (right in AR/HE, left in EN), with internally scrollable navigation.
+- Below 1280px, a light header, native modal drawer and five existing bottom
+  tabs provide navigation. Bottom padding accounts for the device safe area.
+- Drawer opening locks background scroll and focuses its close button. Native
+  modal inertness plus explicit Tab wrapping contain focus; Escape, the scrim,
+  close control, navigation and desktop transition close it. Same-route closure
+  restores the opener/scroll; navigation retains destination focus/scroll.
+- Current routes, active matching, role visibility, tenant switching, locale
+  switching and logout are preserved. No search, notifications or promo CTA is
+  added. AdminLayout remains the unchanged server authentication/data gate.
+
+Use `npm run test:dashboard-ui` for focused shell coverage. Physical dialog,
+breakpoint, RTL and containment checks also require Chromium/WebKit verification;
+JSDOM does not implement browser modal layout or inertness.
 
 ## Madaf Ledger visual system (sitewide refresh)
 
-The default visual language outside the Storefront V3 scopes is **"Madaf
+The default visual language outside Storefront V3 and Admin V3 chrome is **"Madaf
 Ledger"** — a wholesale supplier's paper ledger digitized. The original spec lives in
 [`docs/design/madaf-ledger/`](design/madaf-ledger/).
 
