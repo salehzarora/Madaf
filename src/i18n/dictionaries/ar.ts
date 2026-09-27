@@ -259,7 +259,7 @@ const ar: Dictionary = {
       topCustomers: "أبرز المحلات",
       byRevenue: "حسب حجم الطلبيات",
       today: "اليوم",
-      lowSub: "دون حدّ 10 عبوات",
+      lowSub: "أقل من حدّ المخزون المحدّد لكل منتج",
       emptyLabel: "نفد",
       ordersCount: "{count} طلبيات",
       alerts: {
@@ -276,7 +276,7 @@ const ar: Dictionary = {
         signupRequestsCount: "{count} بانتظار المراجعة",
         signupRequestsNone: "لا توجد طلبات تسجيل محلات بانتظار المراجعة",
         lowStock: "منتجات منخفضة المخزون",
-        lowStockCount: "{count} عند الحد أو أقل",
+        lowStockCount: "{count} أقل من حدّ المخزون المحدّد لكل منتج",
         lowStockNone: "لا توجد منتجات منخفضة المخزون",
       },
     },

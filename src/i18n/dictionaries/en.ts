@@ -259,7 +259,7 @@ const en: Dictionary = {
       topCustomers: "Top shops",
       byRevenue: "By order value",
       today: "Today",
-      lowSub: "Below the 10-package threshold",
+      lowSub: "Below individual low-stock thresholds",
       emptyLabel: "Out",
       ordersCount: "{count} orders",
       alerts: {
@@ -276,7 +276,7 @@ const en: Dictionary = {
         signupRequestsCount: "{count} pending review",
         signupRequestsNone: "No signup requests waiting",
         lowStock: "Low-stock products",
-        lowStockCount: "{count} at or below threshold",
+        lowStockCount: "{count} below their individual thresholds",
         lowStockNone: "No low-stock products",
       },
     },

@@ -1,21 +1,10 @@
-import {
-  AlertTriangle,
-  ClipboardList,
-  Inbox,
-  Package,
-  PlusCircle,
-  Store,
-  UserPlus,
-} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { KpiCard } from "@/components/dashboard/kpi-card";
-import { MetricCard } from "@/components/metric-card";
+import { DashboardTop } from "@/components/dashboard/dashboard-top";
 import { StatusDonut } from "@/components/dashboard/status-donut";
 import { TrendChart, type TrendDay } from "@/components/dashboard/trend-chart";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShelfRule } from "@/components/ui/shelf-rule";
 import { isLocale } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { getSessionContext } from "@/lib/auth/session";
@@ -67,18 +56,7 @@ export default async function AdminDashboardPage({
   const recent = recentResult.rows;
 
   const sc = metrics.statusCounts;
-  const newOrdersCount = sc.new;
-  const openCount = sc.new + sc.confirmed + sc.preparing;
-  const inPreparation = sc.confirmed + sc.preparing;
   const monthTotal = metrics.month.revenue;
-  const monthOrdersCount = metrics.month.count;
-  const todayOrdersCount = metrics.today.count;
-  const todayTotal = metrics.today.revenue;
-  const lowStockCount = metrics.lowStock.count;
-  const outCount = metrics.lowStock.outOfStockCount;
-  const pendingGuestOrders = metrics.guestPending;
-  const activeProductCount = metrics.activeProductCount;
-  const activeShopCount = metrics.activeShopCount;
 
   // Pending store-signup requests — supabase owner/admin only (mock has no
   // signups). An EXACT server-side count (no signup rows / PII loaded, correct
@@ -93,13 +71,6 @@ export default async function AdminDashboardPage({
     ? await countPendingSignupRequests()
     : 0;
 
-  // Open-orders segmented mini-bar shares.
-  const openBy = {
-    new: sc.new,
-    confirmed: sc.confirmed,
-    preparing: sc.preparing,
-  };
-
   // Daily totals (non-cancelled), last 14 tenant-local days present in the data
   // — computed server-side by the aggregate; the UI only formats.
   const trendDays: TrendDay[] = metrics.trend.map((point, i) => {
@@ -112,17 +83,6 @@ export default async function AdminDashboardPage({
       isToday: i === metrics.trend.length - 1,
     };
   });
-
-  // Sparkline points (month daily totals) over a 0..84 × 0..30 viewBox.
-  const spark = trendDays.map((x) => x.value);
-  const sparkMax = Math.max(1, ...spark);
-  const sparkPts = spark
-    .map((v, i) => {
-      const x = spark.length > 1 ? (i / (spark.length - 1)) * 84 : 42;
-      const y = 28 - (v / sparkMax) * 26;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
 
   // Status donut segments.
   const statuses = ["new", "confirmed", "preparing", "delivered", "cancelled"] as const;
@@ -137,282 +97,9 @@ export default async function AdminDashboardPage({
   const topShops = metrics.topShops;
   const lowStockItems = metrics.lowStock.items;
 
-  const actionLink =
-    "inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-sm font-semibold transition-colors";
-
   return (
     <div className="mx-auto flex w-full max-w-[1096px] flex-col gap-4">
-      {/* Header row */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-ink">
-            {t.overviewTitle}
-          </h1>
-          <p className="mt-1 text-sm text-ink-soft">{t.overviewSubtitle}</p>
-          <ShelfRule className="mt-3 w-40" />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/${locale}/admin/products/new`}
-            className={`${actionLink} bg-brand-600 text-white hover:bg-brand-700`}
-          >
-            <PlusCircle className="size-4" aria-hidden />
-            {t.actionNewProduct}
-          </Link>
-          <Link
-            href={`/${locale}/admin/orders`}
-            className={`${actionLink} border border-line-strong bg-surface text-ink-soft hover:bg-background`}
-          >
-            {t.actionViewOrders}
-          </Link>
-          <Link
-            href={`/${locale}/catalog`}
-            className={`${actionLink} text-ink-soft hover:bg-surface-sunken hover:text-ink`}
-          >
-            {t.actionOpenCatalog}
-          </Link>
-        </div>
-      </div>
-
-      {/* KPI row */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          label={t.metrics.newOrders}
-          value={formatNumber(newOrdersCount, locale)}
-        >
-          {/* All-time count of status=new — no "Today" badge (M8A: it was
-              misleading; today's count has its own MetricCard below). */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-ink-muted">
-              {t.metrics.openOrders}: {formatNumber(openCount, locale)}
-            </span>
-          </div>
-        </KpiCard>
-
-        <KpiCard
-          label={t.metrics.openOrders}
-          value={formatNumber(openCount, locale)}
-        >
-          <div className="flex h-1.5 overflow-hidden rounded-[3px] bg-line-hair">
-            {(["new", "confirmed", "preparing"] as const).map((s) =>
-              openBy[s] > 0 ? (
-                <span
-                  key={s}
-                  style={{
-                    width: `${(openBy[s] / Math.max(1, openCount)) * 100}%`,
-                    backgroundColor: STATUS_COLOR[s],
-                  }}
-                />
-              ) : null,
-            )}
-          </div>
-        </KpiCard>
-
-        <KpiCard
-          label={t.metrics.monthRevenue}
-          value={formatCurrency(monthTotal, locale)}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <svg viewBox="0 0 84 30" className="h-[30px] w-[84px]" aria-hidden>
-              <polyline
-                points={sparkPts}
-                fill="none"
-                className="stroke-brand-600"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              {spark.length ? (
-                <circle
-                  cx="84"
-                  cy={28 - (spark[spark.length - 1] / sparkMax) * 26}
-                  r="2.6"
-                  className="fill-accent"
-                />
-              ) : null}
-            </svg>
-            <span className="text-[11px] text-ink-muted">
-              {interpolate(d.ordersCount, { count: monthOrdersCount })}
-            </span>
-          </div>
-        </KpiCard>
-
-        <KpiCard
-          label={t.metrics.lowStock}
-          value={formatNumber(lowStockCount, locale)}
-          tone="warning"
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className="rounded-badge bg-danger-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-danger"
-              dir="ltr"
-            >
-              {d.emptyLabel} · {outCount}
-            </span>
-            <span className="text-[11px] text-warning/90">{d.lowSub}</span>
-          </div>
-        </KpiCard>
-      </div>
-
-      {/* At-a-glance counts */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          label={t.metrics.todayOrders}
-          value={formatNumber(todayOrdersCount, locale)}
-          icon={<ClipboardList />}
-          tone="brand"
-        />
-        <MetricCard
-          label={t.metrics.todayValue}
-          value={formatCurrency(todayTotal, locale)}
-          icon={<ClipboardList />}
-        />
-        <MetricCard
-          label={t.metrics.activeProducts}
-          value={formatNumber(activeProductCount, locale)}
-          icon={<Package />}
-        />
-        <MetricCard
-          label={t.metrics.activeShops}
-          value={formatNumber(activeShopCount, locale)}
-          icon={<Store />}
-        />
-      </div>
-
-      {/* Operational alerts (M8B.4) — what needs the admin's attention NOW.
-          Each card links to where the work happens; zero shows a calm
-          "all clear" line instead of a number badge. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
-          href={`/${locale}/admin/orders?status=new`}
-          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
-            <ClipboardList className="size-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">
-              {d.alerts.needsConfirmation}
-            </span>
-            <span className="block text-xs text-ink-soft">
-              {newOrdersCount > 0
-                ? interpolate(d.alerts.needsConfirmationCount, {
-                    count: newOrdersCount,
-                  })
-                : d.alerts.needsConfirmationNone}
-            </span>
-          </span>
-          {newOrdersCount > 0 ? (
-            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-              {formatNumber(newOrdersCount, locale)}
-            </span>
-          ) : null}
-        </Link>
-
-        <Link
-          href={`/${locale}/admin/orders?status=confirmed,preparing`}
-          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
-            <Package className="size-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">
-              {d.alerts.preparing}
-            </span>
-            <span className="block text-xs text-ink-soft">
-              {inPreparation > 0
-                ? interpolate(d.alerts.preparingCount, { count: inPreparation })
-                : d.alerts.preparingNone}
-            </span>
-          </span>
-          {inPreparation > 0 ? (
-            <span className="shrink-0 rounded-badge bg-info-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-info">
-              {formatNumber(inPreparation, locale)}
-            </span>
-          ) : null}
-        </Link>
-
-        <Link
-          href={`/${locale}/admin/orders?guest=true&status=new`}
-          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
-            <Inbox className="size-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">
-              {d.alerts.guestOrders}
-            </span>
-            <span className="block text-xs text-ink-soft">
-              {pendingGuestOrders > 0
-                ? interpolate(d.alerts.guestOrdersCount, {
-                    count: pendingGuestOrders,
-                  })
-                : d.alerts.guestOrdersNone}
-            </span>
-          </span>
-          {pendingGuestOrders > 0 ? (
-            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-              {formatNumber(pendingGuestOrders, locale)}
-            </span>
-          ) : null}
-        </Link>
-
-        {canSeeSignups ? (
-          <Link
-            href={`/${locale}/admin/customers/signup`}
-            className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
-          >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-50 text-brand-700">
-              <UserPlus className="size-5" aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-bold text-ink">
-                {d.alerts.signupRequests}
-              </span>
-              <span className="block text-xs text-ink-soft">
-                {pendingSignups > 0
-                  ? interpolate(d.alerts.signupRequestsCount, {
-                      count: pendingSignups,
-                    })
-                  : d.alerts.signupRequestsNone}
-              </span>
-            </span>
-            {pendingSignups > 0 ? (
-              <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-                {formatNumber(pendingSignups, locale)}
-              </span>
-            ) : null}
-          </Link>
-        ) : null}
-
-        <Link
-          href={`/${locale}/admin/inventory?low=1`}
-          className="group flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-field bg-accent-wash text-warning">
-            <AlertTriangle className="size-5" aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">
-              {d.alerts.lowStock}
-            </span>
-            <span className="block text-xs text-ink-soft">
-              {lowStockCount > 0
-                ? interpolate(d.alerts.lowStockCount, {
-                    count: lowStockCount,
-                  })
-                : d.alerts.lowStockNone}
-            </span>
-          </span>
-          {lowStockCount > 0 ? (
-            <span className="shrink-0 rounded-badge bg-warning-soft px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-warning">
-              {formatNumber(lowStockCount, locale)}
-            </span>
-          ) : null}
-        </Link>
-      </div>
+      <DashboardTop locale={locale} dict={dict} metrics={metrics} pendingSignups={canSeeSignups ? pendingSignups : null} />
 
       {/* Trend + status */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.8fr_1fr]">

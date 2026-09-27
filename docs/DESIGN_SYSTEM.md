@@ -3,7 +3,8 @@
 > ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
 > The **Storefront Ordering Presentation Layer** is current for the customer
 > routes listed below. **Admin V3 chrome** is scoped to AdminShell; **Madaf Ledger**
-> remains the default for Admin page bodies and other excluded surfaces.
+> remains the default for Admin page bodies outside the Dashboard top section
+> and for other excluded surfaces.
 > Material from **"Category identity system (M0.2)"** onward records earlier
 > milestones, including conflicting palette, typography, product-art and layout
 > descriptions. It does not override either current scoped section. Implementation
@@ -27,8 +28,9 @@ available to Admin page bodies, auth/onboarding and legal/document UI.
 
 The shared AdminShell now applies V3 chrome to every `/[locale]/admin` route and
 its descendants. Dashboard, Products, Orders, Manufacturers, Customers,
-Inventory, Documents, Team and Settings **bodies remain Ledger** in this phase.
-This mixed presentation is intentional until each body receives its own milestone.
+Inventory, Documents, Team and Settings bodies retain Ledger. Phase B upgrades
+only the Dashboard top section described below; this mixed presentation is
+intentional until each body receives its own milestone.
 
 [`admin/admin-theme.css`](../src/components/admin/admin-theme.css) defines the
 approved `--admin-*` palette beneath `.admin-v3`: deep navy/indigo navigation,
@@ -51,6 +53,32 @@ token, shared primitive default, or child-page selector is overridden.
 Use `npm run test:dashboard-ui` for focused shell coverage. Physical dialog,
 breakpoint, RTL and containment checks also require Chromium/WebKit verification;
 JSDOM does not implement browser modal layout or inertness.
+
+### Dashboard top — ADMIN-DASHBOARD-STYLE-005B
+
+`DashboardTop` is server-compatible presentation for the existing heading,
+three action links, four primary KPIs, four secondary metrics and operational
+alert links. Its `dashboard-top.css` uses the shell's Admin tokens and explicit
+component selectors. No global Card default, shell styling, chart, lower widget
+or other route body changes with this phase.
+
+- Primary cards use blue, mint, lilac and peach washes; secondary cards are
+  smaller white tiles. Both grids use one column below 360px, two from 360px,
+  and four from 1024px. Complete tabular ILS values scale to their card width
+  and retain LTR bidi isolation. Labels wrap; mobile actions stay at least 44px.
+- Open orders show the actual new/confirmed/preparing shares plus textual
+  counts. The month card shows its actual revenue and order count, with no
+  sparkline suggesting an unsupported time period.
+- Low-stock copy means strictly below each product's individual threshold;
+  the supplied out-of-stock subset remains separate. No metric is recomputed
+  from the bounded lower-widget preview.
+- Alerts remain links with their original destinations. Positive counts have
+  badges; zero uses the existing calm explanation. Signup visibility and the
+  protected count stay gated in the server page to Supabase owner/admin;
+  unauthorized and mock states render no signup card or reserved grid slot.
+- The page retains its existing bounded reads, tenant-time semantics and
+  server boundary. `test:dashboard-ui` covers the real server page as well as
+  the Phase A shell; physical layout and large-value checks require browsers.
 
 ## Madaf Ledger visual system (sitewide refresh)
 

@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { beforeEach, mock, test } from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
+import { locales } from "@/i18n/config";
+import { getDictionary, interpolate } from "@/i18n/dictionaries";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import { parseOrdersQuery } from "@/lib/orders-query";
+import type { DashboardMetrics } from "@/lib/data/dashboard";
+
+const sample: DashboardMetrics = {
+  statusCounts: { new: 16, confirmed: 3, preparing: 4, delivered: 8, cancelled: 2 },
+  totalOrders: 33, today: { count: 7, revenue: 12345.67 }, month: { count: 29, revenue: 987654.32 },
+  guestPending: 6, activeProductCount: 51, activeShopCount: 42,
+  lowStock: { count: 9, outOfStockCount: 2, items: [] },
+  trend: [{ day: "2025-01-02", total: 55 }], topProducts: [], topShops: [],
+};
+let metrics = structuredClone(sample);
+let mode = "supabase";
+let role: string | null = "owner";
+let signups = 11;
+let countError = false;
+const reads: string[] = [];
+mock.module("next/navigation", { namedExports: { notFound: () => { throw new Error("not-found"); } } });
+mock.module("@/lib/auth/session", { namedExports: { getSessionContext: async () => { reads.push("session"); return { membership: role ? { role } : null }; } } });
+mock.module("@/lib/data", { namedExports: {
+  getDataMode: () => mode,
+  getDashboardMetrics: async () => { reads.push("metrics"); return metrics; },
+  getTenantTimeZone: async () => { reads.push("zone"); return "Asia/Jerusalem"; },
+  searchOrders: async (query: unknown) => { assert.deepEqual(query, parseOrdersQuery({ pageSize: "6" })); reads.push("recent"); return { rows: [] }; },
+} });
+mock.module("@/lib/data/customer-signup", { namedExports: { countPendingSignupRequests: async () => {
+  reads.push("signups");
+  assert.ok(mode === "supabase" && (role === "owner" || role === "admin"), "protected read only after authorization");
+  if (countError) throw new Error("protected-count-failed");
+  return signups;
+} } });
+const { default: Page } = await import("@/app/[locale]/admin/page");
+beforeEach(() => { metrics = structuredClone(sample); mode = "supabase"; role = "owner"; signups = 11; countError = false; reads.length = 0; });
+async function render(locale = "en") {
+  return new JSDOM(renderToStaticMarkup(await Page({ params: Promise.resolve({ locale }) }))).window.document;
+}
+const text = (node: Element | null) => { assert.ok(node); return node.textContent; };
+
+for (const locale of locales) {
+  test(`${locale}: all primary/secondary values keep the actual aggregate meanings`, async () => {
+    const doc = await render(locale);
+    const t = getDictionary(locale).admin;
+    const primary = [...doc.querySelectorAll(".dashboard-kpi")];
+    assert.deepEqual(primary.map(n => text(n.querySelector("h2"))), [t.metrics.newOrders, t.metrics.openOrders, t.metrics.monthRevenue, t.metrics.lowStock]);
+    assert.deepEqual(primary.map(n => text(n.querySelector(".dashboard-stat-value bdi"))), [formatNumber(16, locale), formatNumber(23, locale), formatCurrency(987654.32, locale), formatNumber(9, locale)]);
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-metric h2")].map(text), [t.metrics.todayOrders, t.metrics.todayValue, t.metrics.activeProducts, t.metrics.activeShops]);
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-metric .dashboard-stat-value bdi")].map(text), [formatNumber(7, locale), formatCurrency(12345.67, locale), formatNumber(51, locale), formatNumber(42, locale)]);
+    assert.ok(text(primary[2]).includes(interpolate(t.dashboard.ordersCount, { count: formatNumber(29, locale) })));
+    assert.equal(text(primary[3].querySelector(".dashboard-out-count bdi")), formatNumber(2, locale));
+    assert.ok(text(primary[3]).includes(t.dashboard.lowSub));
+    assert.equal(primary[2].querySelector("polyline"), null, "month card does not imply old trend samples are in this month");
+    assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+  });
+  test(`${locale}: true status shares have text counts and omit delivered/cancelled`, async () => {
+    const doc = await render(locale);
+    const dict = getDictionary(locale);
+    const legend = [...doc.querySelectorAll(".dashboard-status-legend li")];
+    assert.deepEqual(legend.map(n => text(n.querySelector("span"))), [dict.status.new, dict.status.confirmed, dict.status.preparing]);
+    assert.deepEqual(legend.map(n => text(n.querySelector("bdi"))), [16, 3, 4].map(n => formatNumber(n, locale)));
+    const bars = [...doc.querySelectorAll<HTMLElement>(".dashboard-status-bar span")];
+    assert.deepEqual(bars.map(n => n.dataset.status), ["new", "confirmed", "preparing"]);
+    bars.forEach((bar, i) => assert.ok(Math.abs(parseFloat(bar.style.width) - [16, 3, 4][i] / 23 * 100) < .0001));
+    assert.equal(doc.querySelector(".dashboard-status-bar")?.getAttribute("aria-hidden"), "true");
+  });
+  test(`${locale}: heading actions and all operational destinations remain links`, async () => {
+    const doc = await render(locale);
+    const t = getDictionary(locale).admin;
+    assert.equal(text(doc.querySelector("h1")), t.overviewTitle);
+    assert.equal(text(doc.querySelector(".dashboard-intro p")), t.overviewSubtitle);
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-actions a")].map(n => [n.getAttribute("href"), n.textContent]), [
+      [`/${locale}/admin/products/new`, t.actionNewProduct], [`/${locale}/admin/orders`, t.actionViewOrders], [`/${locale}/catalog`, t.actionOpenCatalog],
+    ]);
+    assert.deepEqual([...doc.querySelectorAll("a.dashboard-alert")].map(n => n.getAttribute("href")), [
+      `/${locale}/admin/orders?status=new`, `/${locale}/admin/orders?status=confirmed,preparing`, `/${locale}/admin/orders?guest=true&status=new`, `/${locale}/admin/customers/signup`, `/${locale}/admin/inventory?low=1`,
+    ]);
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-alert-count")].map(text), [16, 7, 6, 11, 9].map(n => formatNumber(n, locale)));
+    assert.equal(doc.querySelector(".dashboard-top input, .dashboard-top select, .dashboard-top button"), null);
+    assert.doesNotMatch(text(doc.querySelector(".dashboard-top")), /[+−-]\s*\d+\s*%/);
+    assert.equal(doc.querySelector(".dashboard-top .lucide-bell, .dashboard-top .lucide-search, .dashboard-top .lucide-calendar"), null);
+  });
+  test(`${locale}: full large ILS amounts remain intact and bidi-isolated`, async () => {
+    metrics.month.revenue = 987654321.98; metrics.today.revenue = 123456789.12;
+    const doc = await render(locale);
+    const primary = doc.querySelectorAll(".dashboard-kpi .dashboard-stat-value bdi")[2];
+    const secondary = doc.querySelectorAll(".dashboard-metric .dashboard-stat-value bdi")[1];
+    assert.equal(text(primary), formatCurrency(987654321.98, locale));
+    assert.equal(text(secondary), formatCurrency(123456789.12, locale));
+    assert.equal(primary.getAttribute("dir"), "ltr"); assert.equal(secondary.getAttribute("dir"), "ltr");
+  });
+  test(`${locale}: zero states retain calm explanations without badges or invented segments`, async () => {
+    metrics.statusCounts = { new: 0, confirmed: 0, preparing: 0, delivered: 0, cancelled: 0 };
+    metrics.totalOrders = 0; metrics.today = { count: 0, revenue: 0 }; metrics.month = { count: 0, revenue: 0 };
+    metrics.guestPending = 0; metrics.activeProductCount = 0; metrics.activeShopCount = 0;
+    metrics.lowStock = { count: 0, outOfStockCount: 0, items: [] }; metrics.trend = []; signups = 0;
+    const doc = await render(locale);
+    const a = getDictionary(locale).admin.dashboard.alerts;
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-alert-subtitle")].map(text), [a.needsConfirmationNone, a.preparingNone, a.guestOrdersNone, a.signupRequestsNone, a.lowStockNone]);
+    assert.equal(doc.querySelectorAll(".dashboard-alert-count, .dashboard-status-bar span").length, 0);
+    assert.equal(doc.querySelectorAll(".dashboard-stat-value").length, 8);
+    assert.deepEqual([...doc.querySelectorAll(".dashboard-status-legend bdi")].map(text), ["0", "0", "0"]);
+    assert.equal(doc.querySelectorAll(".dashboard-alert[data-quiet]").length, 5);
+  });
+}
+for (const scenario of [
+  { mode: "supabase", role: "owner", visible: true }, { mode: "supabase", role: "admin", visible: true },
+  { mode: "supabase", role: "sales_rep", visible: false }, { mode: "supabase", role: null, visible: false },
+  { mode: "mock", role: "owner", visible: false },
+]) {
+  test(`${scenario.mode}/${scenario.role}: signup visibility and protected read agree`, async () => {
+    mode = scenario.mode; role = scenario.role;
+    const doc = await render();
+    assert.equal(Boolean(doc.querySelector('a[href="/en/admin/customers/signup"]')), scenario.visible);
+    assert.equal(reads.includes("signups"), scenario.visible);
+    assert.equal(reads.includes("session"), mode === "supabase");
+    assert.equal(doc.querySelectorAll(".dashboard-alert-grid > *").length, scenario.visible ? 5 : 4);
+    assert.ok(doc.querySelector('.dashboard-actions a[href="/en/admin/products/new"]'), "existing action visibility unchanged");
+  });
+}
+test("protected count errors are not converted into a reassuring zero", async () => {
+  countError = true;
+  await assert.rejects(render(), /protected-count-failed/);
+});
+test("invalid locale stops before all reads", async () => {
+  await assert.rejects(render("invalid"), /not-found/); assert.deepEqual(reads, []);
+});
+test("page and presentation retain server compatibility", () => {
+  for (const path of ["../../app/[locale]/admin/page.tsx", "./dashboard-top.tsx", "./kpi-card.tsx", "./operational-alert-card.tsx", "../metric-card.tsx"]) {
+    assert.doesNotMatch(readFileSync(new URL(path, import.meta.url), "utf8"), /["']use client["']|useEffect|useState|usePathname/);
+  }
+});

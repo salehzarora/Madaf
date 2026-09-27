@@ -270,7 +270,7 @@ export interface Dictionary {
         signupRequestsCount: string;
         signupRequestsNone: string;
         lowStock: string;
-        /** `{count}` products at/below their threshold. */
+        /** `{count}` active products strictly below their individual thresholds. */
         lowStockCount: string;
         lowStockNone: string;
       };

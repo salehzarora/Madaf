@@ -259,7 +259,7 @@ const he: Dictionary = {
       topCustomers: "חנויות מובילות",
       byRevenue: "לפי היקף הזמנות",
       today: "היום",
-      lowSub: "מתחת לסף של 10 אריזות",
+      lowSub: "מתחת לסף המלאי הנמוך של כל מוצר",
       emptyLabel: "אזל",
       ordersCount: "{count} הזמנות",
       alerts: {
@@ -276,7 +276,7 @@ const he: Dictionary = {
         signupRequestsCount: "{count} ממתינות לאישור",
         signupRequestsNone: "אין בקשות רישום ממתינות",
         lowStock: "מוצרים במלאי נמוך",
-        lowStockCount: "{count} בסף או מתחתיו",
+        lowStockCount: "{count} מתחת לסף המלאי האישי שלהם",
         lowStockNone: "אין מוצרים במלאי נמוך",
       },
     },
