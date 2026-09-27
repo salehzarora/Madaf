@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Box, Package, Store } from "lucide-react";
+import { Store } from "lucide-react";
+import { ProductImage } from "@/components/product-image";
+import type { DashboardThumbnail } from "@/lib/data/dashboard-thumbnails";
 import type { ReactNode } from "react";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
@@ -28,7 +30,7 @@ function RankedListRow({ rank, icon, name, amount, detail, progress }: {
 }) {
   return <li className="dashboard-ranked-row" data-leading={rank === 1 || undefined}>
     <bdi className="dashboard-rank" dir="ltr">{rank}</bdi>
-    <span className="dashboard-widget-icon" aria-hidden>{icon}</span>
+    <span className="dashboard-widget-art" aria-hidden>{icon}</span>
     <div className="dashboard-ranked-content">
       <div className="dashboard-ranked-main">
         <span className="dashboard-widget-name" dir="auto">{name}</span>
@@ -40,14 +42,15 @@ function RankedListRow({ rank, icon, name, amount, detail, progress }: {
   </li>;
 }
 
-function LowStockRow({ item, locale, dict }: {
+function LowStockRow({ item, locale, dict, thumbnail }: {
   item: DashboardMetrics["lowStock"]["items"][number]; locale: Locale; dict: Dictionary;
+  thumbnail?: DashboardThumbnail;
 }) {
   const empty = item.stock === 0;
   // Rendering clamp only: exact stock/threshold remains authoritative text.
   const progress = item.threshold > 0 ? Math.max(0, Math.min(100, item.stock / item.threshold * 100)) : 0;
   return <li className="dashboard-stock-row" data-empty={empty || undefined}>
-    <span className="dashboard-widget-icon" aria-hidden><Box /></span>
+    <DashboardProductThumbnail thumbnail={thumbnail} />
     <div className="dashboard-stock-content">
       <p className="dashboard-widget-name">{item.name[locale]}</p>
       {item.location ? <bdi className="dashboard-stock-location" dir="auto">{item.location}</bdi> : null}
@@ -58,6 +61,10 @@ function LowStockRow({ item, locale, dict }: {
       <div className="dashboard-widget-progress" aria-hidden><span style={{ inlineSize: `${progress}%` }} /></div>
     </div>
   </li>;
+}
+
+function DashboardProductThumbnail({ thumbnail }: { thumbnail?: DashboardThumbnail }) {
+  return <ProductImage key={thumbnail?.imageUrl ?? "fallback"} product={{ imageUrl: thumbnail?.imageUrl, packageType: "carton" }} showSizeTag={false} presentation="storefront" className="dashboard-product-thumbnail" />;
 }
 
 function DashboardRecentOrderRow({ order, locale, dict, timeZone }: {
@@ -78,9 +85,11 @@ function DashboardRecentOrderRow({ order, locale, dict, timeZone }: {
 }
 
 /** Presentation of existing bounded reads: no fetches, filtering or re-ranking. */
-export function DashboardWidgets({ metrics, recent, locale, dict, timeZone }: {
+export function DashboardWidgets({ metrics, recent, locale, dict, timeZone, thumbnails = {}, rangeAware = false }: {
   metrics: Pick<DashboardMetrics, "topProducts" | "topShops" | "lowStock">;
   recent: OrderListRow[]; locale: Locale; dict: Dictionary; timeZone: string;
+  thumbnails?: Record<string, DashboardThumbnail>;
+  rangeAware?: boolean;
 }) {
   const d = dict.admin.dashboard;
   const labels = d.widgets;
@@ -89,21 +98,21 @@ export function DashboardWidgets({ metrics, recent, locale, dict, timeZone }: {
     <div className="dashboard-widget-grid">
       <AdminSectionCard id="dashboard-stock-title" title={dict.admin.lowStockTitle} context={labels.stockThreshold} action={<Link className="dashboard-widget-link" href={`/${locale}/admin/inventory?low=1`}>{dict.common.viewAll}</Link>}>
         {metrics.lowStock.items.length ? <ul className="dashboard-stock-list">
-          {metrics.lowStock.items.map(item => <LowStockRow key={item.productId} item={item} locale={locale} dict={dict} />)}
+          {metrics.lowStock.items.map(item => <LowStockRow key={item.productId} item={item} locale={locale} dict={dict} thumbnail={thumbnails[item.productId]} />)}
         </ul> : <p className="dashboard-widget-empty">{labels.noLowStock}</p>}
       </AdminSectionCard>
-      <AdminSectionCard id="dashboard-shops-title" title={d.topCustomers}>
+      <AdminSectionCard id="dashboard-shops-title" title={d.topCustomers} context={rangeAware ? d.range.period : undefined}>
         {metrics.topShops.length ? <ol className="dashboard-ranked-list dashboard-shop-list">
-          {metrics.topShops.map((item, index) => <RankedListRow key={item.customerId} rank={index + 1} icon={<Store />} name={item.name} amount={formatCurrency(item.total, locale)} detail={interpolate(d.ordersCount, { count: item.count })} />)}
+          {metrics.topShops.map((item, index) => <RankedListRow key={item.customerId} rank={index + 1} icon={<span className="dashboard-widget-icon"><Store /></span>} name={item.name} amount={formatCurrency(item.total, locale)} detail={interpolate(d.ordersCount, { count: item.count })} />)}
         </ol> : <p className="dashboard-widget-empty">{labels.noShops}</p>}
       </AdminSectionCard>
-      <AdminSectionCard id="dashboard-products-title" title={d.topProducts} context={d.byRevenue}>
+      <AdminSectionCard id="dashboard-products-title" title={d.topProducts} context={rangeAware ? `${d.byRevenue} · ${d.range.period}` : d.byRevenue}>
         {metrics.topProducts.length ? <ol className="dashboard-ranked-list dashboard-product-list">
-          {metrics.topProducts.map((item, index) => <RankedListRow key={item.productId} rank={index + 1} icon={<Package />} name={item.name[locale]} amount={formatCurrency(item.revenue, locale)} progress={item.revenue / topMax * 100} />)}
+          {metrics.topProducts.map((item, index) => <RankedListRow key={item.productId} rank={index + 1} icon={<DashboardProductThumbnail thumbnail={thumbnails[item.productId]} />} name={item.name[locale]} amount={formatCurrency(item.revenue, locale)} progress={item.revenue / topMax * 100} />)}
         </ol> : <p className="dashboard-widget-empty">{labels.noProducts}</p>}
       </AdminSectionCard>
     </div>
-    <AdminSectionCard id="dashboard-recent-title" title={dict.admin.recentOrders} action={<Link className="dashboard-widget-link" href={`/${locale}/admin/orders`}>{dict.common.viewAll}</Link>}>
+    <AdminSectionCard id="dashboard-recent-title" title={dict.admin.recentOrders} context={rangeAware ? d.range.recent : undefined} action={<Link className="dashboard-widget-link" href={`/${locale}/admin/orders`}>{dict.common.viewAll}</Link>}>
       {recent.length ? <ul className="dashboard-recent-list">
         {recent.map(order => <DashboardRecentOrderRow key={order.id} order={order} locale={locale} dict={dict} timeZone={timeZone} />)}
       </ul> : <p className="dashboard-widget-empty">{labels.noOrders}</p>}

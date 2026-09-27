@@ -244,11 +244,11 @@ function isExternalUrl(value: string | undefined): boolean {
  * One batched signing call per read; reads are per-request server-side,
  * so the short TTL never expires in a rendered page.
  */
-async function signProductImages(
+async function signProductImages<T extends { imageUrl?: string }>(
   client: Db,
   tenantId: string,
-  products: Product[],
-): Promise<Product[]> {
+  products: T[],
+): Promise<T[]> {
   const prefix = `${tenantId}/`;
   const pathItems = products
     .map((p, index) => ({ index, path: p.imageUrl }))
@@ -284,6 +284,19 @@ async function signProductImages(
     out[item.index] = { ...out[item.index], imageUrl: signed ?? undefined };
   });
   return out;
+}
+
+/** Dashboard-only enrichment: one tenant-filtered select, <=9 unique IDs,
+ * one batched signing call if needed. Do not expose the editing storage path. */
+export async function sbGetDashboardThumbnails(productIds: string[]): Promise<Record<string, { imageUrl?: string }>> {
+  const ids = [...new Set(productIds)].filter(isUuid).slice(0, 9);
+  if (!ids.length) return {};
+  const { client, tenantId } = await getReadContext();
+  if (isTenantless(tenantId)) return {};
+  const { data, error } = await client.from("products").select("id,image_url").eq("tenant_id", tenantId).in("id", ids).limit(9);
+  if (error) fail("dashboardThumbnails", error.message);
+  const signed = await signProductImages(client, tenantId, (data ?? []).map(p => ({ id: p.id, imageUrl: p.image_url ?? undefined })));
+  return Object.fromEntries(signed.map(p => [p.id, { imageUrl: p.imageUrl }]));
 }
 
 /**

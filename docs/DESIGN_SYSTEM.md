@@ -32,6 +32,52 @@ tenant data boundaries and existing navigation. This is a presentation contract,
 not approval to merge, deploy or admit real customers; the Pilot runbook remains
 the operational authority.
 
+### Dashboard refinement 006B (current override)
+
+The `/[locale]/admin` body now has a working server-driven period selector and
+selected-period analytics. This subsection supersedes the 005 descriptions below
+of an unfiltered Dashboard trend, month-only primary revenue tile, and icon-only
+product rows. Shared AdminShell behavior and other page bodies are unchanged.
+
+- Native GET controls use `range=24h|48h|7d|30d|3m|custom`, with `from`/`to` for
+  custom. The default is 30 days. Invalid, reversed, future or over-366-day custom
+  ranges fall back to 30 days with localized feedback. Calendar dates use the
+  server-derived tenant timezone; hour presets cover elapsed hours ending now.
+- New/Open order KPIs describe orders **created in the selected period, grouped
+  by current status**. Their sparklines are creation cohorts, not a history of
+  backlog changes. The third primary KPI is selected-period non-cancelled sales.
+  These three cards have static zero-based microcharts; no percentages are invented.
+- Today KPIs stay today; inventory, active product/shop counts and all operational
+  alerts stay current-state. Signup counts remain owner/admin-gated. Recent
+  Orders remains the latest six across all dates. Localized copy identifies these
+  semantics. Missing signup permission leaves four alerts, not an empty fifth slot.
+- Revenue trend, status mix and top product/shop rankings follow the selected
+  range. Hour presets use hourly buckets; 7/30 days use tenant-local days; three
+  months use weeks. Custom uses days through 93 days and weeks above that. Empty
+  buckets are real zero values. Exact-value tables include all bucket intervals,
+  counts and amounts; hourly intervals include offsets to disambiguate DST.
+- The range trend fits the entire bounded series in its card, with sparse date
+  ticks and exact-value disclosures. General-purpose legacy chart behavior stays
+  available to its existing callers. Charts do not require client aggregate state.
+- Top Products and Low Stock use compact 44px contained images. A dedicated
+  data-layer helper deduplicates the displayed 5+4 product IDs, selects only ID
+  and image, and reuses batch signing. Only display URLs enter ProductImage;
+  missing, invalid and failed images use the existing brand mark fallback with
+  Admin V3 colors. No full catalog lookup or per-row data query is introduced.
+- Operational alerts use two larger tinted priority cards followed by compact
+  supporting cards. Tablet uses two columns; desktop with five permitted cards
+  uses a 6-track grid (3+3, then 2+2+2). Mobile stacks cleanly. Zero-state copy,
+  destinations and permission decisions remain unchanged.
+
+The Dashboard remains server-rendered. Only the small native form leaf manages
+which date inputs appear. The additive, read-only, SECURITY INVOKER
+`get_dashboard_period_metrics` RPC returns bounded aggregates under existing RLS.
+It requires the 006B migration before a separately approved Supabase release;
+this local milestone does not apply it to hosted infrastructure.
+
+Implementation/data semantics and QA contract:
+[`product/ADMIN_DASHBOARD_REFINEMENT_006B.md`](product/ADMIN_DASHBOARD_REFINEMENT_006B.md).
+
 ### Scope and architecture
 
 | Surface | Coverage |

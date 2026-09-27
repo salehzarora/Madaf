@@ -240,6 +240,14 @@ export interface Dictionary {
     actionOpenCatalog: string;
     /** Dashboard v2 (charts + widgets). */
     dashboard: {
+      range: {
+        label: string; apply: string; from: string; to: string; latestBucket: string; liveOrders: string;
+        presets: Record<"24h" | "48h" | "7d" | "30d" | "3m" | "custom", string>;
+        invalid: string; customHint: string; periodRevenue: string;
+        cohort: string; current: string; recent: string; today: string;
+        hourly: string; daily: string; weekly: string; period: string;
+        rising: string; falling: string; flat: string; spark: string;
+      };
       trend: string;
       trendSub: string;
       charts: {

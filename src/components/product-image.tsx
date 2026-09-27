@@ -22,7 +22,7 @@ export function ProductImage({
   showSizeTag = true,
   presentation = "default",
 }: {
-  product: Product;
+  product: Pick<Product, "imageUrl" | "unitSize" | "packageType">;
   /** Accepted for API compatibility; identity is a dot in the card body now. */
   category?: Category;
   className?: string;

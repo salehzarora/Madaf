@@ -24,6 +24,16 @@ let role: string | null = "owner";
 let signups = 11;
 let countError = false;
 const reads: string[] = [];
+let receivedRange: { key: string; from: string; to: string } | undefined;
+let periodNew: number | undefined;
+mock.module("server-only", { namedExports: {} });
+mock.module("@/lib/data/dashboard-period", { namedExports: { getDashboardPeriodMetrics: async (range: { key: string; from: string; to: string }) => {
+  receivedRange = range;
+  reads.push("period");
+  return { statusCounts: { ...metrics.statusCounts, new: periodNew ?? metrics.statusCounts.new }, totalOrders: metrics.totalOrders, count: metrics.month.count, revenue: metrics.month.revenue, topProducts: metrics.topProducts, topShops: metrics.topShops,
+    buckets: [{ start: "2025-01-02T00:00:00Z", end: "2025-01-03T00:00:00Z", new: 1, open: 2, count: 2, revenue: 55 }, { start: "2025-01-03T00:00:00Z", end: "2025-01-04T00:00:00Z", new: 2, open: 3, count: 3, revenue: 65 }] };
+} } });
+mock.module("@/lib/data/dashboard-thumbnails", { namedExports: { getDashboardThumbnails: async () => { reads.push("thumbnails"); return {}; } } });
 mock.module("next/navigation", { namedExports: { notFound: () => { throw new Error("not-found"); } } });
 mock.module("@/lib/auth/session", { namedExports: { getSessionContext: async () => { reads.push("session"); return { membership: role ? { role } : null }; } } });
 mock.module("@/lib/data", { namedExports: {
@@ -39,9 +49,9 @@ mock.module("@/lib/data/customer-signup", { namedExports: { countPendingSignupRe
   return signups;
 } } });
 const { default: Page } = await import("@/app/[locale]/admin/page");
-beforeEach(() => { metrics = structuredClone(sample); recentRows = []; mode = "supabase"; role = "owner"; signups = 11; countError = false; reads.length = 0; });
+beforeEach(() => { metrics = structuredClone(sample); recentRows = []; mode = "supabase"; role = "owner"; signups = 11; countError = false; reads.length = 0; receivedRange = undefined; periodNew = undefined; });
 async function render(locale = "en") {
-  return new JSDOM(renderToStaticMarkup(await Page({ params: Promise.resolve({ locale }) }))).window.document;
+  return new JSDOM(renderToStaticMarkup(await Page({ params: Promise.resolve({ locale }), searchParams: Promise.resolve({}) }))).window.document;
 }
 const text = (node: Element | null) => { assert.ok(node); return node.textContent; };
 
@@ -50,15 +60,15 @@ for (const locale of locales) {
     const doc = await render(locale);
     const t = getDictionary(locale).admin;
     const primary = [...doc.querySelectorAll(".dashboard-kpi")];
-    assert.deepEqual(primary.map(n => text(n.querySelector("h2"))), [t.metrics.newOrders, t.metrics.openOrders, t.metrics.monthRevenue, t.metrics.lowStock]);
+    assert.deepEqual(primary.map(n => text(n.querySelector("h2"))), [t.metrics.newOrders, t.metrics.openOrders, t.dashboard.range.periodRevenue, t.metrics.lowStock]);
     assert.deepEqual(primary.map(n => text(n.querySelector(".dashboard-stat-value bdi"))), [formatNumber(16, locale), formatNumber(23, locale), formatCurrency(987654.32, locale), formatNumber(9, locale)]);
     assert.deepEqual([...doc.querySelectorAll(".dashboard-metric h2")].map(text), [t.metrics.todayOrders, t.metrics.todayValue, t.metrics.activeProducts, t.metrics.activeShops]);
     assert.deepEqual([...doc.querySelectorAll(".dashboard-metric .dashboard-stat-value bdi")].map(text), [formatNumber(7, locale), formatCurrency(12345.67, locale), formatNumber(51, locale), formatNumber(42, locale)]);
     assert.ok(text(primary[2]).includes(interpolate(t.dashboard.ordersCount, { count: formatNumber(29, locale) })));
     assert.equal(text(primary[3].querySelector(".dashboard-out-count bdi")), formatNumber(2, locale));
-    assert.ok(text(primary[3]).includes(t.dashboard.lowSub));
-    assert.equal(primary[2].querySelector("polyline"), null, "month card does not imply old trend samples are in this month");
-    assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+    assert.ok(text(primary[3]).includes(t.dashboard.range.current));
+    assert.ok(primary[2].querySelector("polyline"), "period revenue has a period sparkline");
+    assert.deepEqual(reads, ["zone", "metrics", "recent", "period", "thumbnails", "session", "signups"]);
   });
   test(`${locale}: true status shares have text counts and omit delivered/cancelled`, async () => {
     const doc = await render(locale);
@@ -83,7 +93,7 @@ for (const locale of locales) {
       `/${locale}/admin/orders?status=new`, `/${locale}/admin/orders?status=confirmed,preparing`, `/${locale}/admin/orders?guest=true&status=new`, `/${locale}/admin/customers/signup`, `/${locale}/admin/inventory?low=1`,
     ]);
     assert.deepEqual([...doc.querySelectorAll(".dashboard-alert-count")].map(text), [16, 7, 6, 11, 9].map(n => formatNumber(n, locale)));
-    assert.equal(doc.querySelector(".dashboard-top input, .dashboard-top select, .dashboard-top button"), null);
+    assert.equal(doc.querySelectorAll("#dashboard-range option").length, 6);
     assert.doesNotMatch(text(doc.querySelector(".dashboard-top")), /[+−-]\s*\d+\s*%/);
     assert.equal(doc.querySelector(".dashboard-top .lucide-bell, .dashboard-top .lucide-search, .dashboard-top .lucide-calendar"), null);
   });
@@ -140,11 +150,11 @@ test("page and presentation retain server compatibility", () => {
 
 test("real server page binds the existing trend/status aggregates without a month-total chart header", async () => {
   const doc = await render();
-  assert.equal(doc.querySelector(".dashboard-trend-point time")?.getAttribute("datetime"), "2025-01-02");
+  assert.equal(doc.querySelector(".dashboard-trend-point time")?.getAttribute("datetime"), "2025-01-02T00:00:00Z");
   assert.equal(text(doc.querySelector(".dashboard-trend-point .sr-only bdi")), formatCurrency(55, "en"));
   assert.equal(text(doc.querySelector(".dashboard-donut-center bdi")), "33");
   assert.ok(!text(doc.querySelector(".dashboard-analytics")).includes(formatCurrency(metrics.month.revenue, "en")));
-  assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+  assert.deepEqual(reads, ["zone", "metrics", "recent", "period", "thumbnails", "session", "signups"]);
 });
 
 test("real server page passes bounded operational data and all six lean recent rows unchanged", async () => {
@@ -163,5 +173,19 @@ test("real server page passes bounded operational data and all six lean recent r
     assert.equal(text(row.querySelector('.dashboard-recent-customer')), `Guest ${i}`);
     assert.equal(text(row.querySelector('.dashboard-recent-amount')), formatCurrency(555.55 + i, 'en'));
   });
-  assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+  assert.deepEqual(reads, ["zone", "metrics", "recent", "period", "thumbnails", "session", "signups"]);
 });
+
+for (const query of [{ range: "24h" }, { range: "48h" }, { range: "7d" }, { range: "3m" }, { range: "custom", from: "2026-07-01", to: "2026-07-15" }]) {
+  test(`server page awaits and applies searchParams: ${query.range}`, async () => {
+    periodNew = 2;
+    const doc = new JSDOM(renderToStaticMarkup(await Page({ params: Promise.resolve({ locale: "en" }), searchParams: Promise.resolve(query) }))).window.document;
+    assert.equal(receivedRange?.key, query.range);
+    assert.equal(doc.querySelector("option[selected]")?.getAttribute("value"), query.range);
+    assert.equal(doc.querySelector(".dashboard-kpi .dashboard-stat-value bdi")?.textContent, "2");
+    assert.equal(doc.querySelector(".dashboard-alert-count")?.textContent, "16", "backlog remains global");
+    assert.equal(doc.querySelectorAll(".dashboard-kpi .dashboard-stat-value bdi")[3].textContent, "9", "stock remains current");
+    assert.equal(doc.querySelectorAll(".dashboard-sparkline").length, 3);
+    if(query.range === "custom") { assert.equal(receivedRange?.from, query.from); assert.equal(receivedRange?.to, query.to); }
+  });
+}
