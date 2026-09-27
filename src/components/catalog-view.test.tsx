@@ -441,7 +441,11 @@ test("V3 media is limited to product cards while hero and order thumbnails retai
   const h = mount();
   assert.equal(h.container.querySelectorAll(".catalog-product .catalog-card-media").length, products.length);
   assert.equal(h.container.querySelector(".catalog-hero .catalog-card-media"), null);
-  assert.ok(h.container.querySelector(".catalog-hero .catalog-product-media"));
+  const heroMedia = h.container.querySelector(".catalog-hero .catalog-product-media--fill");
+  assert.ok(heroMedia);
+  assert.ok(heroMedia.querySelector(".catalog-media-backdrop"));
+  assert.ok(heroMedia.querySelector(".catalog-media-photo"));
+  assert.equal(heroMedia.querySelector(".catalog-media-size")?.textContent, "330ml");
   click(labelledButton(card(h, "juice"), h.dict.catalog.addToCart));
   assert.ok(orderPad(h).querySelector(".catalog-product-media"));
   assert.equal(orderPad(h).querySelector(".catalog-card-media"), null);

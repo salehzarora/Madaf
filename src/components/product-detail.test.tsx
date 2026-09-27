@@ -81,14 +81,14 @@ for (const locale of locales) {
 test("storefront media contains a real image without altering the source or legacy presentations", () => {
   const photo = { ...product, imageUrl: "https://example.test/photo-with-baked-background.png" };
   const container = mount(<>
-    <ProductImage product={photo} presentation="storefront" className="storefront-detail-media" />
+    <ProductImage product={photo} presentation="storefront" fillPhoto className="storefront-detail-media" />
     <ProductImage product={photo} presentation="catalog-card" />
     <ProductImage product={photo} presentation="catalog" />
     <ProductImage product={photo} />
   </>);
   const images = Array.from(container.querySelectorAll("img"));
-  assert.equal(images.length, 5);
-  assert.deepEqual(images.map((img) => img.className), ["storefront-media-photo", "catalog-card-media-backdrop", "catalog-card-media-photo", "catalog-media-photo", "size-full object-cover"]);
+  assert.equal(images.length, 6);
+  assert.deepEqual(images.map((img) => img.className), ["storefront-media-backdrop", "storefront-media-photo", "catalog-card-media-backdrop", "catalog-card-media-photo", "catalog-media-photo", "size-full object-cover"]);
   for (const image of images) {
     assert.equal(image.getAttribute("src"), photo.imageUrl);
     assert.equal(image.alt, "");
@@ -97,15 +97,16 @@ test("storefront media contains a real image without altering the source or lega
   }
   assert.equal(container.querySelector(".storefront-media-size[dir=ltr]")?.textContent, "330ml");
   assert.ok(container.children[0].classList.contains("storefront-detail-media"));
+  assert.ok(container.children[0].classList.contains("storefront-media--fill"));
 });
 test("missing and failed storefront photos retain branded fallback and optional size label", () => {
   const container = mount(<>
     <ProductImage product={product} presentation="storefront" showSizeTag={false} />
-    <ProductImage product={{ ...product, imageUrl: "https://example.test/broken.png" }} presentation="storefront" />
+    <ProductImage product={{ ...product, imageUrl: "https://example.test/broken.png" }} presentation="storefront" fillPhoto />
   </>);
   assert.ok(container.children[0].querySelector(".storefront-placeholder"));
   assert.equal(container.children[0].querySelector(".storefront-media-size"), null);
-  const image = container.querySelector("img");
+  const image = container.querySelector(".storefront-media-photo");
   assert.ok(image);
   act(() => image.dispatchEvent(new dom.window.Event("error")));
   assert.equal(container.querySelector("img"), null);

@@ -409,7 +409,8 @@ dialog scrim token and semantic success/warning/danger tokens.
   navigation, CartProvider, ShopDataProvider or CustomerPicker.
 - ProductImage's `storefront` presentation and `catalog-card` compatibility
   presentation share V3 media. `default` and legacy `catalog` remain separate;
-  catalog hero/OrderPad media retain their scoped treatment.
+  the catalog hero opts its photos into the full-media fill while OrderPad
+  retains the legacy treatment.
 - CSS imports are global, but presentation selectors are opt-in. Do not recolor
   global Button/Input/Card, brand tokens or semantic status primitives. Shared
   QuantityStepper styling also requires a route-specific class.
@@ -451,8 +452,9 @@ ShopView and ShowcaseView controllers.
 ### Shared product/media system
 
 The shared V3 renderer uses centered `object-fit: contain` with `5cqw` padding,
-except catalog-card photos, which remove that padding and use a softened photo
-backdrop within the same media area.
+except catalog-card photos and the opt-in catalog hero/product-detail photos,
+which remove that padding and use a softened photo backdrop within the same
+media area.
 Transparent photos remain transparent; baked backgrounds and source margins
 are preserved. Missing/failed images use static abstract package artwork and
 the existing size-tag semantics. No background removal, generated image service

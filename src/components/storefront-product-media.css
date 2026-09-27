@@ -28,13 +28,13 @@
   object-position: center;
   padding: 5cqw;
 }
-/* Catalog cards alone let photo color reach the media edges. The contained
- * foreground preserves the complete packshot across source aspect ratios. */
-.catalog-card-media--photo {
+/* Photo fill is opt-in beyond catalog cards: only the hero and product detail
+ * request it. The contained foreground preserves the complete packshot. */
+:is(.catalog-card-media--photo, .storefront-media--fill, .catalog-product-media--fill) {
   background: var(--color-surface);
 }
-.catalog-card-media--photo::before { display: none; }
-.catalog-card-media-backdrop {
+:is(.catalog-card-media--photo, .storefront-media--fill)::before { display: none; }
+:is(.catalog-card-media-backdrop, .storefront-media-backdrop, .catalog-media-backdrop) {
   position: absolute;
   inset: 0;
   inline-size: 100%;
@@ -43,14 +43,14 @@
   filter: blur(18px) saturate(.8);
   transform: scale(1.12);
 }
-.catalog-card-media--photo::after {
+:is(.catalog-card-media--photo, .storefront-media--fill)::after {
   content: "";
   position: absolute;
   inset: 0;
   background: color-mix(in srgb, var(--color-surface) 10%, transparent);
   pointer-events: none;
 }
-.catalog-card-media-photo {
+:is(.catalog-card-media-photo, .storefront-media--fill .storefront-media-photo, .catalog-product-media--fill .catalog-media-photo) {
   inset: auto;
   inset-block-start: 50%;
   left: 50%;

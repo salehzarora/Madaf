@@ -86,6 +86,7 @@ export default async function ProductPage({
           product={product}
           category={category}
           presentation="storefront"
+          fillPhoto
           className="storefront-detail-media"
         />
 
