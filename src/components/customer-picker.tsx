@@ -88,18 +88,33 @@ export function CustomerPicker({
       const below = Math.max(0, viewTop + viewHeight - rect.bottom - 14);
       const above = Math.max(0, rect.top - viewTop - 14);
       const opensBelow = below >= 240 || below >= above;
-      const maxHeight = Math.min(440, opensBelow ? below : above);
+      const anchoredHeight = Math.min(440, opensBelow ? below : above);
+      const viewportHeight = Math.max(0, Math.min(440, viewHeight - 16));
+      const compactOrKeyboard = window.innerWidth < 1024
+        || viewHeight < window.innerHeight - 64;
+      // A touch keyboard can leave less room beside the trigger than the
+      // search field and a few results need. Keep the picker inside the
+      // visual viewport in that case, including when the trigger has scrolled
+      // behind the keyboard.
+      const useViewport = compactOrKeyboard && (
+        rect.bottom <= viewTop + 8
+        || rect.top >= viewTop + viewHeight - 8
+        || anchoredHeight < Math.min(300, viewportHeight)
+      );
       popup.style.width = `${width}px`;
-      popup.style.maxHeight = `${maxHeight}px`;
+      popup.style.maxHeight = `${useViewport ? viewportHeight : anchoredHeight}px`;
       popup.style.insetInlineStart = `${dirFor(locale) === "rtl" ? layoutWidth - x - width : x}px`;
-      popup.style.insetBlockStart = opensBelow ? `${Math.max(viewTop + 8, rect.bottom + 6)}px` : "auto";
-      popup.style.insetBlockEnd = opensBelow ? "auto" : `${Math.max(8, window.innerHeight - rect.top + 6)}px`;
+      popup.style.insetBlockStart = useViewport
+        ? `${viewTop + 8}px`
+        : opensBelow ? `${Math.max(viewTop + 8, rect.bottom + 6)}px` : "auto";
+      popup.style.insetBlockEnd = useViewport || opensBelow
+        ? "auto"
+        : `${Math.max(8, window.innerHeight - rect.top + 6)}px`;
     }
 
     positionPopup();
     if (typeof popup.showPopover === "function") popup.showPopover();
     else popup.style.display = "flex"; // Older browsers/test DOM: no fabricated native API.
-    searchRef.current?.focus();
 
     function onPointerDown(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -109,7 +124,10 @@ export function CustomerPicker({
     window.addEventListener("scroll", positionPopup, { capture: true, passive: true });
     window.visualViewport?.addEventListener("resize", positionPopup);
     window.visualViewport?.addEventListener("scroll", positionPopup);
+    searchRef.current?.focus({ preventScroll: true });
+    const focusFrame = window.requestAnimationFrame?.(positionPopup);
     return () => {
+      if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("resize", positionPopup);
       window.removeEventListener("scroll", positionPopup, true);
@@ -183,8 +201,8 @@ export function CustomerPicker({
           onToggle={(event) => { if (event.newState === "closed") setOpen(false); }}
           className="fixed inset-auto z-50 m-0 flex max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-card border border-line bg-surface text-ink shadow-float"
         >
-          <div className="shrink-0 border-b border-line-hair p-2">
-            <div className="relative">
+          <div className="flex shrink-0 items-center gap-2 border-b border-line-hair p-2">
+            <div className="relative min-w-0 flex-1">
               <Search
                 className="pointer-events-none absolute inset-y-0 start-2.5 my-auto size-4 text-ink-muted"
                 aria-hidden
@@ -196,9 +214,17 @@ export function CustomerPicker({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={dict.catalog.searchShops}
                 aria-label={dict.catalog.searchShops}
-                className="h-11 w-full rounded-field border border-line-strong bg-surface ps-9 pe-3 text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:border-brand-600 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand-600"
+                className="h-11 w-full rounded-field border border-line-strong bg-surface ps-9 pe-3 text-base lg:text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:border-brand-600 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand-600"
               />
             </div>
+            <button
+              type="button"
+              onClick={close}
+              aria-label={dict.common.close}
+              className="flex size-11 shrink-0 items-center justify-center rounded-field text-ink-soft hover:bg-surface-warm focus-visible:outline-2 focus-visible:outline-brand-600 lg:hidden"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
             {filtered.length === 0 ? (

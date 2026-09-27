@@ -339,6 +339,80 @@ test("picker uses available viewport space above a low trigger and repositions o
   assert.ok(parseFloat(popup.style.maxHeight) <= window.innerHeight - 124 - 14);
 });
 
+test("desktop picker retains its anchored placement in a short window", () => {
+  const previousWidth = Object.getOwnPropertyDescriptor(window, "innerWidth");
+  const previousHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+  cleanups.push(() => {
+    if (previousWidth) Object.defineProperty(window, "innerWidth", previousWidth);
+    else Reflect.deleteProperty(window, "innerWidth");
+    if (previousHeight) Object.defineProperty(window, "innerHeight", previousHeight);
+    else Reflect.deleteProperty(window, "innerHeight");
+  });
+
+  const h = mount("ar", "/ar/catalog", true);
+  const trigger = button(h.container, h.dict.catalog.selectShop);
+  trigger.getBoundingClientRect = () => ({
+    top: 300, bottom: 344, left: 20, right: 370, width: 350, height: 44,
+    x: 20, y: 300, toJSON() {},
+  });
+  click(trigger);
+  const popup = h.container.querySelector<HTMLElement>("[popover]");
+  assert.ok(popup);
+  assert.equal(popup.style.insetBlockStart, "350px");
+  assert.equal(popup.style.maxHeight, "242px");
+});
+
+test("picker remains usable when a touch keyboard shrinks and offsets the visible viewport", () => {
+  const previousViewport = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  const viewport = Object.assign(new dom.window.EventTarget(), {
+    offsetTop: 120, offsetLeft: 0, width: 390, height: 360,
+  });
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  cleanups.push(() => {
+    if (previousViewport) Object.defineProperty(window, "visualViewport", previousViewport);
+    else Reflect.deleteProperty(window, "visualViewport");
+  });
+
+  const h = mount("ar", "/ar/catalog", true);
+  const trigger = button(h.container, h.dict.catalog.selectShop);
+  trigger.getBoundingClientRect = () => ({
+    top: 200, bottom: 244, left: 20, right: 370, width: 350, height: 44,
+    x: 20, y: 200, toJSON() {},
+  });
+  click(trigger);
+  const popup = h.container.querySelector<HTMLElement>("[popover]");
+  assert.ok(popup);
+  assert.equal(popup.style.insetBlockStart, "128px");
+  assert.equal(popup.style.insetBlockEnd, "auto");
+  assert.equal(popup.style.maxHeight, "344px", "search and multiple rows fit in the visible viewport");
+
+  // The trigger can move behind the keyboard while the picker is open.
+  trigger.getBoundingClientRect = () => ({
+    top: 520, bottom: 564, left: 20, right: 370, width: 350, height: 44,
+    x: 20, y: 520, toJSON() {},
+  });
+  act(() => viewport.dispatchEvent(new dom.window.Event("scroll")));
+  assert.equal(popup.style.insetBlockStart, "128px");
+  assert.equal(popup.style.maxHeight, "344px");
+
+  viewport.offsetTop = 0;
+  viewport.height = 844;
+  trigger.getBoundingClientRect = () => ({
+    top: 200, bottom: 244, left: 20, right: 370, width: 350, height: 44,
+    x: 20, y: 200, toJSON() {},
+  });
+  act(() => viewport.dispatchEvent(new dom.window.Event("resize")));
+  assert.equal(popup.style.insetBlockStart, "250px", "full viewport restores normal placement");
+  assert.equal(popup.style.maxHeight, "440px");
+
+  click(button(popup, h.dict.common.close));
+  assert.equal(h.container.querySelector("[popover]"), null);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(h.cart().customerId, null);
+});
+
 test("RTL picker keeps its viewport gutter when a scrollbar reduces the layout width", () => {
   const page = document.documentElement;
   const previousWidth = Object.getOwnPropertyDescriptor(page, "clientWidth");
