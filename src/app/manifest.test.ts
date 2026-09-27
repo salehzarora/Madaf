@@ -92,11 +92,28 @@ test("root keeps locale direction, fonts and default browser viewport behavior",
   assert.doesNotMatch(layout, /["']use client["']|maximumScale|userScalable|viewportFit/);
 });
 
-test("native PWA has no third-party caching library or Android association", () => {
+test("Android association authorizes only the approved internal debug package and certificate", () => {
+  assert.deepEqual(JSON.parse(source("public/.well-known/assetlinks.json")), [
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "app.madaf.android.dev",
+        sha256_cert_fingerprints: [
+          "D4:27:EC:08:C2:EC:6E:6D:B4:DB:BF:3E:DF:8E:69:F5:C0:C7:40:7D:4A:1A:CC:B7:CC:28:32:72:0D:D3:40:41",
+        ],
+      },
+    },
+  ]);
+});
+
+test("native PWA has no third-party caching library or additional Android association file", () => {
   for (const directory of ["src", "public"]) {
     const files = readdirSync(new URL(`${directory}/`, root), { recursive: true, encoding: "utf8" });
     for (const file of files) {
-      assert.doesNotMatch(file, /(^|[/\\])assetlinks\.json$/i);
+      if (/(^|[/\\])assetlinks\.json$/i.test(file)) {
+        assert.equal(`${directory}/${file.replaceAll("\\", "/")}`, "public/.well-known/assetlinks.json");
+      }
       if (/\.(?:[cm]?[jt]sx?|html)$/.test(file) && !/\.test\./.test(file)) {
         assert.doesNotMatch(source(`${directory}/${file}`), /workbox|@serwist/, file);
       }

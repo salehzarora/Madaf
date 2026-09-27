@@ -232,8 +232,8 @@ test("worker delivery adds only its narrow no-store header and preserves global 
   assert.equal(rules.length, 2);
 });
 
-test("static PWA files bypass the unchanged proxy; locale app routes still match and bare root redirects to Hebrew", async () => {
-  for (const url of ["/sw.js", "/offline.html", "/manifest.webmanifest", "/icons/madaf-192.png"]) {
+test("static PWA and DAL files bypass the unchanged proxy; locale app routes still match and bare root redirects to Hebrew", async () => {
+  for (const url of ["/sw.js", "/offline.html", "/manifest.webmanifest", "/icons/madaf-192.png", "/.well-known/assetlinks.json"]) {
     assert.equal(unstable_doesMiddlewareMatch({ config: proxyConfig, url }), false, url);
   }
   for (const url of ["/", "/ar/catalog", "/he/admin", "/en/login"]) {

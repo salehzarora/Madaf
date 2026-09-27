@@ -75,7 +75,7 @@ unchanged. An offline page provides no tenant access or business actions.
 event/cache harness, production registration, offline document independence,
 header composition and the unchanged proxy matcher/locale redirect. Manifest
 tests retain identity/icon/locale coverage and guard against third-party PWA
-libraries or premature Android associations.
+libraries or Android associations beyond the explicitly approved debug identity.
 
 Use a production build for runtime QA. Development does not register a worker,
 but an already-installed worker persists across server restarts. Use an isolated
@@ -147,15 +147,46 @@ changed to work around it. The AGENTS.md managed/custom rules remained unchanged
 
 ## Android handoff
 
-- A Trusted Web Activity (TWA) is planned; its Android wrapper belongs in a
-  **separate repository**.
-- `/.well-known/assetlinks.json` is intentionally deferred until the actual
-  Android package name and signing certificate fingerprints exist.
+- The internal debug Trusted Web Activity (TWA) wrapper exists in a **separate
+  local Android repository**. Its APK remains unchanged by this web association.
 - APK/AAB creation, signing and distribution belong to that Android repository.
 - Native browser installation is sufficient for this web phase. No custom
   installation banner/button has been added.
 - Passing local PWA checks is not release approval. The Pilot runbook and its
   hosted/auth/real-customer gates remain authoritative.
+
+### Debug Digital Asset Links — physical-device QA only
+
+Control Room explicitly authorized `public/.well-known/assetlinks.json` for the
+existing **development-only** package `app.madaf.android.dev`. It contains one
+`delegate_permission/common.handle_all_urls` relation and the actual **debug-only**
+signing certificate SHA-256:
+
+```text
+D4:27:EC:08:C2:EC:6E:6D:B4:DB:BF:3E:DF:8E:69:F5:C0:C7:40:7D:4A:1A:CC:B7:CC:28:32:72:0D:D3:40:41
+```
+
+This association exists only for internal physical-device TWA testing. It is
+**not a release certificate or public Android release approval**. The association
+**MUST be reviewed and replaced as appropriate before public Android release**;
+the public package and actual release/Play signing certificate require separate
+Control Room approval. Never infer or invent a release fingerprint. No release
+keystore, AAB or Android repository publication is part of this web change.
+
+The static file uses the existing public-asset delivery and bypasses the existing
+locale/session proxy without changing its matcher. It adds no auth, RLS,
+Supabase, business logic, security-header or service-worker changes. Tests pin
+the complete statement, rejecting extra packages, fingerprints and relations.
+
+Before merging its separate PR, verify the preview serves the exact JSON at
+`/.well-known/assetlinks.json` with HTTP 200, `application/json`, and no redirect
+or login requirement, following the [Android association hosting requirements](https://developer.android.com/training/app-links/configure-assetlinks).
+Keep this PR unmerged until Control Room review. A preview proves file delivery;
+it does not establish trust for the APK's production launch origin. After a
+separately approved merge, verify the same response at
+`https://madaf-drab.vercel.app/.well-known/assetlinks.json` before physical-device
+TWA verification. Do not treat browser emulation or a successful JSON fetch as
+proof that Android has verified the association.
 
 ## Real-device checklist — pending owner/Control Room verification
 

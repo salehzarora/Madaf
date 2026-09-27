@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.madaf.android.dev",
+      "sha256_cert_fingerprints": [
+        "D4:27:EC:08:C2:EC:6E:6D:B4:DB:BF:3E:DF:8E:69:F5:C0:C7:40:7D:4A:1A:CC:B7:CC:28:32:72:0D:D3:40:41"
+      ]
+    }
+  }
+]
