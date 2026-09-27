@@ -102,14 +102,29 @@ export function CustomerPicker({
         || anchoredHeight < Math.min(300, viewportHeight)
       );
       popup.style.width = `${width}px`;
-      popup.style.maxHeight = `${useViewport ? viewportHeight : anchoredHeight}px`;
       popup.style.insetInlineStart = `${dirFor(locale) === "rtl" ? layoutWidth - x - width : x}px`;
-      popup.style.insetBlockStart = useViewport
-        ? `${viewTop + 8}px`
-        : opensBelow ? `${Math.max(viewTop + 8, rect.bottom + 6)}px` : "auto";
-      popup.style.insetBlockEnd = useViewport || opensBelow
-        ? "auto"
-        : `${Math.max(8, window.innerHeight - rect.top + 6)}px`;
+      if (window.innerWidth < 640) {
+        // Native popovers default to fit-content height. Give the phone sheet a
+        // definite size so its flexing results list keeps the space above the
+        // keyboard, regardless of how much room remains beside the trigger.
+        const top = Math.max(
+          viewTop + 8,
+          Math.min(rect.bottom + 6, viewTop + viewHeight - viewportHeight - 8),
+        );
+        popup.style.height = `${viewportHeight}px`;
+        popup.style.maxHeight = `${viewportHeight}px`;
+        popup.style.insetBlockStart = `${top}px`;
+        popup.style.insetBlockEnd = "auto";
+      } else {
+        popup.style.height = "";
+        popup.style.maxHeight = `${useViewport ? viewportHeight : anchoredHeight}px`;
+        popup.style.insetBlockStart = useViewport
+          ? `${viewTop + 8}px`
+          : opensBelow ? `${Math.max(viewTop + 8, rect.bottom + 6)}px` : "auto";
+        popup.style.insetBlockEnd = useViewport || opensBelow
+          ? "auto"
+          : `${Math.max(8, window.innerHeight - rect.top + 6)}px`;
+      }
     }
 
     positionPopup();
@@ -124,7 +139,9 @@ export function CustomerPicker({
     window.addEventListener("scroll", positionPopup, { capture: true, passive: true });
     window.visualViewport?.addEventListener("resize", positionPopup);
     window.visualViewport?.addEventListener("scroll", positionPopup);
-    searchRef.current?.focus({ preventScroll: true });
+    const search = searchRef.current;
+    if (window.innerWidth < 640) search?.addEventListener("focus", positionPopup);
+    search?.focus({ preventScroll: true });
     const focusFrame = window.requestAnimationFrame?.(positionPopup);
     return () => {
       if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
@@ -133,6 +150,7 @@ export function CustomerPicker({
       window.removeEventListener("scroll", positionPopup, true);
       window.visualViewport?.removeEventListener("resize", positionPopup);
       window.visualViewport?.removeEventListener("scroll", positionPopup);
+      search?.removeEventListener("focus", positionPopup);
     };
   }, [open, locale]);
 
