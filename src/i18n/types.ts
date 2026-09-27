@@ -256,6 +256,13 @@ export interface Dictionary {
       statusMix: string;
       topProducts: string;
       topCustomers: string;
+      widgets: {
+        stockThreshold: string;
+        noLowStock: string;
+        noShops: string;
+        noProducts: string;
+        noOrders: string;
+      };
       byRevenue: string;
       today: string;
       lowSub: string;

@@ -3,7 +3,7 @@
 > ⚠️ **PARTIALLY STALE — do not use as a Pilot operational source.**
 > The **Storefront Ordering Presentation Layer** is current for the customer
 > routes listed below. **Admin V3 chrome** is scoped to AdminShell; **Madaf Ledger**
-> remains the default for Admin page bodies outside the Dashboard top/analytics
+> remains the default for Admin page bodies outside the Dashboard
 > and for other excluded surfaces.
 > Material from **"Category identity system (M0.2)"** onward records earlier
 > milestones, including conflicting palette, typography, product-art and layout
@@ -27,9 +27,9 @@ available to Admin page bodies, auth/onboarding and legal/document UI.
 ## Admin V3 shell — ADMIN-DASHBOARD-STYLE-005A
 
 The shared AdminShell now applies V3 chrome to every `/[locale]/admin` route and
-its descendants. Dashboard, Products, Orders, Manufacturers, Customers,
-Inventory, Documents, Team and Settings bodies retain Ledger. Phases B/C upgrade
-only the Dashboard top and analytics sections described below; this mixed presentation is
+its descendants. Products, Orders, Manufacturers, Customers,
+Inventory, Documents, Team and Settings bodies retain Ledger. Phases B–D upgrade
+the Dashboard top, analytics and operational widgets described below; this mixed presentation is
 intentional until each body receives its own milestone.
 
 [`admin/admin-theme.css`](../src/components/admin/admin-theme.css) defines the
@@ -86,7 +86,7 @@ or other route body changes with this phase.
 and `StatusDonut` surfaces using `dashboard-analytics.css`. White 22px cards,
 Navy headings, cool borders and scoped categorical chart tokens match Admin V3.
 Shared Card defaults, OrderStatusBadge colors, the Phase B top and all lower
-widgets remain unchanged.
+widgets were unchanged by Phase C; Phase D updates the lower widgets below.
 
 - Trend consumes the existing ascending series of at most 14 **populated**
   tenant-local dates with non-cancelled subtotals. It neither fills missing
@@ -111,6 +111,40 @@ widgets remain unchanged.
   legend below the ring on narrower cards; cards at least 500px wide use a
   horizontal ring/legend layout. The legend stays 13px and wraps. No chart
   library, animation, range selector, new query or client boundary is added.
+
+### Dashboard operational widgets — ADMIN-DASHBOARD-STYLE-005D
+
+`DashboardWidgets` presents the existing bounded low-stock, ranked-product,
+ranked-shop and recent-order reads. Its local section/row primitives are
+server-compatible, and `dashboard-widgets.css` styles only the lower dashboard.
+White 22px surfaces, Navy labels, neutral icons and Emerald accents continue
+the analytics visual language without changing its components or shared Cards.
+
+- Products retain the supplied top-five order by non-cancelled line revenue,
+  including historical inactive products. Shops retain the top-four stored
+  names, order counts and subtotals, excluding guests through existing metrics.
+  Rank numbers are explicit; exact ILS values wrap when space requires it.
+  Icons are local SVGs; no thumbnails, avatar reads or row links are added.
+- Low-stock previews retain up to four supplied rows in their original order,
+  with localized names, available locations and each individual threshold.
+  Bar width is stock/threshold clamped only for drawing, with no positive floor:
+  zero remains zero and has explicit out-of-stock text. Warning accents indicate
+  low stock; Danger is confined to actual zero stock. The existing inventory
+  `?low=1` destination is unchanged.
+- Recent activity keeps the six-row server read. Every linked row includes its
+  reference, live customer name → snapshot name → em dash fallback, tenant-zone
+  timestamp, line count, stored subtotal and existing OrderStatusBadge. Numeric
+  timestamps are isolated LTR with formatting direction marks removed for visual
+  order only. Badge tones remain unchanged; only the local wrapper rounds them.
+- Lower cards use one column below 768px, two columns with the third card spanning
+  at 768–1023px, and three columns from 1024px. Recent rows stack below 768px and
+  expose every field; wider rows use a compact grid. The existing page max width
+  and 16px phone gutters remain unchanged. All four widgets have localized empty
+  states; no sample values are invented.
+- No new read, filtering, aggregation, client boundary, dependency or mutation
+  is introduced. Tests cover exact values/fallbacks and real-page binding;
+  production browser checks cover long text, six rows, large values, keyboard
+  focus and containment. Screenshot comparisons guard approved phases A–C.
 
 ## Madaf Ledger visual system (sitewide refresh)
 

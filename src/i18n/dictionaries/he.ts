@@ -268,6 +268,13 @@ const he: Dictionary = {
       statusMix: "התפלגות סטטוס",
       topProducts: "מוצרים מובילים",
       topCustomers: "חנויות מובילות",
+      widgets: {
+        stockThreshold: "זמין / סף מלאי נמוך",
+        noLowStock: "אין מוצרים מתחת לסף המלאי הנמוך שלהם.",
+        noShops: "עדיין אין ערכי הזמנות של חנויות להצגה.",
+        noProducts: "עדיין אין ערכי הזמנות של מוצרים להצגה.",
+        noOrders: "אין הזמנות אחרונות להצגה.",
+      },
       byRevenue: "לפי היקף הזמנות",
       today: "היום",
       lowSub: "מתחת לסף המלאי הנמוך של כל מוצר",

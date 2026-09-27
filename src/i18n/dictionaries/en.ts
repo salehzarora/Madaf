@@ -268,6 +268,13 @@ const en: Dictionary = {
       statusMix: "Status mix",
       topProducts: "Top products",
       topCustomers: "Top shops",
+      widgets: {
+        stockThreshold: "Available / low-stock threshold",
+        noLowStock: "No products below their low-stock threshold.",
+        noShops: "No shop order values to display yet.",
+        noProducts: "No product order values to display yet.",
+        noOrders: "No recent orders to display.",
+      },
       byRevenue: "By order value",
       today: "Today",
       lowSub: "Below individual low-stock thresholds",

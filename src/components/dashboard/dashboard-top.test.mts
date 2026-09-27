@@ -7,6 +7,7 @@ import { locales } from "@/i18n/config";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { parseOrdersQuery } from "@/lib/orders-query";
+import type { OrderListRow } from "@/lib/orders-query";
 import type { DashboardMetrics } from "@/lib/data/dashboard";
 
 const sample: DashboardMetrics = {
@@ -17,6 +18,7 @@ const sample: DashboardMetrics = {
   trend: [{ day: "2025-01-02", total: 55 }], topProducts: [], topShops: [],
 };
 let metrics = structuredClone(sample);
+let recentRows: OrderListRow[] = [];
 let mode = "supabase";
 let role: string | null = "owner";
 let signups = 11;
@@ -28,7 +30,7 @@ mock.module("@/lib/data", { namedExports: {
   getDataMode: () => mode,
   getDashboardMetrics: async () => { reads.push("metrics"); return metrics; },
   getTenantTimeZone: async () => { reads.push("zone"); return "Asia/Jerusalem"; },
-  searchOrders: async (query: unknown) => { assert.deepEqual(query, parseOrdersQuery({ pageSize: "6" })); reads.push("recent"); return { rows: [] }; },
+  searchOrders: async (query: unknown) => { assert.deepEqual(query, parseOrdersQuery({ pageSize: "6" })); reads.push("recent"); return { rows: recentRows }; },
 } });
 mock.module("@/lib/data/customer-signup", { namedExports: { countPendingSignupRequests: async () => {
   reads.push("signups");
@@ -37,7 +39,7 @@ mock.module("@/lib/data/customer-signup", { namedExports: { countPendingSignupRe
   return signups;
 } } });
 const { default: Page } = await import("@/app/[locale]/admin/page");
-beforeEach(() => { metrics = structuredClone(sample); mode = "supabase"; role = "owner"; signups = 11; countError = false; reads.length = 0; });
+beforeEach(() => { metrics = structuredClone(sample); recentRows = []; mode = "supabase"; role = "owner"; signups = 11; countError = false; reads.length = 0; });
 async function render(locale = "en") {
   return new JSDOM(renderToStaticMarkup(await Page({ params: Promise.resolve({ locale }) }))).window.document;
 }
@@ -142,5 +144,24 @@ test("real server page binds the existing trend/status aggregates without a mont
   assert.equal(text(doc.querySelector(".dashboard-trend-point .sr-only bdi")), formatCurrency(55, "en"));
   assert.equal(text(doc.querySelector(".dashboard-donut-center bdi")), "33");
   assert.ok(!text(doc.querySelector(".dashboard-analytics")).includes(formatCurrency(metrics.month.revenue, "en")));
+  assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
+});
+
+test("real server page passes bounded operational data and all six lean recent rows unchanged", async () => {
+  metrics.lowStock.items = [{ productId: "stock", name: { ar: "منتج", he: "מוצר", en: "Stock product" }, location: "A-01", stock: 0, threshold: 7 }];
+  metrics.topProducts = [{ productId: "historic", name: { ar: "قديم", he: "היסטורי", en: "Historical product" }, revenue: 123.45 }];
+  metrics.topShops = [{ customerId: "shop", name: "Stored shop name", total: 345.67, count: 8 }];
+  recentRows = Array.from({ length: 6 }, (_, i) => ({ id: `recent-${i}`, number: `MDF-${i}`, publicRef: null, customerId: "", customerName: null, customerPhone: null, customerSnapshot: { name: `Guest ${i}`, guest: true }, createdAt: "2026-07-01T22:30:00Z", itemCount: 3, subtotalAmount: 555.55 + i, status: "preparing" }));
+  const doc = await render();
+  assert.equal(text(doc.querySelector('.dashboard-stock-count')), '0 / 7');
+  assert.equal(text(doc.querySelector('.dashboard-product-list .dashboard-widget-name')), 'Historical product');
+  assert.equal(text(doc.querySelector('.dashboard-shop-list .dashboard-widget-name')), 'Stored shop name');
+  const rows = [...doc.querySelectorAll('.dashboard-recent-row')];
+  assert.equal(rows.length, 6);
+  rows.forEach((row, i) => {
+    assert.equal(row.getAttribute('href'), `/en/admin/orders/recent-${i}`);
+    assert.equal(text(row.querySelector('.dashboard-recent-customer')), `Guest ${i}`);
+    assert.equal(text(row.querySelector('.dashboard-recent-amount')), formatCurrency(555.55 + i, 'en'));
+  });
   assert.deepEqual(reads, ["metrics", "recent", "zone", "session", "signups"]);
 });
