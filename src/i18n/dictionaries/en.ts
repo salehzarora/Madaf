@@ -1,6 +1,7 @@
 import type { Dictionary } from "../types";
 
 const en: Dictionary = {
+  push: { newOrder: "New order" },
   meta: {
     appName: "Madaf",
     appNameNative: "Madaf",

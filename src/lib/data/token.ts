@@ -1,4 +1,5 @@
 import "server-only";
+import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
 /**
  * Private shop-link (token) data path (M4A) — SERVER ONLY.
@@ -517,5 +518,6 @@ export async function submitTokenOrder(
     throw new Error("[madaf/data] order submission key reused with a different request");
   }
   if (error || !data) return null;
+  scheduleNewOrderPush({ publicRef: data.order_number });
   return data.order_number;
 }

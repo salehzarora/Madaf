@@ -1299,6 +1299,82 @@ export type Database = {
           },
         ]
       }
+      push_devices: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          fcm_token: string
+          id: string
+          installation_id: string
+          last_seen_at: string
+          locale: string
+          platform: string
+          session_id: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          fcm_token: string
+          id?: string
+          installation_id: string
+          last_seen_at?: string
+          locale?: string
+          platform: string
+          session_id: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          fcm_token?: string
+          id?: string
+          installation_id?: string
+          last_seen_at?: string
+          locale?: string
+          platform?: string
+          session_id?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_devices_tenant_id_user_id_fkey"
+            columns: ["tenant_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_users"
+            referencedColumns: ["tenant_id", "user_id"]
+          },
+        ]
+      }
+      push_order_dispatches: {
+        Row: {
+          claimed_at: string
+          order_id: string
+        }
+        Insert: {
+          claimed_at?: string
+          order_id: string
+        }
+        Update: {
+          claimed_at?: string
+          order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_order_dispatches_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_rep_customers: {
         Row: {
           assigned_by: string | null
@@ -1954,6 +2030,13 @@ export type Database = {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: boolean
       }
+      claim_new_order_push: {
+        Args: { p_order_id?: string; p_public_ref?: string }
+        Returns: {
+          order_id: string
+          order_number: string
+        }[]
+      }
       create_customer: {
         Args: {
           p_address?: string
@@ -2098,6 +2181,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      disable_invalid_push_token: {
+        Args: { p_device_id: string; p_expected_token: string }
+        Returns: undefined
+      }
+      disable_my_push_device: {
+        Args: { p_installation_id: string }
+        Returns: undefined
+      }
       draw_legal_document_number: {
         Args: {
           p_document_type: Database["public"]["Enums"]["legal_document_type"]
@@ -2234,9 +2325,27 @@ export type Database = {
           user_id: string
         }[]
       }
+      new_order_push_recipients: {
+        Args: { p_after_id?: string; p_order_id: string }
+        Returns: {
+          device_id: string
+          fcm_token: string
+          locale: string
+        }[]
+      }
       next_order_number: { Args: { p_tenant_id: string }; Returns: string }
       promote_tenant_owner: {
         Args: { p_tenant_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      register_push_device: {
+        Args: {
+          p_enabled?: boolean
+          p_fcm_token: string
+          p_installation_id: string
+          p_locale?: string
+          p_tenant_id: string
+        }
         Returns: undefined
       }
       reject_customer_signup_request: {

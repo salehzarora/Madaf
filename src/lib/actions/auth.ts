@@ -15,6 +15,7 @@
  * access. Email/password stays as a secondary dev/local fallback.
  */
 import { revalidatePath } from "next/cache";
+import { disableCurrentPushAssociation } from "@/lib/data/push-devices";
 
 import { verifyDevPhoneOtp, isDevPhoneAllowed } from "@/lib/auth/dev-otp";
 import { normalizePhoneE164 } from "@/lib/auth/phone";
@@ -164,13 +165,18 @@ export async function signUpAction(input: {
 export async function signOutAction(locale: string): Promise<AuthResult> {
   try {
     const client = await createServerAuthClient();
-    await client.auth.signOut();
+    try { await disableCurrentPushAssociation(client); }
+    catch { console.warn("[madaf/push] logout device cleanup unavailable"); }
+    // Global Supabase logout also revokes sessions; push rows are session-bound
+    // and cascade away. Do not report a failed session revocation as success.
+    const { error } = await client.auth.signOut();
+    if (error) return { ok: false };
     if (typeof locale === "string" && /^[a-z]{2}$/.test(locale)) {
       revalidatePath(`/${locale}`, "layout");
     }
     return { ok: true };
-  } catch (error) {
-    console.error("[madaf/actions] signOutAction failed:", error);
+  } catch {
+    console.error("[madaf/actions] signOutAction failed");
     return { ok: false };
   }
 }

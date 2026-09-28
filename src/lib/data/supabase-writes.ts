@@ -20,6 +20,7 @@ import "server-only";
  *     the ONLY document write path — documents stay table-level read-only.
  */
 import { randomUUID } from "node:crypto";
+import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
 import { getDataContext, NO_TENANT } from "@/lib/auth/session";
 import type { CustomerWriteInput } from "./customers";
@@ -60,6 +61,7 @@ export async function sbCreateOrderRequest(input: {
     })
     .single();
   if (error) fail("createOrderRequest", error.message);
+  scheduleNewOrderPush({ orderId: data.order_id });
   // Read back the customer-facing public ref (the RPC returns only the
   // internal number). The just-created order is RLS-accessible to the caller.
   const { data: refRow } = await client

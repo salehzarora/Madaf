@@ -1,4 +1,5 @@
 import "server-only";
+import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
 /**
  * Product-SHOWCASE (view-only) tokenized link data path (M7H.3) — SERVER ONLY.
@@ -296,6 +297,7 @@ export async function submitShowcaseGuestOrder(
     throw new Error("[madaf/data] order submission key reused with a different request");
   }
   if (error || !data) return null;
+  scheduleNewOrderPush({ publicRef: data.order_number });
   return data.order_number;
 }
 

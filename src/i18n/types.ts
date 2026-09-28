@@ -6,6 +6,7 @@
  * `interpolate()` from src/i18n/dictionaries/index.ts.
  */
 export interface Dictionary {
+  push: { newOrder: string };
   meta: {
     appName: string;
     appNameNative: string;
