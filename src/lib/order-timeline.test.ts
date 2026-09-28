@@ -929,5 +929,6 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   // order + audit unknown-entity default-deny). This snapshot only guards that
   // M8H.3 itself added none — see the m8h3 check above.
   // ADMIN-DASHBOARD-STYLE-006B adds the separate read-only period aggregate.
-  assert.equal(migrations.length, 64);
+  // NATIVE PUSH BACKEND V1 adds device registration and post-commit dispatch claims.
+  assert.equal(migrations.length, 65);
 });

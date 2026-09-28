@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import type { Locale } from "@/i18n/config";
 import { signOutAction } from "@/lib/actions/auth";
+import { PUSH_LOGOUT_EVENT, PUSH_RESUME_EVENT } from "@/lib/client/native-push";
 
 /** Sign the supplier out and return to the login screen. */
 export function LogoutButton({
@@ -19,9 +20,19 @@ export function LogoutButton({
 
   function onClick() {
     startTransition(async () => {
-      await signOutAction(locale);
-      router.replace(`/${locale}/login`);
-      router.refresh();
+      window.dispatchEvent(new Event(PUSH_LOGOUT_EVENT));
+      try {
+        const result = await signOutAction(locale);
+        if (!result.ok) {
+          window.dispatchEvent(new Event(PUSH_RESUME_EVENT));
+          return;
+        }
+        router.replace(`/${locale}/login`);
+        router.refresh();
+      } catch {
+        // A transport failure must not leave registration paused indefinitely.
+        window.dispatchEvent(new Event(PUSH_RESUME_EVENT));
+      }
     });
   }
 

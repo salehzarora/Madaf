@@ -9,7 +9,7 @@
     "build": "npm run check:deploy-safety && next build && node scripts/check-dynamic-routes.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test:core && npm run test:signup-action && npm run test:product-action && npm run test:movements-table && npm run test:cart-submission-key && npm run test:order-submission-key && npm run test:shop-view && npm run test:showcase-view && npm run test:order-timeline-ui && npm run test:error-boundary && npm run test:customer-timeline-ui && npm run test:product-timeline-ui && npm run test:inventory-timeline-ui && npm run test:team-timeline-ui && npm run test:settings-timeline-ui && npm run test:assignment-timeline-ui && npm run test:signup-timeline-ui && npm run test:catalog && npm run test:product-detail && npm run test:cart-view && npm run test:checkout && npm run test:landing && npm run test:dashboard-ui",
+    "test": "npm run test:core && npm run test:signup-action && npm run test:product-action && npm run test:movements-table && npm run test:cart-submission-key && npm run test:order-submission-key && npm run test:shop-view && npm run test:showcase-view && npm run test:order-timeline-ui && npm run test:error-boundary && npm run test:customer-timeline-ui && npm run test:product-timeline-ui && npm run test:inventory-timeline-ui && npm run test:team-timeline-ui && npm run test:settings-timeline-ui && npm run test:assignment-timeline-ui && npm run test:signup-timeline-ui && npm run test:catalog && npm run test:product-detail && npm run test:cart-view && npm run test:checkout && npm run test:landing && npm run test:dashboard-ui && npm run test:push",
     "test:dashboard-ui": "tsx --experimental-test-module-mocks --test src/components/admin-shell.test.mts src/components/dashboard/dashboard-top.test.mts src/components/dashboard/dashboard-charts.test.mts src/components/dashboard/dashboard-widgets.test.mts src/components/dashboard/dashboard-refinement.test.mts src/lib/data/dashboard-thumbnails.test.mts",
     "test:landing": "tsx --experimental-test-module-mocks --test src/components/landing-page.test.mts src/components/mini-catalog-preview.test.mts",
     "test:checkout": "tsx --experimental-test-module-mocks --test src/components/checkout-view.test.mts src/components/order-success-page.test.mts",
@@ -76,12 +76,14 @@
     "test:shop-view": "tsx --experimental-test-module-mocks --test src/components/shop/shop-view.test.mts src/components/shop/shop-page.test.mts",
     "test:showcase-view": "tsx --experimental-test-module-mocks --test src/components/shop/showcase-view.test.mts src/components/shop/showcase-page.test.mts",
     "test:order-submission": "tsx --conditions=react-server --test src/lib/actions/order-submission.test.ts",
-    "test:timezone-matrix": "tsx --conditions=react-server --test src/lib/timezone-matrix.test.ts"
+    "test:timezone-matrix": "tsx --conditions=react-server --test src/lib/timezone-matrix.test.ts",
+    "test:push": "tsx --test src/lib/client/native-push.test.ts && tsx --conditions=react-server --experimental-test-module-mocks --test src/lib/push/*.test.*"
   },
   "dependencies": {
     "@js-temporal/polyfill": "0.5.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",
+    "firebase-admin": "14.5.0",
     "lucide-react": "^1.23.0",
     "next": "16.3.6",
     "pdfkit": "^0.15.2",
@@ -106,6 +108,7 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "^8.5.23"
+    "postcss": "^8.5.23",
+    "uuid": "11.1.1"
   }
 }

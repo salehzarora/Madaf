@@ -30,7 +30,7 @@ mock.module("@/lib/actions/tenant", { namedExports: {
   selectTenantAction: async (value: unknown) => { calls.push(["tenant", value]); return { ok: true }; },
 } });
 mock.module("@/lib/actions/auth", { namedExports: {
-  signOutAction: async (locale: string) => { calls.push(["logout", locale]); },
+  signOutAction: async (locale: string) => { calls.push(["logout", locale]); return { ok: true }; },
 } });
 const { AdminShell } = await import("@/components/admin-shell");
 const session: AdminSession = {

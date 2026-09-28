@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+# Firebase server credentials must stay outside source control.
+*service-account*.json
+*firebase-adminsdk*.json
 
 # debug
 npm-debug.log*

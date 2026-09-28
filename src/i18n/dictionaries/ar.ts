@@ -1,6 +1,7 @@
 import type { Dictionary } from "../types";
 
 const ar: Dictionary = {
+  push: { newOrder: "طلب جديد" },
   meta: {
     appName: "Madaf",
     appNameNative: "مدف",
