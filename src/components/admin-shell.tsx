@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Boxes, Building2, Factory, FileText, LayoutDashboard, Menu,
+  Bell, Boxes, Building2, Factory, FileText, LayoutDashboard, Menu,
   Package, Receipt, ShoppingBag, Store, Users, X,
 } from "lucide-react";
 import Link from "next/link";
@@ -119,6 +119,7 @@ export function AdminShell({ locale, dict, session, children }: {
     ...(canManageTeam ? [{ href: `${base}/team`, label: dict.nav.team, icon: Users }] : []),
   ];
   const settingsNav = canManageSettings ? [
+    { href: `${base}/settings/notifications`, label: dict.notificationSettings.title, icon: Bell },
     { href: `${base}/settings/business`, label: dict.admin.settings.business.navLabel, icon: Building2 },
     { href: `${base}/settings/tax`, label: dict.nav.settings, icon: Receipt },
   ] : [];

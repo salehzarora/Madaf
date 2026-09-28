@@ -1,7 +1,32 @@
 import type { Dictionary } from "../types";
 
 const he: Dictionary = {
-  push: { newOrder: "הזמנה חדשה" },
+  push: {"newOrder": "הזמנה חדשה", "signupRequest": "בקשת הצטרפות חדשה", "orderStatus": "סטטוס ההזמנה עודכן", "lowStock": "מלאי נמוך", "remaining": "נותרו", "product": "מוצר"},
+  notificationSettings: {
+  "title": "התראות",
+  "description": "ההעדפות חלות על החשבון שלך בכל מכשירי MADAF הרשומים עבור ספק זה.",
+  "save": "שמירת העדפות",
+  "saving": "שומר…",
+  "saved": "ההעדפות נשמרו",
+  "error": "השמירה נכשלה. יש לנסות שוב.",
+  "demo": "תצוגת הדגמה. העדפות נשמרות רק לאחר כניסה לספק.",
+  "new_order": {
+    "title": "הזמנות חדשות",
+    "description": "כשחנות שולחת הזמנה חדשה."
+  },
+  "signup_request": {
+    "title": "בקשות הצטרפות של חנויות",
+    "description": "כשחנות מבקשת להצטרף לספק."
+  },
+  "low_stock": {
+    "title": "מלאי נמוך",
+    "description": "כשהמלאי הזמין מגיע לסף שהוגדר או יורד מתחתיו."
+  },
+  "order_status": {
+    "title": "שינויי סטטוס הזמנה",
+    "description": "כשחבר צוות אחר משנה את סטטוס ההזמנה."
+  }
+},
   meta: {
     appName: "Madaf",
     appNameNative: "מדף",

@@ -1352,6 +1352,132 @@ export type Database = {
           },
         ]
       }
+      push_event_dispatches: {
+        Row: {
+          claimed_at: string
+          event_type: string
+          source_id: string
+        }
+        Insert: {
+          claimed_at?: string
+          event_type: string
+          source_id: string
+        }
+        Update: {
+          claimed_at?: string
+          event_type?: string
+          source_id?: string
+        }
+        Relationships: []
+      }
+      push_low_stock_crossings: {
+        Row: {
+          claimed_at: string | null
+          crossed_at: string
+          generation: number
+          product_id: string
+          quantity: number
+          tenant_id: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          crossed_at?: string
+          generation: number
+          product_id: string
+          quantity: number
+          tenant_id: string
+        }
+        Update: {
+          claimed_at?: string | null
+          crossed_at?: string
+          generation?: number
+          product_id?: string
+          quantity?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_low_stock_crossings_tenant_id_product_id_fkey"
+            columns: ["tenant_id", "product_id"]
+            isOneToOne: false
+            referencedRelation: "push_low_stock_state"
+            referencedColumns: ["tenant_id", "product_id"]
+          },
+        ]
+      }
+      push_low_stock_state: {
+        Row: {
+          generation: number
+          is_low: boolean
+          product_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          generation?: number
+          is_low: boolean
+          product_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          generation?: number
+          is_low?: boolean
+          product_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_low_stock_state_tenant_id_product_id_fkey"
+            columns: ["tenant_id", "product_id"]
+            isOneToOne: true
+            referencedRelation: "inventory_items"
+            referencedColumns: ["tenant_id", "product_id"]
+          },
+        ]
+      }
+      push_notification_preferences: {
+        Row: {
+          created_at: string
+          low_stock: boolean
+          new_order: boolean
+          order_status: boolean
+          signup_request: boolean
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          low_stock?: boolean
+          new_order?: boolean
+          order_status?: boolean
+          signup_request?: boolean
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          low_stock?: boolean
+          new_order?: boolean
+          order_status?: boolean
+          signup_request?: boolean
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_notification_preferences_tenant_id_user_id_fkey"
+            columns: ["tenant_id", "user_id"]
+            isOneToOne: true
+            referencedRelation: "tenant_users"
+            referencedColumns: ["tenant_id", "user_id"]
+          },
+        ]
+      }
       push_order_dispatches: {
         Row: {
           claimed_at: string
@@ -1961,6 +2087,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      _push_preference_user: { Args: { p_tenant_id: string }; Returns: string }
       _record_token_failure: {
         Args: { p_fingerprint: string; p_purpose: string }
         Returns: undefined
@@ -2030,11 +2157,41 @@ export type Database = {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: boolean
       }
+      claim_low_stock_push: {
+        Args: { p_product_id: string; p_tenant_id: string }
+        Returns: {
+          generation: number
+          name_ar: string
+          name_en: string
+          name_he: string
+          quantity: number
+        }[]
+      }
       claim_new_order_push: {
         Args: { p_order_id?: string; p_public_ref?: string }
         Returns: {
           order_id: string
           order_number: string
+        }[]
+      }
+      claim_order_status_push: {
+        Args: {
+          p_new_status: Database["public"]["Enums"]["order_status"]
+          p_old_status: Database["public"]["Enums"]["order_status"]
+          p_order_id: string
+        }
+        Returns: {
+          actor_id: string
+          new_status: Database["public"]["Enums"]["order_status"]
+          order_number: string
+          tenant_id: string
+        }[]
+      }
+      claim_signup_request_push: {
+        Args: { p_request_id: string }
+        Returns: {
+          store_name: string
+          tenant_id: string
         }[]
       }
       create_customer: {
@@ -2214,6 +2371,15 @@ export type Database = {
         Args: { p_boundaries: string[]; p_tenant_id: string }
         Returns: Json
       }
+      get_my_push_preferences: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          low_stock: boolean
+          new_order: boolean
+          order_status: boolean
+          signup_request: boolean
+        }[]
+      }
       get_showcase_catalog: { Args: { p_token: string }; Returns: Json }
       get_tenant_tax_settings: {
         Args: { p_tenant_id: string }
@@ -2338,6 +2504,26 @@ export type Database = {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: undefined
       }
+      push_event_recipients: {
+        Args: {
+          p_after_id?: string
+          p_event: string
+          p_exclude_user_id?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          device_id: string
+          fcm_token: string
+          locale: string
+        }[]
+      }
+      push_inventory_products_for_order: {
+        Args: { p_order_id: string }
+        Returns: {
+          product_id: string
+          tenant_id: string
+        }[]
+      }
       register_push_device: {
         Args: {
           p_enabled?: boolean
@@ -2411,6 +2597,16 @@ export type Database = {
         }
         Returns: Json
       }
+      save_my_push_preferences: {
+        Args: {
+          p_low_stock: boolean
+          p_new_order: boolean
+          p_order_status: boolean
+          p_signup_request: boolean
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       search_product_page_ids: {
         Args: {
           p_category_id?: string
@@ -2465,6 +2661,21 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      submit_customer_signup_request_v2: {
+        Args: {
+          p_address?: string
+          p_city_ar?: string
+          p_city_en?: string
+          p_city_he?: string
+          p_contact_name?: string
+          p_email?: string
+          p_name: string
+          p_notes?: string
+          p_phone?: string
+          p_token: string
+        }
+        Returns: string
       }
       unassign_customer_from_rep: {
         Args: { p_customer_id: string; p_tenant_id: string; p_user_id: string }

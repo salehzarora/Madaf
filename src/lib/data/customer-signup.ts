@@ -1,4 +1,5 @@
 import "server-only";
+import { scheduleEventPush } from "@/lib/push/after-events";
 
 /**
  * New-store SELF-SIGNUP data path (M7G) — SERVER ONLY.
@@ -420,7 +421,7 @@ export async function submitSignupRequest(
 ): Promise<boolean> {
   const client = await createServerAuthClient();
   // Raw token over the wire; the DB re-hashes + validates it (never stored).
-  const { data, error } = await client.rpc("submit_customer_signup_request", {
+  const { data, error } = await client.rpc("submit_customer_signup_request_v2", {
     p_token: rawToken,
     p_name: input.name,
     ...(input.contactName ? { p_contact_name: input.contactName } : {}),
@@ -433,5 +434,7 @@ export async function submitSignupRequest(
     ...(input.notes ? { p_notes: input.notes } : {}),
   });
   if (error) return false;
-  return data === true;
+  if (!data) return false;
+  scheduleEventPush({ type: "signup_request", requestId: data });
+  return true;
 }

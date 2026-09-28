@@ -20,6 +20,7 @@ import "server-only";
  *     the ONLY document write path — documents stay table-level read-only.
  */
 import { randomUUID } from "node:crypto";
+import { scheduleEventPush } from "@/lib/push/after-events";
 import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
 import { getDataContext, NO_TENANT } from "@/lib/auth/session";
@@ -89,6 +90,10 @@ export async function sbUpdateOrderStatus(
     })
     .single();
   if (error) fail("updateOrderStatus", error.message);
+  if (data.old_status !== data.new_status) {
+    scheduleEventPush({ type: "order_status", orderId: data.order_id, oldStatus: data.old_status, newStatus: data.new_status });
+    scheduleEventPush({ type: "order_inventory", orderId: data.order_id });
+  }
   return {
     orderId: data.order_id,
     oldStatus: data.old_status,
@@ -112,6 +117,7 @@ export async function sbUpdateOrderItems(
     })
     .single();
   if (error) fail("updateOrderItems", error.message);
+  scheduleEventPush({ type: "order_inventory", orderId: data.order_id });
   return { orderId: data.order_id };
 }
 
@@ -145,6 +151,7 @@ export async function sbAdjustInventoryStock(
     ...(note ? { p_note: note } : {}),
   });
   if (error) fail("adjustInventoryStock", error.message);
+  scheduleEventPush({ type: "inventory", tenantId, productId });
   return { newQuantity: data as number };
 }
 
@@ -295,6 +302,7 @@ export async function sbCreateProduct(
     ...(inventory ? { p_inventory: toInventoryPayload(inventory) } : {}),
   });
   if (error) fail("createProduct", error.message);
+  if (inventory) scheduleEventPush({ type: "inventory", tenantId, productId: data as string });
   return { productId: data as string };
 }
 
@@ -311,6 +319,7 @@ export async function sbUpdateProduct(
     ...(inventory ? { p_inventory: toInventoryPayload(inventory) } : {}),
   });
   if (error) fail("updateProduct", error.message);
+  if (inventory) scheduleEventPush({ type: "inventory", tenantId, productId: data as string });
   return { productId: data as string };
 }
 
@@ -339,6 +348,7 @@ export async function sbUpsertInventory(
     p_inventory: toInventoryPayload(inventory),
   });
   if (error) fail("upsertInventory", error.message);
+  scheduleEventPush({ type: "inventory", tenantId, productId });
 }
 
 export async function sbCreateManufacturer(
