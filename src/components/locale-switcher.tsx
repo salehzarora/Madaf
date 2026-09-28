@@ -2,26 +2,40 @@
 
 import { ChevronDown, Languages } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useId, useRef, useState } from "react";
 import { localeNames, locales, type Locale } from "@/i18n/config";
+import { persistLocale } from "@/i18n/locale-preference";
 import { cn } from "@/lib/utils";
 
-/**
- * Segmented locale switcher. Swaps the /[locale]/ prefix while keeping the
- * rest of the path (query params are dropped — documented limitation).
- */
-export function LocaleSwitcher({
-  current,
-  className,
-  variant = "segmented",
-  label = "Language",
-}: {
+type LocaleSwitcherProps = {
   current: Locale;
   className?: string;
   variant?: "segmented" | "compact";
   label?: string;
-}) {
+};
+
+/** Keep query-dependent rendering inside this leaf's Suspense boundary. */
+export function LocaleSwitcher(props: LocaleSwitcherProps) {
+  return (
+    <Suspense fallback={<LocaleSwitcherControls {...props} query="" />}>
+      <LocaleSwitcherWithQuery {...props} />
+    </Suspense>
+  );
+}
+
+function LocaleSwitcherWithQuery(props: LocaleSwitcherProps) {
+  const query = useSearchParams()?.toString() ?? "";
+  return <LocaleSwitcherControls {...props} query={query} />;
+}
+
+function LocaleSwitcherControls({
+  current,
+  className,
+  variant = "segmented",
+  label = "Language",
+  query,
+}: LocaleSwitcherProps & { query: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -41,7 +55,7 @@ export function LocaleSwitcher({
 
   function hrefFor(target: Locale): string {
     const rest = pathname.replace(/^\/(ar|he|en)(?=\/|$)/, "");
-    return `/${target}${rest}`;
+    return `/${target}${rest}${query ? `?${query}` : ""}`;
   }
 
   if (variant === "compact") {
@@ -87,7 +101,7 @@ export function LocaleSwitcher({
                 href={hrefFor(locale)}
                 lang={locale}
                 aria-current={locale === current ? "true" : undefined}
-                onClick={() => setOpen(false)}
+                onClick={() => { persistLocale(locale); setOpen(false); }}
                 className={cn(
                   "flex min-h-11 items-center rounded-field px-3 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600",
                   locale === current ? "bg-brand-50 text-brand-800" : "text-ink-soft hover:bg-surface-warm",
@@ -114,6 +128,7 @@ export function LocaleSwitcher({
         <Link
           key={locale}
           href={hrefFor(locale)}
+          onClick={() => persistLocale(locale)}
           aria-current={locale === current ? "true" : undefined}
           className={cn(
             "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",

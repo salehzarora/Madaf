@@ -61,6 +61,19 @@ test("unauthenticated native app never requests token or registers", async () =>
   f.state.authenticated = true; await f.poll(); assert.equal(f.posts().length, 1);
   stop(); f.dom.window.close();
 });
+test("locale remount he → ar → en resyncs the same installation and token", async () => {
+  const f = fixture();
+  for (const locale of ["he", "ar", "en"] as const) {
+    const stop = startNativePushSync(f.win, locale);
+    await settle(); await f.poll(); stop();
+  }
+  const bodies = f.posts().map(post => JSON.parse(String(post.body)));
+  assert.deepEqual(bodies.map(body => body.locale), ["he", "ar", "en"]);
+  assert.equal(new Set(bodies.map(body => body.installationId)).size, 1);
+  assert.equal(new Set(bodies.map(body => body.token)).size, 1);
+  assert.equal(f.win.localStorage.length, 1);
+  f.dom.window.close();
+});
 test("transient failure backs off, then retries safely", async t => {
   const f = fixture(); f.state.fail = true;
   let now = 100000; t.mock.method(Date, "now", () => now);
