@@ -102,8 +102,13 @@ device, live owned session, session expiry and user ban/anonymous status. There 
 no sales-rep, other-tenant or anonymous recipient fallback.
 
 Firebase Admin `sendEach` sends data-only `{title, body, path}`. AR/HE/EN typed
-dictionaries provide “New order”; body contains only the sanitized internal
-`MDF-...` number (no shop/customer PII, totals or notes). Path is validated UUID plus
+dictionaries provide “New order”. The V1.1 enrichment uses the sanitized business
+display name recorded on the order, the strictly validated `MDF-...` number and
+the localized ILS subtotal. Only `subtotal` and `customer_snapshot->>name` are
+selected server-side after a successful claim; no full customer snapshot,
+contact details, notes or internal UUIDs enter the visible text. Missing/invalid
+summary data, lookup errors or formatting errors retain the original safe
+order-number-only body. Path is validated UUID plus
 supported locale: `/{locale}/admin/orders/{id}`. Unknown locale defaults to Hebrew.
 No URL, `notification` block, topic fanout or per-order collapse key is sent.
 Android priority is high with a 15-minute TTL. Existing Android validation remains
@@ -172,6 +177,9 @@ bridge lifecycle/backoff/rotation/logout, correct post-commit hook ordering,
 safe message paths, exact invalid cleanup and isolated scheduling/sender failures.
 `supabase/tests/native_push.test.sql` runs actual PostgreSQL authorization,
 ownership, upsert/refresh, recipient-role/tenant/session, claim and cleanup tests.
+V1.1 asserts exact recipient identities in both tenants, same-row locale changes,
+and a multi-tenant user's single active installation association. See
+[V1.1 verification and two-device plan](NATIVE_PUSH_POLISH_V1_1.md).
 The existing migration-count guard now includes this one additive migration;
 the shell logout fixture returns its real `{ok:true}` result shape.
 

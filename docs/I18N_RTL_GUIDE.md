@@ -18,7 +18,9 @@ Definitions live in [`src/i18n/config.ts`](../src/i18n/config.ts):
   `src/app/[locale]/layout.tsx` (Next 16 supports nesting the root layout in
   a dynamic segment) and sets `<html lang={locale} dir={dirFor(locale)}>`.
 - [`src/proxy.ts`](../src/proxy.ts) (Next 16 "proxy", formerly middleware)
-  redirects any path without a locale prefix to `/he/...`.
+  redirects unprefixed paths to the validated `madaf_locale` preference (`ar`,
+  `he`, `en`), or `/he/...` when absent/invalid. Explicit locale prefixes always
+  win. These redirects are `private, no-store` and vary on `Cookie`.
 - `generateStaticParams` prerenders all three locales for every route.
 - Locale validation: `isLocale()` narrows the param; invalid → `notFound()`.
 
@@ -74,9 +76,25 @@ state, defaulting to Hebrew (`defaultDocumentLocale`) regardless of UI
 locale, with an in-page toggle. The printed sheet gets `dir`/`lang` from
 the document language, not the UI.
 
+## UI preference and switching
+
+Both locale-switcher variants synchronously save a host-only `madaf_locale`
+cookie before navigation: `Path=/; SameSite=Lax; Max-Age=31536000`, with `Secure`
+on HTTPS. It is deliberately readable by JavaScript and contains only the locale,
+never authentication/session information. Blocked cookies do not prevent switching
+the current URL. Existing query parameters (including repeated keys) are retained.
+
+The query-reading leaf has its own Suspense boundary so shared server shells and
+static pages keep their existing rendering boundary. An Android WebView launching
+`/` uses the same first-party cookie on subsequent launches; a fresh install or
+cleared cookie defaults to Hebrew. Actual persistence across native restarts is
+part of the device acceptance test, not established by browser/unit tests alone.
+
+Changing locale also restarts native push sync with the same installation UUID
+and FCM token. The existing registration upsert updates its locale in place.
+
 ## Known limitations
 
-- The locale switcher preserves the path but **drops query params**.
 - `not-found.tsx` receives no params → static trilingual content.
 
 ## Testing checklist per language

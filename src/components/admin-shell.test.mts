@@ -24,6 +24,7 @@ const showModal = Object.getOwnPropertyDescriptor(proto, "showModal");
 const closeDialog = Object.getOwnPropertyDescriptor(proto, "close");
 mock.module("next/navigation", { namedExports: {
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ refresh: () => calls.push(["refresh"]), replace: (url: string) => calls.push(["replace", url]) }),
 } });
 mock.module("@/lib/actions/tenant", { namedExports: {

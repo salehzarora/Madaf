@@ -1,12 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { defaultLocale, locales } from "@/i18n/config";
+import { defaultLocale, isLocale, locales } from "@/i18n/config";
+import { LOCALE_COOKIE } from "@/i18n/locale-preference";
 
 /**
  * Request proxy (Next.js 16 — formerly "middleware"):
  *  1. Locale routing — any path without a supported locale prefix is
- *     redirected to the default locale (`/catalog` → `/he/catalog`).
+ *     redirected to the saved UI locale, or Hebrew on first use.
  *  2. Supabase session refresh — only when the public Supabase env vars
  *     are configured (authenticated/supabase mode). In mock mode there is
  *     no env, so this is skipped and the app stays zero-config.
@@ -18,8 +19,14 @@ export async function proxy(request: NextRequest) {
     (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`,
   );
   if (!pathnameHasLocale) {
-    request.nextUrl.pathname = `/${defaultLocale}${pathname === "/" ? "" : pathname}`;
-    return NextResponse.redirect(request.nextUrl);
+    const saved = request.cookies.get(LOCALE_COOKIE)?.value;
+    const locale = saved && isLocale(saved) ? saved : defaultLocale;
+    request.nextUrl.pathname = `/${locale}${pathname === "/" ? "" : pathname}`;
+    const response = NextResponse.redirect(request.nextUrl);
+    // The location is user-specific. Neither a browser nor shared CDN may reuse it.
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Vary", "Cookie");
+    return response;
   }
 
   return updateSession(request);
