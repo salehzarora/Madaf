@@ -19,10 +19,28 @@ Global Ledger tokens live in [`src/app/globals.css`](../src/app/globals.css) as 
 (`category-style.ts`) and manufacturer brand tiles.
 
 The [Storefront Ordering Presentation Layer](#storefront-ordering-presentation-layer)
-below governs the approved Landing, Catalog, Product, Cart, Checkout, Success,
+below governs Catalog, Product, Cart, Checkout, Success,
 Private Shop and Showcase presentation. Its shared tokens and scoped rules take
 precedence over older storefront descriptions; global Ledger primitives remain
 available to Admin page bodies, auth/onboarding and legal/document UI.
+
+## Public marketing homepage
+
+The homepage at `/ar`, `/he` and `/en` now uses the dedicated server-rendered
+`src/app/[locale]/page.tsx` and `marketing/marketing-home.tsx`. It retains the
+existing LogoMark and storefront navy/peach/lavender tokens, with a marketing
+header/footer, device hero, platform diagram, feature illustrations, steps,
+audience cards and supplier-request preview. The old landing-specific rules
+below describe the prior ordering-shell homepage and no longer govern this route.
+
+All new styles use `.marketing-*` selectors in `marketing/marketing-home.css`.
+The existing ordering AppShell, providers and route layouts are unchanged.
+Only LocaleSwitcher and the small mobile-menu dismissal wrapper are client
+components. The request preview has labeled fields but no form, submission
+handler, persistence or API call; its send button is disabled. No pricing plans,
+unverified contact details or unsupported logistics capabilities are advertised.
+
+See [homepage scope, artwork and QA](product/HOMEPAGE_MARKETING_REDESIGN.md).
 
 ## Admin V3 Presentation Layer
 
@@ -420,7 +438,7 @@ dialog scrim token and semantic success/warning/danger tokens.
 | Theme, header/footer | `storefront-theme.css`, `app-shell.tsx`, `storefront-catalog-link.tsx` |
 | Shared media | `product-image.tsx`, `storefront-product-media.css`; `catalog-product-media.css` retains legacy catalog art |
 | Catalog workspace, cards and review | `catalog-workspace.css`, `product-card.tsx`, `order-pad.tsx` |
-| Landing | `storefront-landing.css`, `src/app/[locale]/(shop)/page.tsx` (route), `mini-catalog-preview.tsx` |
+| Public homepage | `marketing/marketing-home.css`, `marketing/marketing-home.tsx`, `src/app/[locale]/page.tsx` (route); replaces prior landing usage |
 | Product and related navigation tiles | `storefront-product.css`, `product-detail-actions.tsx`, `storefront-product-tile.tsx` |
 | Cart | `storefront-cart.css`, `cart-view.tsx` |
 | Checkout and Success | `storefront-checkout.css`, `checkout-view.tsx`, order-success route |
