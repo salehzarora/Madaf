@@ -1,111 +1,104 @@
+import { dom } from "@/test-support/jsdom-env";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { beforeEach, mock, test } from "node:test";
+import { existsSync, readFileSync } from "node:fs";
+import { mock, test } from "node:test";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
 import { locales, type Locale } from "@/i18n/config";
-import { getDictionary } from "@/i18n/dictionaries";
-import type { Dictionary } from "@/i18n/types";
-import type { Category, Product } from "@/lib/types";
+import { marketingDictionaries } from "@/i18n/dictionaries/marketing";
+import { MarketingMobileMenu } from "./marketing/mobile-menu";
 
-const category: Category = { id: "drinks", icon: "🥤", hue: 197, name: { ar: "مشروبات", he: "משקאות", en: "Drinks" } };
-const product: Product = {
-  id: "p1", sku: "TEST-1", categoryId: "drinks", manufacturerId: "",
-  translations: { ar: { name: "منتج" }, he: { name: "מוצר" }, en: { name: "Product" } },
-  packageType: "carton", unitsPerPackage: 12, baseUnit: "bottles", wholesalePrice: 36, availability: "inStock",
-};
-let categories: Category[];
-let products: Product[];
-let previewProps: { locale: Locale; dict: Dictionary } | undefined;
-const reads: string[] = [];
 mock.module("next/navigation", { namedExports: { notFound: () => { throw new Error("not-found"); } } });
-mock.module("@/lib/data", { namedExports: {
-  listCategories: async () => { reads.push("categories"); return categories; },
-  listProducts: async () => { reads.push("products"); return products; },
-} });
-// Resolve the async preview separately in mini-catalog-preview.test.mts, keeping
-// this test at the real page's existing boundary (no production refactor).
-mock.module("@/components/mini-catalog-preview", { namedExports: {
-  MiniCatalogPreview: (props: { locale: Locale; dict: Dictionary }) => { previewProps = props; return null; },
-} });
-const { default: LandingPage } = await import("@/app/[locale]/(shop)/page");
-beforeEach(() => {
-  categories = [category, { ...category, id: "empty", name: { ar: "قسم آخر", he: "קטגוריה נוספת", en: "Other category" } }];
-  products = [product, { ...product, id: "sold-out", availability: "outOfStock" }];
-  previewProps = undefined;
-  reads.length = 0;
-});
-async function render(locale: Locale = "en") {
+mock.module("@/components/locale-switcher", { namedExports: { LocaleSwitcher: ({ current }: { current: Locale }) => createElement("span", { "data-locale-switcher": current }) } });
+const { default: LandingPage } = await import("@/app/[locale]/page");
+async function render(locale: Locale = "ar") {
   return new JSDOM(renderToStaticMarkup(await LandingPage({ params: Promise.resolve({ locale }) }))).window.document;
 }
-test("Landing stays a server component with no client hook or direct data-source dependency", () => {
-  const source = readFileSync(new URL("../app/[locale]/(shop)/page.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /["']use client["']|\buse(?:State|Effect|Pathname|Router)\b|@\/lib\/(?:mock|supabase)/);
+
+test("homepage stays server-rendered outside the ordering providers at the same locale URL", () => {
+  const source = readFileSync(new URL("../app/[locale]/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /["']use client["']|@\/lib\/(?:data|supabase|mock|cart-context)/);
+  assert.equal(existsSync(new URL("../app/[locale]/(shop)/page.tsx", import.meta.url)), false);
+  const shopLayout = readFileSync(new URL("../app/[locale]/(shop)/layout.tsx", import.meta.url), "utf8");
+  assert.match(shopLayout, /ShopDataProvider/);
+  assert.match(shopLayout, /CartProvider/);
 });
-test("invalid locale rejects before any reads", async () => {
+
+test("invalid locale rejects", async () => {
   await assert.rejects(LandingPage({ params: Promise.resolve({ locale: "invalid" }) }), /not-found/);
-  assert.deepEqual(reads, []);
 });
+
+test("mobile navigation closes after a destination, outside pointer or Escape; Escape returns focus", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    act(() => root.render(createElement(MarketingMobileMenu, { label: "Menu" }, createElement("a", { href: "#features" }, "Features"))));
+    const menu = container.querySelector("details")!;
+    menu.open = true;
+    act(() => container.querySelector("a")!.click());
+    assert.equal(menu.open, false);
+    menu.open = true;
+    act(() => document.body.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true })));
+    assert.equal(menu.open, false);
+    menu.open = true;
+    act(() => document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    assert.equal(menu.open, false);
+    assert.equal(document.activeElement, container.querySelector("summary"));
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
 for (const locale of locales) {
-  test(`${locale}: exact hero copy, CTA destinations and preview props`, async () => {
+  test(`${locale}: complete localized marketing hierarchy and working destinations`, async () => {
     const document = await render(locale);
-    const dict = getDictionary(locale);
-    assert.equal(document.querySelector("h1")?.textContent, dict.landing.heroTitle);
-    assert.equal(document.querySelector(".storefront-landing-badge")?.textContent, dict.landing.heroBadge);
-    assert.equal(document.querySelector(".storefront-landing-subtitle")?.textContent, dict.landing.heroSubtitle);
-    const ctas = Array.from(document.querySelectorAll(".storefront-landing-actions a"));
-    assert.deepEqual(ctas.map((e) => [e.textContent, e.getAttribute("href")]), [
-      [dict.landing.ctaCatalog, `/${locale}/catalog`], [dict.landing.ctaAdmin, `/${locale}/admin`],
-    ]);
-    assert.equal(previewProps?.locale, locale);
-    assert.equal(previewProps?.dict, dict);
-    assert.deepEqual(reads, ["categories", "products"]);
+    const c = marketingDictionaries[locale];
+    assert.equal(document.querySelectorAll("h1").length, 1);
+    assert.equal(document.querySelector("h1")?.textContent, c.hero.title + c.hero.accent);
+    assert.equal(document.querySelectorAll("main").length, 1);
+    assert.equal(document.querySelectorAll(".marketing-feature").length, 8);
+    assert.equal(document.querySelectorAll(".marketing-steps > li").length, 4);
+    assert.equal(document.querySelectorAll(".marketing-audience-grid > article").length, 5);
+    assert.ok(document.querySelector(`a[href='/${locale}/catalog']`));
+    assert.ok(document.querySelector(`a[href='/${locale}/admin']`));
+    assert.equal(document.querySelector("[data-locale-switcher]")?.getAttribute("data-locale-switcher"), locale);
+    for (const anchor of document.querySelectorAll("a[href^='#']")) {
+      const id = anchor.getAttribute("href")!.slice(1);
+      assert.ok(document.getElementById(id), `missing destination ${id}`);
+    }
   });
-  test(`${locale}: category order, all-product counts and unfiltered destinations`, async () => {
+
+  test(`${locale}: supplier request remains visibly a preview with no submission surface`, async () => {
     const document = await render(locale);
-    const dict = getDictionary(locale);
-    const tiles = Array.from(document.querySelectorAll(".storefront-landing-category"));
-    assert.equal(document.querySelector(".storefront-landing-categories h2")?.textContent, dict.landing.browseByCategory);
-    assert.deepEqual(tiles.map((e) => e.querySelector(".storefront-landing-category-name")?.textContent), categories.map((c) => c.name[locale]));
-    assert.deepEqual(tiles.map((e) => e.querySelector(".storefront-landing-category-count")?.textContent), [`2 ${dict.nav.products}`, `0 ${dict.nav.products}`]);
-    assert.deepEqual(tiles.map((e) => e.getAttribute("href")), categories.map(() => `/${locale}/catalog`));
-    assert.deepEqual(tiles.map((e) => e.querySelector("[aria-hidden]")?.textContent), categories.map((c) => c.icon));
-    assert.equal(document.querySelector(".storefront-landing-view-all")?.getAttribute("href"), `/${locale}/catalog`);
-    assert.equal(document.querySelector(".storefront-landing-view-all")?.textContent, dict.common.viewAll);
+    const request = document.querySelector("#request")!;
+    assert.equal(request.querySelector("form, [action], [formaction], button[type=submit]"), null);
+    const send = request.querySelector<HTMLButtonElement>("button")!;
+    assert.equal(send.type, "button");
+    assert.equal(send.disabled, true);
+    assert.equal(document.getElementById("request-preview-note")?.textContent, marketingDictionaries[locale].request.preview);
+    assert.equal(request.querySelectorAll("input, select, textarea").length, 7);
+    for (const field of request.querySelectorAll("input, select, textarea")) {
+      assert.ok(document.querySelector(`label[for='${field.id}']`), `unlabeled ${field.id}`);
+      assert.equal(field.closest("form"), null);
+    }
+    assert.equal(document.querySelector("#supplier-email")?.getAttribute("dir"), "ltr");
+    assert.equal(document.querySelector("#supplier-phone")?.getAttribute("dir"), "ltr");
   });
-  test(`${locale}: roles keep copy, icons, order and destinations`, async () => {
+
+  test(`${locale}: decorative visuals are local, sized and noninteractive; mobile navigation is native`, async () => {
     const document = await render(locale);
-    const dict = getDictionary(locale);
-    const roles = [dict.landing.roles.rep, dict.landing.roles.owner, dict.landing.roles.admin];
-    const cards = Array.from(document.querySelectorAll(".storefront-landing-role"));
-    assert.equal(document.querySelector(".storefront-landing-roles h2")?.textContent, dict.landing.rolesTitle);
-    assert.deepEqual(cards.map((e) => e.getAttribute("href")), [`/${locale}/catalog`, `/${locale}/catalog`, `/${locale}/admin`]);
-    assert.deepEqual(cards.map((e) => e.querySelector("h3")?.textContent), roles.map((r) => r.title));
-    assert.deepEqual(cards.map((e) => e.querySelector("p")?.textContent), roles.map((r) => r.desc));
-    assert.deepEqual(cards.map((e) => e.querySelector(".storefront-landing-role-cta")?.textContent), roles.map((r) => r.cta));
-    ["tablet", "link-2", "layout-dashboard"].forEach((icon, i) => assert.ok(cards[i].querySelector(`.lucide-${icon}`)));
-  });
-  test(`${locale}: feature copy and icon order remain exact`, async () => {
-    const document = await render(locale);
-    const dict = getDictionary(locale);
-    const cards = Array.from(document.querySelectorAll(".storefront-landing-feature"));
-    assert.equal(document.querySelector(".storefront-landing-features h2")?.textContent, dict.landing.featuresTitle);
-    assert.deepEqual(cards.map((e) => [e.querySelector("h3")?.textContent, e.querySelector("p")?.textContent]), dict.landing.features.map((f) => [f.title, f.desc]));
-    ["shopping-bag", "languages", "clipboard-list", "file-text"].forEach((icon, i) => assert.ok(cards[i].querySelector(`.lucide-${icon}`)));
+    for (const img of document.querySelectorAll("img")) {
+      assert.equal(img.getAttribute("alt"), "");
+      assert.ok(Number(img.getAttribute("width")) > 0);
+      assert.ok(Number(img.getAttribute("height")) > 0);
+    }
+    assert.equal(document.querySelector("figure figcaption")?.textContent, marketingDictionaries[locale].hero.illustration);
+    assert.ok(document.querySelector("details.marketing-mobile-menu > summary[aria-label]"));
+    assert.equal(document.querySelector(".marketing-skip")?.getAttribute("href"), "#marketing-main");
+    assert.equal(document.querySelector(".storefront-header, .storefront-cart-link"), null);
   });
 }
-test("empty products retain categories with zero counts and all other copy", async () => {
-  products = [];
-  const document = await render();
-  assert.deepEqual(Array.from(document.querySelectorAll(".storefront-landing-category-count"), (e) => e.textContent), categories.map(() => `0 ${getDictionary("en").nav.products}`));
-  assert.equal(document.querySelectorAll(".storefront-landing-role").length, 3);
-  assert.equal(document.querySelectorAll(".storefront-landing-feature").length, getDictionary("en").landing.features.length);
-});
-test("empty categories retain heading and view-all without inventing tiles", async () => {
-  categories = [];
-  const document = await render();
-  assert.equal(document.querySelectorAll(".storefront-landing-category").length, 0);
-  assert.ok(document.querySelector(".storefront-landing-categories h2"));
-  assert.equal(document.querySelector(".storefront-landing-view-all")?.getAttribute("href"), "/en/catalog");
-  assert.ok(document.querySelector("h1"));
-});
