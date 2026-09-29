@@ -78,7 +78,8 @@
     "test:order-submission": "tsx --conditions=react-server --test src/lib/actions/order-submission.test.ts",
     "test:timezone-matrix": "tsx --conditions=react-server --test src/lib/timezone-matrix.test.ts",
     "test:locale": "tsx --conditions=react-server --test src/proxy.test.ts && tsx --test src/components/locale-switcher.test.tsx",
-    "test:push": "tsx --test src/lib/client/native-push.test.ts src/components/push/native-push-registration.test.tsx && tsx --conditions=react-server --experimental-test-module-mocks --test src/lib/push/*.test.*"
+    "test:push": "tsx --test src/lib/client/native-push.test.ts src/components/push/native-push-registration.test.tsx && tsx --conditions=react-server --experimental-test-module-mocks --test src/lib/push/*.test.* && npm run test:notification-settings",
+    "test:notification-settings": "tsx --experimental-test-module-mocks --test src/components/admin/notification-settings.test.mts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "0.5.1",

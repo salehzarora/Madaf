@@ -1,7 +1,32 @@
 import type { Dictionary } from "../types";
 
 const ar: Dictionary = {
-  push: { newOrder: "طلب جديد" },
+  push: {"newOrder": "طلب جديد", "signupRequest": "طلب انضمام متجر جديد", "orderStatus": "تم تحديث حالة الطلب", "lowStock": "مخزون منخفض", "remaining": "المتبقي", "product": "منتج"},
+  notificationSettings: {
+  "title": "الإشعارات",
+  "description": "تسري هذه التفضيلات على حسابك عبر أجهزة مدف المسجّلة لهذا المورّد.",
+  "save": "حفظ التفضيلات",
+  "saving": "جارٍ الحفظ…",
+  "saved": "تم حفظ التفضيلات",
+  "error": "تعذّر الحفظ. يرجى المحاولة مجددًا.",
+  "demo": "معاينة تجريبية. تُحفظ التفضيلات عند تسجيل الدخول إلى مورّد.",
+  "new_order": {
+    "title": "الطلبات الجديدة",
+    "description": "عندما يرسل متجر طلبًا جديدًا."
+  },
+  "signup_request": {
+    "title": "طلبات انضمام المتاجر",
+    "description": "عندما يطلب متجر الانضمام إلى المورّد."
+  },
+  "low_stock": {
+    "title": "المخزون المنخفض",
+    "description": "عندما يصل المخزون المتاح إلى الحد المحدّد أو يقلّ عنه."
+  },
+  "order_status": {
+    "title": "تغييرات حالة الطلب",
+    "description": "عندما يغيّر زميل آخر حالة طلب."
+  }
+},
   meta: {
     appName: "Madaf",
     appNameNative: "مدف",

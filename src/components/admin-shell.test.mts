@@ -91,12 +91,12 @@ test("existing client boundary stays in AdminShell, server gate remains server-s
 for (const locale of locales) {
   test(`${locale}: all admin routes keep V3 chrome and unchanged children`, () => {
     const view = mount(locale);
-    for (const route of ["", "/products", "/orders", "/manufacturers", "/customers", "/inventory", "/documents", "/team", "/settings/business", "/settings/tax"]) {
+    for (const route of ["", "/products", "/orders", "/manufacturers", "/customers", "/inventory", "/documents", "/team", "/settings/notifications", "/settings/business", "/settings/tax"]) {
       pathname = `/${locale}/admin${route}`; view.render();
       assert.ok(view.find(".admin-v3"));
       assert.equal(view.find("main > [data-legacy-body]").textContent, "Existing route body");
       const hrefs = [...view.find(".admin-shell-sidebar").querySelectorAll(".admin-shell-nav-link")].map((a) => a.getAttribute("href"));
-      assert.deepEqual(hrefs, ["", "/products", "/manufacturers", "/orders", "/inventory", "/customers", "/documents", "/team", "/settings/business", "/settings/tax"].map((path) => `/${locale}/admin${path}`).concat(`/${locale}/catalog`));
+      assert.deepEqual(hrefs, ["", "/products", "/manufacturers", "/orders", "/inventory", "/customers", "/documents", "/team", "/settings/notifications", "/settings/business", "/settings/tax"].map((path) => `/${locale}/admin${path}`).concat(`/${locale}/catalog`));
     }
   });
   test(`${locale}: tenant, account, translated locale links and five bottom tabs`, () => {
@@ -118,6 +118,7 @@ for (const role of ["owner", "admin", "sales_rep"] as const) {
     assert.equal(Boolean(nav.querySelector('[href="/en/admin/team"]')), role !== "sales_rep");
     assert.equal(Boolean(nav.querySelector('[href="/en/admin/settings/business"]')), role !== "sales_rep");
     assert.equal(Boolean(nav.querySelector('[href="/en/admin/settings/tax"]')), role !== "sales_rep");
+    assert.equal(Boolean(nav.querySelector('[href="/en/admin/settings/notifications"]')), role !== "sales_rep");
     assert.ok(nav.querySelector('[href="/en/admin/products"]'));
   });
 }

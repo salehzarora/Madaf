@@ -6,7 +6,14 @@
  * `interpolate()` from src/i18n/dictionaries/index.ts.
  */
 export interface Dictionary {
-  push: { newOrder: string };
+  push: { newOrder: string; signupRequest: string; orderStatus: string; lowStock: string; remaining: string; product: string };
+  notificationSettings: {
+    title: string; description: string; save: string; saving: string; saved: string; error: string; demo: string;
+    new_order: { title: string; description: string };
+    signup_request: { title: string; description: string };
+    low_stock: { title: string; description: string };
+    order_status: { title: string; description: string };
+  };
   meta: {
     appName: string;
     appNameNative: string;

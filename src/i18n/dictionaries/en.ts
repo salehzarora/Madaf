@@ -1,7 +1,32 @@
 import type { Dictionary } from "../types";
 
 const en: Dictionary = {
-  push: { newOrder: "New order" },
+  push: {"newOrder": "New order", "signupRequest": "New store signup request", "orderStatus": "Order status updated", "lowStock": "Low stock", "remaining": "Remaining", "product": "Product"},
+  notificationSettings: {
+  "title": "Notifications",
+  "description": "These preferences apply to your account across your registered MADAF devices for this supplier.",
+  "save": "Save preferences",
+  "saving": "Saving…",
+  "saved": "Preferences saved",
+  "error": "Could not save. Please try again.",
+  "demo": "Demo preview. Preferences are saved only when signed in to a supplier.",
+  "new_order": {
+    "title": "New orders",
+    "description": "When a store places a new order."
+  },
+  "signup_request": {
+    "title": "New store signup requests",
+    "description": "When a store asks to join your supplier."
+  },
+  "low_stock": {
+    "title": "Low stock",
+    "description": "When available stock reaches or falls below its threshold."
+  },
+  "order_status": {
+    "title": "Order status changes",
+    "description": "When another teammate changes an order’s status."
+  }
+},
   meta: {
     appName: "Madaf",
     appNameNative: "Madaf",
