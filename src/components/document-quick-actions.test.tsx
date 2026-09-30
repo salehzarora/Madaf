@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { getDictionary } from "@/i18n/dictionaries";
 import { locales, type Locale } from "@/i18n/config";
 import { DocumentQuickActions } from "./document-quick-actions";
+import type { DocumentWindow } from "@/lib/client/native-documents";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -33,6 +34,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   mock.restoreAll();
+  delete (window as DocumentWindow).MadafNative;
 });
 function mount(locale: Locale = "en") {
   act(() => root.render(<DocumentQuickActions locale={locale} orderId="order-id" type="order" labels={getDictionary(locale).docs.quickActions} />));
@@ -174,4 +176,94 @@ test("changing the document aborts the old request and never leaves the new acti
   assert.equal(oldSignal?.aborted, true);
   assert.equal(container.querySelector("button")!.disabled, false);
   assert.equal(container.querySelector("a")!.getAttribute("href"), "/en/admin/orders/another-order/documents/delivery/print");
+});
+
+function nativeFixture(documents = { sharePdf: true, printPdf: true }, status = "opened") {
+  const listeners = new Set<(event: { data: string }) => void>();
+  const calls: { id: string; type: string; path?: string }[] = [];
+  const bridge = {
+    onmessage: mock.fn(),
+    addEventListener: (_type: "message", fn: (event: { data: string }) => void) => { listeners.add(fn); },
+    removeEventListener: (_type: "message", fn: (event: { data: string }) => void) => { listeners.delete(fn); },
+    postMessage(raw: string) {
+      const request = JSON.parse(raw); calls.push(request);
+      const result = request.type === "getCapabilities"
+        ? { version: 1, platform: "android", shell: "webview", documents, push: { configured: true } }
+        : { status, details: "private native provider information" };
+      queueMicrotask(() => listeners.forEach(fn => fn({ data: JSON.stringify({ id: request.id, type: request.type, result }) })));
+    },
+  };
+  (window as DocumentWindow).MadafNative = bridge;
+  return { bridge, calls, listeners };
+}
+
+test("native Share sends only relative PDF path and uses neither Web Share nor PDF fallback/fetch", async () => {
+  const f = nativeFixture(); const pushHandler = f.bridge.onmessage;
+  mount(); await click();
+  assert.deepEqual(f.calls.map(call => call.type), ["getCapabilities", "shareDocumentPdf"]);
+  assert.equal(f.calls[1].path, `${base}?mode=share`);
+  assert.deepEqual(Object.keys(f.calls[1]).sort(), ["id", "path", "type"]);
+  assert.equal(fetchMock.mock.callCount() + shareMock.mock.callCount() + openMock.mock.callCount(), 0);
+  assert.equal(f.bridge.onmessage, pushHandler);
+  assert.equal(container.querySelector("button")!.disabled, false);
+});
+
+test("native Print intercepts only its click, sends prepared PDF command and retains Download", async () => {
+  const f = nativeFixture(); mount();
+  const print = container.querySelector("a")!;
+  const event = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  await act(async () => { print.dispatchEvent(event); });
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(f.calls[1].type, "printDocumentPdf");
+  assert.equal(f.calls[1].path, `${base}?mode=share`);
+  assert.equal(openMock.mock.callCount() + fetchMock.mock.callCount(), 0);
+  assert.equal(container.querySelectorAll("a")[1].getAttribute("href"), base);
+});
+
+test("legacy native capabilities preserve browser Share and Print fallback", async () => {
+  const f = nativeFixture({ sharePdf: false, printPdf: false }); mount(); await click();
+  assert.equal(shareMock.mock.callCount(), 1);
+  await act(async () => { container.querySelector("a")!.click(); });
+  assert.deepEqual(openMock.mock.calls[0].arguments, [`${base}/print`, "_blank", "noopener,noreferrer"]);
+  assert.deepEqual(f.calls.map(call => call.type), ["getCapabilities"]);
+});
+
+test("native cancellation is silent and leaves all actions usable", async () => {
+  nativeFixture(undefined, "cancelled"); mount(); await click();
+  assert.equal(container.querySelector('[role="status"]')!.textContent, "");
+  assert.equal(container.querySelector("button")!.disabled, false);
+  assert.equal(openMock.mock.callCount(), 0);
+});
+
+for (const locale of locales) {
+  test(`${locale}: native failure shows localized generic message without provider details`, async () => {
+    nativeFixture(undefined, "error"); mount(locale); await click();
+    assert.ok(container.textContent!.includes(getDictionary(locale).docs.quickActions.nativeError));
+    assert.doesNotMatch(container.textContent!, /private native provider/);
+    assert.equal(container.querySelector("button")!.disabled, false);
+    assert.equal(shareMock.mock.callCount(), 0);
+  });
+}
+
+test("native listener is removed on unmount without modifying push onmessage", async () => {
+  const f = nativeFixture(); mount(); await click();
+  const pushHandler = f.bridge.onmessage;
+  assert.equal(f.listeners.size, 1);
+  act(() => root.render(null));
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.bridge.onmessage, pushHandler);
+});
+
+test("uncorrelated native responses cannot trigger a document command", async () => {
+  const f = nativeFixture();
+  f.bridge.postMessage = raw => {
+    const request = JSON.parse(raw); f.calls.push(request);
+    f.listeners.forEach(fn => fn({ data: JSON.stringify({ id: "wrong-id", type: request.type,
+      result: { version: 1, platform: "android", shell: "webview", documents: { sharePdf: true } } }) }));
+  };
+  mount();
+  act(() => container.querySelector("button")!.click());
+  assert.deepEqual(f.calls.map(call => call.type), ["getCapabilities"]);
+  assert.equal(shareMock.mock.callCount(), 0);
+  await act(async () => root.render(null));
 });

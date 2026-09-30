@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/types";
 import type { DocumentType } from "@/lib/types";
+import { connectNativeDocuments, type DocumentAction } from "@/lib/client/native-documents";
 
 const actionClass = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-field px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
 
@@ -24,12 +25,19 @@ function DocumentActionsForRoute({ base, labels }: {
 }) {
   const shareUrl = `${base}?mode=share`;
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<"fallback" | "error" | "ready" | null>(null);
+  const [notice, setNotice] = useState<"fallback" | "error" | "ready" | "nativeError" | null>(null);
+  const native = useRef<ReturnType<typeof connectNativeDocuments>>(null);
+  const nativeBusy = useRef(false);
   const pending = useRef<AbortController | null>(null);
   // A short-lived in-memory retry is only for browsers that lose transient
   // activation during PDF preparation. Never persist the file or an admin URL.
   const ready = useRef<{ file: File; expires: number } | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const connection = connectNativeDocuments(window);
+    native.current = connection;
+    return () => { native.current = null; connection?.dispose(); };
+  }, []);
   useEffect(() => () => {
     pending.current?.abort();
     ready.current = null;
@@ -42,8 +50,29 @@ function DocumentActionsForRoute({ base, labels }: {
     setNotice("fallback");
   }
 
+  async function nativeAction(type: DocumentAction): Promise<boolean> {
+    const connection = native.current;
+    if (!connection) return false;
+    if (nativeBusy.current || pending.current) return true;
+    nativeBusy.current = true;
+    setBusy(true); setNotice(null);
+    try {
+      const capabilities = await connection.capabilities;
+      if (native.current !== connection) return true;
+      if (!(type === "shareDocumentPdf" ? capabilities.share : capabilities.print)) return false;
+      await connection.run(type, shareUrl);
+    } catch (error) {
+      if (native.current === connection && !(error instanceof Error && error.name === "AbortError")) setNotice("nativeError");
+    } finally {
+      nativeBusy.current = false;
+      if (native.current === connection) setBusy(false);
+    }
+    return true;
+  }
+
   async function share() {
-    if (pending.current) return;
+    if (pending.current || nativeBusy.current) return;
+    if (native.current && await nativeAction("shareDocumentPdf")) return;
     setNotice(null);
     if (typeof navigator.share !== "function") {
       openInline();
@@ -108,6 +137,13 @@ function DocumentActionsForRoute({ base, labels }: {
           {busy ? labels.preparing : labels.share}
         </button>
         <a href={`${base}/print`} target="_blank" rel="noopener noreferrer"
+          onClick={event => {
+            if (!native.current) return; // Ordinary browser link/navigation stays untouched.
+            event.preventDefault();
+            void nativeAction("printDocumentPdf").then(handled => {
+              if (!handled) window.open(`${base}/print`, "_blank", "noopener,noreferrer");
+            });
+          }}
           className={`${actionClass} border border-line text-ink-soft hover:bg-surface-sunken`}>
           <Printer className="size-4 shrink-0" aria-hidden />{labels.print}
         </a>
@@ -117,7 +153,7 @@ function DocumentActionsForRoute({ base, labels }: {
       </div>
       <div role="status" aria-live="polite" className="text-xs leading-relaxed text-ink-soft">
         {notice ? <p className="mt-2">
-          {notice === "ready" ? labels.ready : notice === "error" ? labels.error : labels.fallback}{" "}
+          {notice === "nativeError" ? labels.nativeError : notice === "ready" ? labels.ready : notice === "error" ? labels.error : labels.fallback}{" "}
           <a href={shareUrl} target="_blank" rel="noopener noreferrer"
             className="font-semibold underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-600">
             {labels.openPdf}
