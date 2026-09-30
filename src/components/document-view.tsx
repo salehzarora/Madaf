@@ -2,7 +2,7 @@
 
 import { ArrowRight, Printer, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,12 +37,31 @@ export function DocumentView({
   order,
   supplier,
   uiLocale,
+  autoPrint = false,
 }: {
   document: OrderDocument;
   order: Order;
   supplier: Supplier;
   uiLocale: Locale;
+  autoPrint?: boolean;
 }) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  const printed = useRef(false);
+  useEffect(() => {
+    if (!autoPrint || printed.current) return;
+    let cancelled = false;
+    // Wait for the existing sheet's fonts/logo, not a separate print template.
+    const images = Array.from(previewRef.current?.querySelectorAll("img") ?? []);
+    Promise.all([
+      window.document.fonts?.ready,
+      ...images.map((image) => image.decode?.().catch(() => undefined)),
+    ]).then(() => {
+      if (cancelled || printed.current) return;
+      printed.current = true;
+      window.print();
+    });
+    return () => { cancelled = true; };
+  }, [autoPrint]);
   const [docLocale, setDocLocale] = useState<Locale>(defaultDocumentLocale);
   const t = getDictionary(docLocale).docs;
   const uiDict = getDictionary(uiLocale);
@@ -88,7 +107,7 @@ export function DocumentView({
   const showPrices = !isDelivery;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={previewRef} className="flex flex-col gap-4">
       {/* Toolbar — hidden when printing */}
       <div className="print-hidden flex flex-wrap items-center gap-3">
         <Link

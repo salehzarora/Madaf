@@ -1,5 +1,57 @@
 # Documents & Invoices Guide
 
+## Document quick actions (DOCUMENT-ACTIONS-001)
+
+The order detail Documents card offers **Share → Print → Download**, with
+**Preview → Regenerate** retained for existing records. All action labels,
+loading states and fallback messages support Arabic, Hebrew and English. This
+applies only to `order`, `delivery` and `invoiceDraft`; invoice drafts remain
+non-legal, with their existing watermark, notices and numbering unchanged.
+
+- **Share:** `DocumentQuickActions` fetches the existing PDF endpoint with
+  `?mode=share`, same-origin credentials, no caching and no redirects. The route
+  uses the same authenticated source read and guarded recording RPC, then the
+  existing PDF renderer. It returns `application/pdf`, an inline safe filename
+  and `private, no-store`. Share never signs or uploads a storage object. Only
+  an actual PDF `File` enters `navigator.share`; no admin or signed URL is shared.
+- **Fallback:** check `navigator.canShare({ files })` when available. Unsupported
+  file sharing opens the inline PDF in a separate tab with normal browser PDF
+  controls. A visible Open PDF link also handles popup blocking. Cancellation
+  (`AbortError`) is silent; other failures show localized generic text. If the
+  browser loses user activation while preparing a PDF, a fresh Share tap can
+  use the prepared file. It is retained only in memory for up to 60 seconds and
+  cleared on unmount or document identity change. No browser persistence is used.
+- **Print:** a normal link opens
+  `/{locale}/admin/orders/{id}/documents/{type}/print`. This dynamic admin page
+  uses the shared `prepareOrderDocument` access/record path, then the existing
+  HTML `DocumentView` through `DocumentPreview` and its route-local data provider.
+  The print trigger waits for fonts/logo and requests `window.print()` once.
+  The existing manual Print / Save PDF control remains available if the browser
+  suppresses automatic printing. No PDF download or new printable template is
+  involved. Mock mode can print all three types without a persisted mock record.
+- **Download/Regenerate:** retain the existing short-lived private-storage signed
+  download path and attachment fallback. Default document language stays Hebrew,
+  independently of UI locale; existing preview language controls are unchanged.
+
+No migration, RLS/grant change, public document URL, security-policy relaxation,
+dependency change, legal-document issuance or hosted configuration is introduced.
+The service-role storage helpers and their exact-path validation are untouched.
+
+`npm run test:document-actions` covers route allowlists, denied access/recording,
+file-only sharing, cancellation, fallback/errors, activation retry, request
+cleanup, AR/HE/EN actions, mock print preparation, one-time printing and preserved
+draft/delivery content. It is included in `npm test`. The new print entry also
+joins the build's critical dynamic-route guard.
+
+Local browser QA: AR/HE/EN order actions at 390×844, 768×1024 and 1440×900;
+no document horizontal overflow on those order pages. All three Share responses
+were checked against a local production build: HTTP 200, real PDF bytes, inline
+filename and private/no-store. All three Print entries returned the shared sheet.
+Native WhatsApp/device share completion, physical printer output and hosted
+authenticated acceptance remain device/release checks; local tests do not claim
+those have passed.
+
+
 ## ⚠️ The legal rule of this repository
 
 **Madaf does NOT create legal tax invoices in this phase — and must never

@@ -20,6 +20,7 @@ const CRITICAL = [
   "/[locale]/product/[id]",
   "/[locale]/admin/orders/[id]",
   "/[locale]/admin/orders/[id]/documents/[type]",
+  "/[locale]/admin/orders/[id]/documents/[type]/print",
   "/[locale]/admin/documents/[id]",
   "/[locale]/admin/customers/[id]",
   "/[locale]/admin/customers/[id]/edit",

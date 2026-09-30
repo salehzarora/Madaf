@@ -1,9 +1,10 @@
-import { ArrowRight, Download, FileText, RefreshCw } from "lucide-react";
+import { ArrowRight, FileText, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GuestOrderCard } from "@/components/admin/guest-order-card";
 import { OrderItemsEditor } from "@/components/admin/order-items-editor";
 import { OrderTimeline } from "@/components/admin/order-timeline";
+import { DocumentQuickActions } from "@/components/document-quick-actions";
 import { OrderStatusControl } from "@/components/order-status-control";
 import { ProductImage } from "@/components/product-image";
 import { Badge } from "@/components/ui/badge";
@@ -335,15 +336,20 @@ export default async function AdminOrderDetailPage({
                           dict.docs.notGenerated
                         )}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <a
-                          href={base}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-field bg-brand-600 px-3 text-xs font-medium text-white transition-colors hover:bg-brand-700"
-                        >
-                          <Download className="size-4" aria-hidden />
-                          {dict.docs.downloadPdf}
-                        </a>
-                        {existing ? (
+                      <DocumentQuickActions
+                        locale={locale}
+                        orderId={order.id}
+                        type={docType}
+                        labels={dict.docs.quickActions}
+                      />
+                      {existing ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/${locale}/admin/documents/${existing.id}`}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
+                          >
+                            {dict.docs.preview}
+                          </Link>
                           <a
                             href={`${base}?regenerate=1`}
                             className="inline-flex h-9 items-center gap-1.5 rounded-field border border-line px-3 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
@@ -351,16 +357,8 @@ export default async function AdminOrderDetailPage({
                             <RefreshCw className="size-4" aria-hidden />
                             {dict.docs.regenerate}
                           </a>
-                        ) : null}
-                        {existing ? (
-                          <Link
-                            href={`/${locale}/admin/documents/${existing.id}`}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-field px-3 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-sunken"
-                          >
-                            {dict.docs.preview}
-                          </Link>
-                        ) : null}
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 },

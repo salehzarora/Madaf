@@ -593,7 +593,9 @@ test("guard: (shop) layout provides FULL ShopData + Cart to storefront routes", 
 });
 
 test("guard: admin/documents/[id] provides products+customers to DocumentView", () => {
-  const doc = readSrc("app/[locale]/admin/documents/[id]/page.tsx");
+  const page = readSrc("app/[locale]/admin/documents/[id]/page.tsx");
+  assert.ok(page.includes("<DocumentPreview"), "documents page must use the shared preview");
+  const doc = readSrc("components/document-preview.tsx");
   assert.ok(doc.includes("ShopDataProvider"), "documents page must wrap DocumentView in a provider");
   assert.ok(/\blistProducts\b/.test(doc), "documents page must load products for line-item names");
   assert.ok(/\blistCustomers\b/.test(doc), "documents page must load customers for the buyer name");

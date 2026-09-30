@@ -925,6 +925,16 @@ const he: Dictionary = {
     backToDocuments: "חזרה למסמכים",
     supplierIdLabel: "ח.פ",
     downloadPdf: "הורדת PDF",
+    quickActions: {
+      share: "שיתוף",
+      print: "הדפסה",
+      download: "הורדה",
+      preparing: "בהכנה…",
+      openPdf: "פתיחת PDF",
+      fallback: "אפשר לשתף או לשמור באמצעות כלי ה-PDF בדפדפן.",
+      error: "לא ניתן לשתף את הקובץ. נסו שוב או פתחו את ה-PDF.",
+      ready: "הקובץ מוכן. לחצו שוב על שיתוף או פתחו את ה-PDF.",
+    },
     pdfFooter: "הופק על ידי מדף · מסמך פנימי · אינו חשבונית מס.",
     status: {
       draft: "טיוטה",
