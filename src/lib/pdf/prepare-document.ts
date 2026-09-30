@@ -4,6 +4,7 @@ import type { Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getOrderDocumentSource, recordOrderDocument } from "@/lib/data";
 import type { DocumentType } from "@/lib/types";
+import { logServerDiagnostic } from "@/lib/monitoring/server-diagnostics";
 
 /** Shared access/record path for PDF delivery and the HTML print entry point. */
 export async function prepareOrderDocument(
@@ -31,7 +32,10 @@ export async function prepareOrderDocument(
     });
     return { status: 200, source, record } as const;
   } catch {
-    // Do not put RPC/provider details or document content in logs/responses.
+    // The data layer does not retain a typed access/operational error code.
+    // Warn about unavailable recording, without calling a possible denial an
+    // outage or exposing RPC details. The safe HTTP outcome stays unchanged.
+    logServerDiagnostic("document_record_unavailable");
     return { status: 403 } as const;
   }
 }

@@ -72,9 +72,10 @@ test("the response body leaks no configuration / secret / URL", async () => {
     "no host, key, token, URL or project ref appears in the body");
 });
 
-test("HEAD returns 200 with no body and no-store", () => {
+test("HEAD returns 200 with no body and no-store", async () => {
   const res = HEAD();
   assert.ok(res instanceof Response);
   assert.equal(res.status, 200);
   assert.match(res.headers.get("cache-control") ?? "", /no-store/);
+  assert.equal(await res.text(), "");
 });
