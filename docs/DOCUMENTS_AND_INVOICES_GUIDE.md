@@ -1,5 +1,39 @@
 # Documents & Invoices Guide
 
+## Native Android document actions (DOCUMENT-ACTIONS-ANDROID-001)
+
+The Android WebView shell can advertise `documents.sharePdf` and
+`documents.printPdf` in the existing `MadafNative.getCapabilities` response.
+`DocumentQuickActions` then sends correlated `shareDocumentPdf` or
+`printDocumentPdf` requests containing only the relative, authenticated
+`/{locale}/admin/orders/{id}/documents/{order|delivery|invoiceDraft}?mode=share`
+path. A dedicated `addEventListener("message")` subscriber leaves the push
+bridge's `onmessage` handler untouched. Unsupported/older shells and ordinary
+browsers keep the existing Web Share / inline-PDF fallback and Print link.
+Download, Preview and Regenerate remain unchanged.
+
+Native retrieves the same generated PDF with the existing WebView cookies,
+validates its route/type/size, and keeps it in a bounded private cache. Share
+opens Android's chooser using a read-granted FileProvider URI. Print passes the
+original bytes to Android PrintManager; it does not call WebView `window.print()`
+or reconstruct the document. Native replies contain only `opened`, `cancelled`
+or `error`; neither paths, cookies nor provider details return to JavaScript.
+`opened` means system UI opened, not that a recipient received or printer printed
+the document. Cancellation is silent and failures use generic AR/HE/EN feedback.
+
+This adds no endpoint, public access, database/auth/RLS change, storage-policy
+change, dependency, legal activation or document-semantic change. The existing
+server authorization, invoice-draft notices/watermark, price-free delivery note,
+document numbering and download contract remain authoritative.
+
+The companion Android APK and these web changes must both be released through
+Control Room before production buttons can use native document actions. An APK
+alone does not change the production website. Local web tests cover native and
+browser routing/cancellation/error behavior; Android emulator tests cover bridge
+restrictions, private URI grants, original PDF byte copying, PrintManager and the
+system Share Sheet. Real tablet WhatsApp attachment, authenticated production
+document retrieval and physical printing remain owner acceptance checks.
+
 ## Document quick actions (DOCUMENT-ACTIONS-001)
 
 The order detail Documents card offers **Share → Print → Download**, with
