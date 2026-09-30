@@ -2,6 +2,8 @@
  * M5A/M5B — order document PDF download.
  *
  * GET /[locale]/admin/orders/[id]/documents/[type]?lang=he|ar|en&regenerate=1
+ * Optional mode=share streams inline PDF bytes; absent/download retains the
+ * existing private-storage download behavior. Other modes are rejected.
  *   type ∈ order | delivery | invoiceDraft  (allowlist — legal tax invoice
  *   types are impossible to request).
  *
@@ -34,14 +36,12 @@ import {
   isLocale,
   type Locale,
 } from "@/i18n/config";
-import { getDictionary } from "@/i18n/dictionaries";
 import {
-  getOrderDocumentSource,
-  recordOrderDocument,
   signStoredDocument,
   storeDocumentPdf,
 } from "@/lib/data";
 import { isDocumentType } from "@/lib/pdf/document-model";
+import { prepareOrderDocument } from "@/lib/pdf/prepare-document";
 import { renderOrderDocumentPdf } from "@/lib/pdf/render-document";
 
 export const runtime = "nodejs";
@@ -57,52 +57,29 @@ export async function GET(
   if (!isDocumentType(type)) return new Response(null, { status: 404 });
 
   const url = new URL(request.url);
+  const mode = url.searchParams.get("mode") ?? "download";
+  if (mode !== "download" && mode !== "share") {
+    return new Response(null, { status: 400, headers: { "Cache-Control": "private, no-store" } });
+  }
   const langParam = url.searchParams.get("lang");
   const docLocale: Locale =
     langParam && isLocale(langParam) ? langParam : defaultDocumentLocale;
   const regenerate = url.searchParams.get("regenerate") === "1";
 
-  // Access-gated read. supabase: RLS (can_access_order) → a rep only sees
-  // assigned-customer orders, others none → undefined → 404. mock: resolves.
-  const source = await getOrderDocumentSource(id);
-  if (!source) return new Response(null, { status: 404 });
-
-  // Record the document row. invoice_draft pins the localized
-  // not-a-tax-invoice notice so the DB CHECK is always satisfied.
-  const legalNotice =
-    type === "invoiceDraft"
-      ? getDictionary(docLocale).docs.notLegalNotice
-      : null;
-
-  let record: {
-    documentId: string;
-    documentNumber: string;
-    documentDate: string;
-    storagePath: string | null;
-  };
-  try {
-    record = await recordOrderDocument({
-      orderId: id,
-      orderNumber: source.orderNumber,
-      publicRef: source.publicRef,
-      orderDate: source.orderDate,
-      type,
-      locale: docLocale,
-      legalNotice,
-    });
-  } catch (error) {
-    // RPC access failure (not a member / not accessible) — do not leak why.
-    console.error("[madaf/pdf] recordOrderDocument failed:", error);
-    return new Response(null, { status: 403 });
+  const prepared = await prepareOrderDocument(id, type, docLocale);
+  if (prepared.status !== 200) {
+    return new Response(null, { status: prepared.status, headers: { "Cache-Control": "private, no-store" } });
   }
+  const { source, record } = prepared;
 
-  const filename = `${record.documentNumber}.pdf`;
+  // Authoritative number, restricted to a safe ASCII filename/header value.
+  const filename = `${record.documentNumber.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || "document"}.pdf`;
 
   // Reuse a stored PDF only when the recorded storage_path is exactly the
   // expected DB-derived path (M5B.1 — never trust an object at an unexpected
   // path). Signing runs on the trusted server client; access was already
   // verified above. ?regenerate=1 always re-renders through the trusted path.
-  if (!regenerate && record.storagePath) {
+  if (mode === "download" && !regenerate && record.storagePath) {
     const existing = await signStoredDocument({
       orderId: id,
       type,
@@ -122,6 +99,18 @@ export async function GET(
     docDate: record.documentDate,
     docLocale,
   });
+
+  // File sharing needs same-origin bytes, never a signed storage URL. Use
+  // exactly the same authorized source/renderer without uploading or signing.
+  if (mode === "share") {
+    return new Response(pdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
 
   // supabase: upload to private storage + redirect to a signed URL. On
   // failure (or in mock mode) storeDocumentPdf returns null and we stream

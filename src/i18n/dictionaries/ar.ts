@@ -924,6 +924,16 @@ const ar: Dictionary = {
     backToDocuments: "الرجوع إلى المستندات",
     supplierIdLabel: "رقم الشركة (ح.ف)",
     downloadPdf: "تنزيل PDF",
+    quickActions: {
+      share: "مشاركة",
+      print: "طباعة",
+      download: "تنزيل",
+      preparing: "جارٍ التحضير…",
+      openPdf: "فتح PDF",
+      fallback: "استخدم أدوات PDF في المتصفح للمشاركة أو الحفظ.",
+      error: "تعذّرت مشاركة الملف. حاول مجددًا أو افتح PDF.",
+      ready: "الملف جاهز. اضغط مشاركة مجددًا أو افتح PDF.",
+    },
     pdfFooter: "أُنشئ بواسطة مَداف · مستند داخلي · ليس فاتورة ضريبية.",
     status: {
       draft: "مسودة",
