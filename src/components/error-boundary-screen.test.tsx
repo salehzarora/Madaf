@@ -184,8 +184,8 @@ describe("ErrorBoundaryScreen — source contracts", () => {
     assert.match(body, /router\.refresh\(\)/, "retry calls router.refresh()");
     assert.match(body, /reset\(\)/, "retry calls reset()");
     assert.match(code, /startTransition\(/);
-    // The raw error is logged, never passed to the presentational screen.
-    assert.match(code, /console\.error/);
+    // The boundary must not dump raw errors into the browser console.
+    assert.doesNotMatch(code, /console\.|useEffect/);
     assert.doesNotMatch(code, /error=\{error\}|message=\{|error\.message/);
   });
 });

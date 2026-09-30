@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useTransition } from "react";
+import { useTransition } from "react";
 import { ErrorBoundaryScreen } from "@/components/error-boundary-screen";
 
 /**
@@ -25,11 +25,11 @@ import { ErrorBoundaryScreen } from "@/components/error-boundary-screen";
  * the stable refresh+reset pair is used here to avoid depending on an unstable
  * API for a pilot.)
  *
- * The raw `error` is logged to the console only — its message, stack, and digest
- * are NEVER rendered (the screen shows fixed safe copy).
+ * Raw errors are neither explicitly logged here nor rendered. Unexpected
+ * server errors have safe instrumentation; client-only failures have no
+ * central reporting transport in this pass.
  */
 export default function LocaleError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
@@ -38,11 +38,6 @@ export default function LocaleError({
   const router = useRouter();
   const params = useParams();
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    // Log for diagnostics only; never surfaced to the user.
-    console.error("[madaf] route error boundary:", error);
-  }, [error]);
 
   const rawLocale = Array.isArray(params?.locale)
     ? params?.locale[0]

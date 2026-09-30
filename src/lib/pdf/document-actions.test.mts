@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { beforeEach, mock, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import { getDictionary } from "@/i18n/dictionaries";
 import { locales } from "@/i18n/config";
 
@@ -15,10 +15,12 @@ mock.module("@/lib/pdf/render-document", { namedExports: { renderOrderDocumentPd
 const { GET } = await import("@/app/[locale]/admin/orders/[id]/documents/[type]/route");
 
 beforeEach(() => {
+  mock.method(console, "warn", () => {});
   for (const fn of [read, save, sign, store, render]) fn.mock.resetCalls();
   read.mock.mockImplementation(async () => source);
   save.mock.mockImplementation(async () => ({ ...record }));
 });
+afterEach(() => mock.restoreAll());
 
 function request(query = "", type = "order", locale = "ar") {
   return GET(new Request(`https://madaf.example/${locale}/admin/orders/order-id/documents/${type}${query}`), {
@@ -66,6 +68,7 @@ for (const [query, type, locale, status] of [
     assert.equal(read.mock.callCount(), 0);
     assert.equal(save.mock.callCount(), 0);
     assert.equal(render.mock.callCount(), 0);
+    assert.equal((console.warn as unknown as ReturnType<typeof mock.fn>).mock.callCount(), 0);
   });
 }
 
@@ -76,6 +79,7 @@ for (const query of ["?mode=share", ""]) {
     assert.equal(save.mock.callCount(), 0);
     assert.equal(render.mock.callCount(), 0);
     assert.equal(sign.mock.callCount() + store.mock.callCount(), 0);
+    assert.equal((console.warn as unknown as ReturnType<typeof mock.fn>).mock.callCount(), 0);
   });
   test(`${query || "Download"}: revoked record access fails closed without exposing details`, async () => {
     save.mock.mockImplementation(async () => { throw new Error("private provider details"); });
@@ -84,6 +88,13 @@ for (const query of ["?mode=share", ""]) {
     assert.equal(await response.text(), "");
     assert.equal(render.mock.callCount(), 0);
     assert.equal(sign.mock.callCount() + store.mock.callCount(), 0);
+    const calls = (console.warn as unknown as ReturnType<typeof mock.fn>).mock.calls;
+    assert.equal(calls.length, 1, "one neutral warning, no duplicated route logging");
+    const event = JSON.parse(calls[0].arguments[0] as string);
+    assert.equal(event.event, "document_record_unavailable");
+    assert.equal(event.severity, "warning", "ambiguous access/RPC failure is not labeled an outage");
+    assert.equal(event.operation, "document_prepare");
+    assert.doesNotMatch(JSON.stringify(event), /private provider|order-id|doc-id|MDF-|DOC-|private\/object|signed/);
   });
 }
 
@@ -92,6 +103,28 @@ test("unsafe authoritative filename characters cannot enter headers", async () =
   const response = await request("?mode=share");
   assert.equal(response.headers.get("Content-Disposition"), 'inline; filename="DOC_______bad___name.pdf"');
   assert.equal((render.mock.calls[0].arguments[0] as { docNumber: string }).docNumber, 'DOC/../../bad"\r\nname');
+});
+
+test("recording failure plus throwing diagnostic sink retains empty 403 without rendering", async () => {
+  save.mock.mockImplementation(async () => { throw new Error("SECRET token URL email PDF body"); });
+  const sink = mock.method(console, "warn", () => { throw new Error("sink unavailable"); });
+  const response = await request("?mode=share");
+  assert.equal(response.status, 403);
+  assert.equal(await response.text(), "");
+  assert.equal(render.mock.callCount(), 0);
+  assert.equal(sink.mock.callCount(), 1);
+});
+
+test("unexpected recording failure produces a bounded warning without changing Download outcome", async () => {
+  save.mock.mockImplementation(async () => { throw new Error("database offline SECRET customer@example.test"); });
+  const response = await request();
+  assert.equal(response.status, 403);
+  const calls = (console.warn as unknown as ReturnType<typeof mock.fn>).mock.calls;
+  assert.equal(calls.length, 1);
+  const line = calls[0].arguments[0] as string;
+  assert.ok(line.length < 512);
+  assert.equal(JSON.parse(line).event, "document_record_unavailable");
+  assert.doesNotMatch(line, /SECRET|database offline|customer@/);
 });
 
 test("Download still reuses private signed attachment path", async () => {
