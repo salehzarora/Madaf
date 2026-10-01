@@ -1,0 +1,48 @@
+# Used only inside the disposable owned .e2e run directory.
+project_id = "__PROJECT_ID__"
+[api]
+enabled = true
+port = 58321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+[db]
+port = 58322
+shadow_port = 58320
+major_version = 17
+health_timeout = "2m"
+[db.seed]
+enabled = false
+sql_paths = []
+[db.pooler]
+enabled = false
+[realtime]
+enabled = false
+[studio]
+enabled = false
+[inbucket]
+enabled = true
+port = 58324
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+[storage.s3_protocol]
+enabled = true
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3108"
+additional_redirect_urls = ["http://127.0.0.1:3108"]
+enable_signup = false
+enable_anonymous_sign_ins = false
+enable_refresh_token_rotation = true
+[auth.email]
+# GoTrue also uses this to enable the email provider. Global signup remains
+# disabled above; prerequisite users are created only by local fixture setup.
+enable_signup = true
+enable_confirmations = false
+[auth.sms]
+enable_signup = false
+[edge_runtime]
+enabled = false
+[analytics]
+enabled = false
