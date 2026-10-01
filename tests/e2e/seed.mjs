@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Privileged prerequisite setup only. User actions use the real UI and session.
-export async function seedFixtures(root, runRoot, marker, status) {
+export async function seedFixtures(root, runRoot, marker, status, namespace = '') {
   assertOwnedDestinations(root, runRoot, marker, status);
   const auth = createClient(status.API_URL, status.SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const db = new pg.Client({ connectionString: status.DB_URL, connectionTimeoutMillis: 10_000, statement_timeout: 10_000 });
@@ -17,7 +17,7 @@ export async function seedFixtures(root, runRoot, marker, status) {
     const fixtures = {};
     for (const key of ['a', 'b']) {
       const tenant = randomUUID(), product = randomUUID(), customer = randomUUID();
-      const email = `owner-${key}-${marker.projectId}@example.invalid`;
+      const email = `owner-${key}-${namespace}${marker.projectId}@example.invalid`;
       const password = `E2e!${randomBytes(18).toString('hex')}`;
       const created = await auth.auth.admin.createUser({ email, password, email_confirm: true });
       if (created.error || !created.data.user) throw new Error('Local synthetic Auth prerequisite creation failed');

@@ -1,3 +1,4 @@
+import { throwPricingError, type QuoteInput } from "@/lib/pricing";
 import "server-only";
 
 /**
@@ -40,6 +41,7 @@ function fail(what: string, message: string): never {
 }
 
 export async function sbCreateOrderRequest(input: {
+  quote?: QuoteInput;
   customerId: string | null;
   items: { productId: string; quantity: number }[];
   notes?: string;
@@ -59,8 +61,10 @@ export async function sbCreateOrderRequest(input: {
       ...(input.notes ? { p_notes: input.notes } : {}),
       p_source: input.source,
       p_submission_key: input.submissionKey,
+      ...(input.quote ? { p_quote: input.quote } : {}),
     })
     .single();
+  throwPricingError(error);
   if (error) fail("createOrderRequest", error.message);
   scheduleNewOrderPush({ orderId: data.order_id });
   // Read back the customer-facing public ref (the RPC returns only the
@@ -106,16 +110,19 @@ export async function sbUpdateOrderItems(
   orderId: string,
   items: { productId: string; quantity: number }[],
   notes?: string,
+  quote?: QuoteInput,
 ): Promise<{ orderId: string }> {
   const { client, tenantId } = await getDataContext();
   const { data, error } = await client
     .rpc("update_order_items", {
       p_tenant_id: tenantId,
       p_order_id: orderId,
+      ...(quote ? { p_quote: quote } : {}),
       p_items: items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
       ...(notes !== undefined ? { p_notes: notes } : {}),
     })
     .single();
+  throwPricingError(error);
   if (error) fail("updateOrderItems", error.message);
   scheduleEventPush({ type: "order_inventory", orderId: data.order_id });
   return { orderId: data.order_id };

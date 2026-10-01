@@ -1,8 +1,9 @@
 "use client";
+import { EffectivePrice } from "@/components/effective-price";
 
 import { SendHorizontal, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -39,27 +40,40 @@ export function CheckoutView({
     totalPackages,
     customerId,
     clear,
+    completeSubmission,
+    submissionKey,
     hydrated,
     ensureSubmissionKey,
     resetSubmissionKey,
+    orderQuote,
+    refreshQuote,
+    refreshPrices,
   } = useCart();
   const { productById, customerById } = useShopData();
   const [delivery, setDelivery] = useState<"asap" | "scheduled">("asap");
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const review = { quote: orderQuote, refresh: refreshQuote };
+  const [priceChanged, setPriceChanged] = useState(false);
+  const [attempt, setAttempt] = useState<Parameters<typeof submitOrderAction>[0] | null>(null);
+  const busy = useRef(false);
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
+  const unresolved = getDataMode() !== "mock" && hydrated && !!submissionKey && !attempt && reviewedKey !== submissionKey;
 
   const customer = customerId ? customerById.get(customerId) : undefined;
 
   // Empty cart → back to the cart page (not during the send transition).
   useEffect(() => {
-    if (hydrated && items.length === 0 && !sending) {
+    if (hydrated && items.length === 0 && !sending && !attempt && !unresolved) {
       router.replace(`/${locale}/cart`);
     }
-  }, [hydrated, items.length, sending, locale, router]);
+  }, [hydrated, items.length, sending, locale, router, attempt, unresolved]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (unresolved || busy.current || (!attempt && getDataMode() !== "mock" && !review.quote)) return;
+    busy.current = true;
     setSending(true);
     setSendFailed(false);
     setConflict(false);
@@ -79,7 +93,7 @@ export function CheckoutView({
       // FIX1: one submission key for this logical order — reused across retries
       // (incl. after an ambiguous failure), so a duplicate submit returns the
       // SAME order rather than creating a second one.
-      const result = await submitOrderAction({
+      const payload = attempt ?? {
         customerId,
         items: items.map((item) => ({
           productId: item.productId,
@@ -88,9 +102,13 @@ export function CheckoutView({
         notes: typeof notes === "string" && notes.trim() ? notes : undefined,
         locale,
         submissionKey: ensureSubmissionKey(),
-      });
+        quote: review.quote?.quote,
+      };
+      setReviewedKey(payload.submissionKey);
+      setAttempt(payload);
+      const result = await submitOrderAction({ ...payload, ...(attempt ? { quote: { mode: "replay_only" } as const } : {}) });
       if (result.ok && result.publicRef) {
-        clear();
+        completeSubmission(payload);
         router.push(
           `/${locale}/order-success?n=${encodeURIComponent(result.publicRef)}`,
         );
@@ -101,13 +119,19 @@ export function CheckoutView({
         // explicitly starts a fresh attempt (which rotates the key).
         setSending(false);
         setConflict(true);
+        busy.current = false;
         return;
+      }
+      if (result.reason === "pricing") {
+        setAttempt(null); setPriceChanged(true); refreshPrices(); review.refresh();
+        setSending(false); busy.current = false; return;
       }
     } catch {
       // Transport-level failure (server unreachable) — same recovery as a
       // rejected order: keep the cart, re-enable the button, show the error.
     }
     setSending(false);
+    busy.current = false;
     setSendFailed(true);
   }
 
@@ -115,6 +139,7 @@ export function CheckoutView({
   // submission key so the next submit is a brand-new logical order.
   function startNewAttempt() {
     resetSubmissionKey();
+    setAttempt(null);
     setConflict(false);
     setSendFailed(false);
   }
@@ -138,7 +163,7 @@ export function CheckoutView({
             <div className="storefront-checkout-fields">
               <div>
                 <Label htmlFor="co-shop">{dict.checkout.shopName}</Label>
-                <Input
+                <Input readOnly={sending || !!attempt || unresolved}
                   id="co-shop"
                   required
                   defaultValue={customer?.name ?? ""}
@@ -146,14 +171,14 @@ export function CheckoutView({
               </div>
               <div>
                 <Label htmlFor="co-contact">{dict.checkout.contactName}</Label>
-                <Input
+                <Input readOnly={sending || !!attempt || unresolved}
                   id="co-contact"
                   defaultValue={customer?.contactName ?? ""}
                 />
               </div>
               <div>
                 <Label htmlFor="co-phone">{dict.common.phone}</Label>
-                <Input
+                <Input readOnly={sending || !!attempt || unresolved}
                   id="co-phone"
                   type="tel"
                   dir="ltr"
@@ -163,7 +188,7 @@ export function CheckoutView({
               </div>
               <div>
                 <Label htmlFor="co-city">{dict.common.city}</Label>
-                <Input
+                <Input readOnly={sending || !!attempt || unresolved}
                   id="co-city"
                   defaultValue={customer?.city[locale] ?? ""}
                 />
@@ -187,7 +212,7 @@ export function CheckoutView({
                 </button>
               ))}
               {delivery === "scheduled" ? (
-                <Input
+                <Input readOnly={sending || !!attempt || unresolved}
                   type="date"
                   className="storefront-checkout-date"
                   dir="ltr"
@@ -205,7 +230,7 @@ export function CheckoutView({
                 ({dict.common.optional})
               </span>
             </h2>
-            <Textarea
+            <Textarea disabled={sending || !!attempt || unresolved}
               name="notes"
               aria-label={dict.common.notes}
               placeholder={dict.cart.notesPlaceholder}
@@ -238,10 +263,7 @@ export function CheckoutView({
                       <span dir="ltr">×{item.quantity}</span>
                     </div>
                     <bdi dir="ltr" className="storefront-checkout-line-price">
-                      {formatCurrency(
-                        product.wholesalePrice * item.quantity,
-                        locale,
-                      )}
+                      <EffectivePrice productId={product.id} locale={locale} quantity={item.quantity} />
                     </bdi>
                   </li>
                 );
@@ -250,7 +272,7 @@ export function CheckoutView({
             <div className="storefront-checkout-subtotal">
               <span>{dict.common.subtotal}</span>
               <bdi dir="ltr">
-                {formatCurrency(subtotal, locale)}
+                {subtotal === null ? "—" : formatCurrency(subtotal, locale)}
               </bdi>
             </div>
             <p className="storefront-checkout-disclaimer">
@@ -284,15 +306,19 @@ export function CheckoutView({
             <Button
               type="submit"
               size="lg"
-              disabled={sending || conflict || items.length === 0}
+              disabled={unresolved || sending || conflict || (!attempt && (items.length === 0 || (getDataMode() !== "mock" && !review.quote)))}
               className="storefront-checkout-submit"
             >
               <SendHorizontal
                 className={cn("size-4 rtl:-scale-x-100", sending && "animate-pulse")}
                 aria-hidden
               />
-              {dict.checkout.sendOrder}
+              {attempt ? dict.pricing.retry : dict.checkout.sendOrder}
             </Button>
+            {priceChanged ? <p role="status">{dict.pricing.changed}</p> : null}
+            {attempt && !sending ? <p role="status">{dict.pricing.pending}</p> : null}
+            {unresolved ? <p role="alert">{dict.pricing.unresolved}</p> : null}
+            {!attempt && !review.quote && getDataMode() !== "mock" ? <p role="status">{dict.pricing.unavailable} <button type="button" onClick={review.refresh}>{dict.pricing.retry}</button></p> : null}
           </div>
         </section>
       </form>

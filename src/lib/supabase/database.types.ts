@@ -273,6 +273,85 @@ export type Database = {
           },
         ]
       }
+      customer_product_prices: {
+        Row: {
+          base_unit: Database["public"]["Enums"]["base_unit"]
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          enabled: boolean
+          id: string
+          package_contract_revision: number
+          package_price: number
+          package_quantity: number
+          package_unit: Database["public"]["Enums"]["package_unit"]
+          product_id: string
+          revision: number
+          tenant_id: string
+          unit_size: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          base_unit: Database["public"]["Enums"]["base_unit"]
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          enabled?: boolean
+          id?: string
+          package_contract_revision: number
+          package_price: number
+          package_quantity: number
+          package_unit: Database["public"]["Enums"]["package_unit"]
+          product_id: string
+          revision?: number
+          tenant_id: string
+          unit_size?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          base_unit?: Database["public"]["Enums"]["base_unit"]
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          enabled?: boolean
+          id?: string
+          package_contract_revision?: number
+          package_price?: number
+          package_quantity?: number
+          package_unit?: Database["public"]["Enums"]["package_unit"]
+          product_id?: string
+          revision?: number
+          tenant_id?: string
+          unit_size?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_product_prices_tenant_id_customer_id_fkey"
+            columns: ["tenant_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "customer_product_prices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_product_prices_tenant_id_product_id_fkey"
+            columns: ["tenant_id", "product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["tenant_id", "id"]
+          },
+        ]
+      }
       customer_signup_links: {
         Row: {
           created_at: string
@@ -963,6 +1042,7 @@ export type Database = {
       }
       order_items: {
         Row: {
+          base_unit_snapshot: Database["public"]["Enums"]["base_unit"] | null
           created_at: string
           id: string
           line_subtotal: number
@@ -970,16 +1050,22 @@ export type Database = {
           line_vat: number
           manufacturer_name_snapshot: Json | null
           order_id: string
+          package_contract_revision_snapshot: number | null
           package_quantity_snapshot: number
           package_unit_snapshot: Database["public"]["Enums"]["package_unit"]
+          pricing_agreement_id_snapshot: string | null
+          pricing_agreement_revision_snapshot: number | null
+          pricing_source_snapshot: string | null
           product_id: string | null
           product_name_snapshot: Json
           quantity: number
           tenant_id: string
           unit_price_snapshot: number
+          unit_size_snapshot: string | null
           vat_rate_snapshot: number
         }
         Insert: {
+          base_unit_snapshot?: Database["public"]["Enums"]["base_unit"] | null
           created_at?: string
           id?: string
           line_subtotal: number
@@ -987,16 +1073,22 @@ export type Database = {
           line_vat: number
           manufacturer_name_snapshot?: Json | null
           order_id: string
+          package_contract_revision_snapshot?: number | null
           package_quantity_snapshot?: number
           package_unit_snapshot: Database["public"]["Enums"]["package_unit"]
+          pricing_agreement_id_snapshot?: string | null
+          pricing_agreement_revision_snapshot?: number | null
+          pricing_source_snapshot?: string | null
           product_id?: string | null
           product_name_snapshot: Json
           quantity: number
           tenant_id: string
           unit_price_snapshot: number
+          unit_size_snapshot?: string | null
           vat_rate_snapshot?: number
         }
         Update: {
+          base_unit_snapshot?: Database["public"]["Enums"]["base_unit"] | null
           created_at?: string
           id?: string
           line_subtotal?: number
@@ -1004,13 +1096,18 @@ export type Database = {
           line_vat?: number
           manufacturer_name_snapshot?: Json | null
           order_id?: string
+          package_contract_revision_snapshot?: number | null
           package_quantity_snapshot?: number
           package_unit_snapshot?: Database["public"]["Enums"]["package_unit"]
+          pricing_agreement_id_snapshot?: string | null
+          pricing_agreement_revision_snapshot?: number | null
+          pricing_source_snapshot?: string | null
           product_id?: string | null
           product_name_snapshot?: Json
           quantity?: number
           tenant_id?: string
           unit_price_snapshot?: number
+          unit_size_snapshot?: string | null
           vat_rate_snapshot?: number
         }
         Relationships: [
@@ -1215,6 +1312,7 @@ export type Database = {
           name_ar: string
           name_en: string
           name_he: string
+          package_contract_revision: number
           package_quantity: number
           package_unit: Database["public"]["Enums"]["package_unit"]
           sku: string | null
@@ -1240,6 +1338,7 @@ export type Database = {
           name_ar: string
           name_en: string
           name_he: string
+          package_contract_revision?: number
           package_quantity?: number
           package_unit?: Database["public"]["Enums"]["package_unit"]
           sku?: string | null
@@ -1265,6 +1364,7 @@ export type Database = {
           name_ar?: string
           name_en?: string
           name_he?: string
+          package_contract_revision?: number
           package_quantity?: number
           package_unit?: Database["public"]["Enums"]["package_unit"]
           sku?: string | null
@@ -1763,6 +1863,35 @@ export type Database = {
           },
         ]
       }
+      tenant_pricing_state: {
+        Row: {
+          epoch: number
+          mode: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          epoch?: number
+          mode?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          epoch?: number
+          mode?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_pricing_state_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_tax_settings: {
         Row: {
           business_registration_number: string | null
@@ -1973,6 +2102,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _check_pricing_quote: {
+        Args: { p_projection: Json; p_quote: Json }
+        Returns: undefined
+      }
       _claim_order_submission: {
         Args: {
           p_channel: string
@@ -1985,6 +2118,15 @@ export type Database = {
           is_new: boolean
         }[]
       }
+      _effective_product_prices: {
+        Args: {
+          p_customer: string
+          p_ids: string[]
+          p_mode: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
       _gen_order_public_ref: { Args: never; Returns: string }
       _is_valid_timezone: { Args: { p_timezone: string }; Returns: boolean }
       _legal_numbering_enabled: { Args: never; Returns: boolean }
@@ -1995,6 +2137,10 @@ export type Database = {
           p_metadata?: Json
           p_tenant_id: string
         }
+        Returns: undefined
+      }
+      _log_customer_price: {
+        Args: { p_action: string; p_id: string; p_tenant: string }
         Returns: undefined
       }
       _log_customer_signup_request_audit_event: {
@@ -2066,6 +2212,7 @@ export type Database = {
           p_customer_id: string
           p_items: Json
           p_notes: string
+          p_resolved: Json
           p_source: Database["public"]["Enums"]["order_source"]
           p_tenant_id: string
         }
@@ -2078,6 +2225,50 @@ export type Database = {
         Args: { p_context: Json }
         Returns: string
       }
+      _pricing_actor: {
+        Args: { p_customer: string; p_tenant: string }
+        Returns: string
+      }
+      _pricing_customer: {
+        Args: { p_customer: string; p_tenant: string }
+        Returns: undefined
+      }
+      _pricing_projection: {
+        Args: {
+          p_context: Json
+          p_customer: string
+          p_items: Json
+          p_order?: string
+          p_state: Database["public"]["Tables"]["tenant_pricing_state"]["Row"]
+          p_tenant: string
+        }
+        Returns: Json
+      }
+      _pricing_state: {
+        Args: { p_tenant: string }
+        Returns: {
+          epoch: number
+          mode: string
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_pricing_state"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      _pricing_token_scope: {
+        Args: { p_order: boolean; p_showcase: boolean; p_token: string }
+        Returns: {
+          customer_id: string
+          link_id: string
+          tenant_id: string
+        }[]
+      }
+      _public_prices: { Args: { p_prices: Json }; Returns: Json }
+      _public_quote: { Args: { p_projection: Json }; Returns: Json }
       _purge_rep_assignments: {
         Args: {
           p_rep_email: string
@@ -2266,6 +2457,7 @@ export type Database = {
           p_items: Json
           p_notes?: string
           p_phone?: string
+          p_quote?: Json
           p_store_name: string
           p_submission_key?: string
           p_token: string
@@ -2279,6 +2471,7 @@ export type Database = {
           p_customer_id?: string
           p_items: Json
           p_notes?: string
+          p_quote?: Json
           p_source?: Database["public"]["Enums"]["order_source"]
           p_submission_key?: string
           p_tenant_id: string
@@ -2292,6 +2485,7 @@ export type Database = {
         Args: {
           p_items: Json
           p_notes?: string
+          p_quote?: Json
           p_submission_key?: string
           p_token: string
         }
@@ -2463,6 +2657,10 @@ export type Database = {
         Args: { p_customer_id: string; p_order_id: string; p_tenant_id: string }
         Returns: undefined
       }
+      list_customer_product_prices: {
+        Args: { p_customer_id: string; p_search?: string; p_tenant_id: string }
+        Returns: Json
+      }
       list_memberships: {
         Args: never
         Returns: {
@@ -2490,6 +2688,18 @@ export type Database = {
           role: Database["public"]["Enums"]["tenant_role"]
           user_id: string
         }[]
+      }
+      manage_customer_product_price: {
+        Args: {
+          p_action: string
+          p_customer_id: string
+          p_expected_revision: number
+          p_package_revision: number
+          p_price?: string
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       new_order_push_recipients: {
         Args: { p_after_id?: string; p_order_id: string }
@@ -2523,6 +2733,20 @@ export type Database = {
           product_id: string
           tenant_id: string
         }[]
+      }
+      quote_customer_order: {
+        Args: {
+          p_customer_id?: string
+          p_items: Json
+          p_order_id?: string
+          p_source?: Database["public"]["Enums"]["order_source"]
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      quote_token_order: {
+        Args: { p_items: Json; p_showcase?: boolean; p_token: string }
+        Returns: Json
       }
       register_push_device: {
         Args: {
@@ -2558,6 +2782,18 @@ export type Database = {
           label: string
           token_preview: string
         }[]
+      }
+      resolve_customer_prices: {
+        Args: {
+          p_customer_id: string
+          p_product_ids: string[]
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      resolve_token_prices: {
+        Args: { p_product_ids: string[]; p_showcase?: boolean; p_token: string }
+        Returns: Json
       }
       revoke_catalog_showcase_link: {
         Args: { p_link_id: string; p_tenant_id: string }
@@ -2647,6 +2883,10 @@ export type Database = {
         }
         Returns: string
       }
+      set_tenant_pricing_state: {
+        Args: { p_mode: string; p_tenant_id: string }
+        Returns: undefined
+      }
       submit_customer_signup_request: {
         Args: {
           p_address?: string
@@ -2714,6 +2954,7 @@ export type Database = {
           p_items: Json
           p_notes?: string
           p_order_id: string
+          p_quote?: Json
           p_tenant_id: string
         }
         Returns: {

@@ -72,7 +72,7 @@ select throws_ok(
   $$ select public.create_order_request('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
        '[{"product_id":"40000000-0000-4000-8000-0000000000a1","quantity":1}]'::jsonb,
        'cb000000-0000-4000-8000-0000000000b1', p_submission_key => gen_random_uuid()) $$,
-  '22023', NULL, 'ownerA cannot order in A for B''s customer');
+  '42501', NULL, 'ownerA cannot order in A for B''s customer');
 
 -- ── 4. Order in A using B's PRODUCT → rejected ────────────────────────────
 select throws_ok(

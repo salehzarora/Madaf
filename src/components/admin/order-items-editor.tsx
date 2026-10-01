@@ -2,6 +2,8 @@
 
 import { CheckCircle2, Pencil, Plus, Search, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import { useOrderQuote } from "@/lib/use-order-quote";
+import { useEffectivePrices } from "@/lib/use-effective-prices";
 import { ProductImage } from "@/components/product-image";
 import { QuantityStepper } from "@/components/quantity-stepper";
 import { Button } from "@/components/ui/button";
@@ -65,6 +67,9 @@ export function OrderItemsEditor({
     "error" | "insufficientStock" | "empty" | null
   >(null);
   const [done, setDone] = useState(false);
+  const [priceChanged, setPriceChanged] = useState(false);
+  const pricing = useEffectivePrices(products, { customerId: order.customerId || null });
+  const review = useOrderQuote({ customerId: order.customerId || null, orderId: order.id }, [...lines].map(([productId, quantity]) => ({ productId, quantity })), JSON.stringify(order), editing);
 
   function begin() {
     setLines(new Map(order.items.map((i) => [i.productId, i.quantity])));
@@ -76,6 +81,7 @@ export function OrderItemsEditor({
   }
 
   function setQty(productId: string, qty: number) {
+    if (pending) return;
     setLines((prev) => {
       const next = new Map(prev);
       if (qty <= 0) next.delete(productId);
@@ -105,18 +111,12 @@ export function OrderItemsEditor({
       .slice(0, 8);
   }, [products, lines, search, locale]);
 
-  const estimate = useMemo(() => {
-    let sum = 0;
-    for (const [productId, qty] of lines) {
-      const p = productById.get(productId);
-      const saved = originalById.get(productId);
-      if (saved) sum += qty * saved.unitPrice;
-      else if (p) sum += qty * p.wholesalePrice;
-    }
-    return sum;
-  }, [lines, productById, originalById]);
+  const estimate = review.quote ? Number(review.quote.headers.subtotal) : null;
+  function linePrice(id: string) { const quoted = review.quote?.lines.find(i => i.product_id === id); return quoted ? Number(quoted.unit_price_snapshot) : pricing.priceOf(id); }
 
   function onSave() {
+    if (pending || !review.quote) return;
+    const quote = review.quote.quote;
     const items = [...lines.entries()].map(([productId, quantity]) => ({
       productId,
       quantity,
@@ -134,13 +134,15 @@ export function OrderItemsEditor({
         items,
         notes: notes.trim(),
         locale,
+        quote,
       });
       if (result.ok) {
         setDone(true);
         setEditing(false);
         return;
       }
-      if (result.reason === "insufficient_stock") setErrorKey("insufficientStock");
+      if (result.reason === "pricing") { setPriceChanged(true); review.refresh(); pricing.retry(); }
+      else if (result.reason === "insufficient_stock") setErrorKey("insufficientStock");
       else if (result.reason === "locked") setErrorKey("error");
       else setErrorKey("error");
     });
@@ -212,7 +214,7 @@ export function OrderItemsEditor({
                       </p>
                       {saved || product ? (
                         <p className="text-xs text-ink-muted">
-                          <bdi dir="ltr">{formatCurrency(saved ? saved.unitPrice : product!.wholesalePrice, locale)}</bdi>
+                          <bdi dir="ltr">{saved ? formatCurrency(saved.unitPrice, locale) : linePrice(productId) === null ? "—" : formatCurrency(linePrice(productId)!, locale)}</bdi>
                           {" · "}
                           {saved
                             ? saved.packageTypeSnapshot && saved.unitsPerPackageSnapshot !== undefined
@@ -284,7 +286,7 @@ export function OrderItemsEditor({
                           {productName(product, locale)}
                         </span>
                         <span className="shrink-0 text-xs text-ink-muted">
-                          {formatCurrency(product.wholesalePrice, locale)}
+                          {pricing.priceOf(product.id) === null ? "—" : formatCurrency(pricing.priceOf(product.id)!, locale)}
                         </span>
                       </button>
                     </li>
@@ -294,7 +296,7 @@ export function OrderItemsEditor({
             </div>
 
             {/* Notes */}
-            <Textarea
+            <Textarea disabled={pending}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={dict.cart.notesPlaceholder}
@@ -306,7 +308,7 @@ export function OrderItemsEditor({
                 {dict.common.subtotal}
               </span>
               <span className="font-bold tabular-nums text-ink">
-                {formatCurrency(estimate, locale)}
+                {estimate === null ? "—" : formatCurrency(estimate, locale)}
               </span>
             </div>
 
@@ -325,11 +327,13 @@ export function OrderItemsEditor({
             ) : null}
 
             <div className="flex flex-col gap-2 sm:flex-row-reverse">
+              {priceChanged ? <p role="status">{dict.pricing.changed}</p> : null}
+              {!review.quote ? <p role="status">{dict.pricing.unavailable} <button type="button" onClick={review.refresh}>{dict.pricing.retry}</button></p> : null}
               <Button
                 type="button"
                 size="sm"
                 onClick={onSave}
-                disabled={pending}
+                disabled={pending || !review.quote}
                 className="sm:flex-1"
               >
                 {pending ? t.saving : t.save}

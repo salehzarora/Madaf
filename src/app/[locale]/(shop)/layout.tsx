@@ -11,6 +11,7 @@ import {
   listProducts,
 } from "@/lib/data";
 import { ShopDataProvider } from "@/lib/shop-data-context";
+import { storefrontPricingIdentity } from "@/lib/data/pricing";
 
 /**
  * Storefront chrome for all customer/sales-facing pages. This is where the
@@ -32,11 +33,12 @@ export default async function ShopLayout({
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale as Locale);
 
-  const [products, categories, manufacturers, customers] = await Promise.all([
+  const [products, categories, manufacturers, customers, pricingIdentity] = await Promise.all([
     listProducts(),
     listCategories(),
     listManufacturers(),
     listCustomers(),
+    storefrontPricingIdentity(),
   ]);
 
   return (
@@ -46,7 +48,7 @@ export default async function ShopLayout({
       manufacturers={manufacturers}
       customers={customers}
     >
-      <CartProvider>
+      <CartProvider key={pricingIdentity}>
         <AppShell locale={locale as Locale} dict={dict}>
           {children}
         </AppShell>

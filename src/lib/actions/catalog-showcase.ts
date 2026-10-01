@@ -1,4 +1,5 @@
 "use server";
+import { PricingError, type QuoteInput } from "@/lib/pricing";
 
 /**
  * Product-showcase link Server Actions (M7H.3). Owner/admin issue a
@@ -110,12 +111,13 @@ export interface GuestOrderResult {
   /** Customer-facing public ref (MDF-XXXXXXXX). */
   publicRef?: string;
   /** "conflict" when the submission key was reused with a changed order (MDF40). */
-  reason?: "conflict";
+  reason?: "pricing" | "conflict";
 }
 
 /** Anon guest order from a showcase link (M7I.1). Tenant + store snapshot are
  * handled server-side; the visitor sees only the public ref. */
 export async function submitShowcaseOrderAction(input: {
+  quote?: QuoteInput;
   token: string;
   items: { productId: string; quantity: number }[];
   store: Record<string, unknown>;
@@ -139,6 +141,7 @@ export async function submitShowcaseOrderAction(input: {
         return { ok: false };
       }
     }
+    // Quote validation belongs after committed replay in the existing RPC.
     if (!isSubmissionKey(input.submissionKey)) return { ok: false };
     const raw = input.store ?? {};
     const name = str(raw.name, MAX_NAME);
@@ -158,10 +161,12 @@ export async function submitShowcaseOrderAction(input: {
       },
       input.submissionKey,
       str(input.notes, MAX_NOTES),
+      input.quote,
     );
     if (!publicRef) return { ok: false };
     return { ok: true, publicRef };
   } catch (error) {
+    if (error instanceof PricingError) return { ok: false, reason: "pricing" };
     if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitShowcaseOrderAction failed:", error);
     return { ok: false };

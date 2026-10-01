@@ -1,4 +1,7 @@
 "use client";
+import { getDataMode } from "@/lib/data/mode";
+import { useOrderQuote } from "@/lib/use-order-quote";
+import { useEffectivePrices } from "@/lib/use-effective-prices";
 
 import {
   CheckCircle2,
@@ -7,7 +10,7 @@ import {
   Plus,
   ShoppingCart,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { CatalogFilterBar } from "@/components/shop/catalog-filter-bar";
 import { EmptyState } from "@/components/empty-state";
 import { LocaleSwitcher } from "@/components/locale-switcher";
@@ -58,6 +61,7 @@ export function ShopView({
   token: string;
   catalog: TokenCatalog;
 }) {
+  const requiresQuote = getDataMode() !== "mock";
   const t = dict.access.shop;
   const [cart, setCart] = useState<Map<string, number>>(new Map());
   const [notes, setNotes] = useState("");
@@ -70,6 +74,18 @@ export function ShopView({
   // unavailable) — fail closed, do NOT submit (a volatile key would risk a
   // duplicate order after refresh).
   const [prepFailed, setPrepFailed] = useState(false);
+  const pricing = useEffectivePrices(catalog.products, { token, showcase: false });
+  const review = useOrderQuote({ token, showcase: false }, [...cart].map(([productId, quantity]) => ({ productId, quantity })), pricing.key, pricing.ready);
+  const [priceChanged, setPriceChanged] = useState(false);
+  const [attempt, setAttempt] = useState<Parameters<typeof submitShopOrderAction>[0] | null>(null);
+  const busy = useRef(false);
+  const reviewedKey = useRef<string | null>(null);
+  const [unresolved, setUnresolved] = useState(false);
+  function priceText(id: string, quantity = 1, divisor = 1) {
+    const quoted = review.quote?.lines.find(i => i.product_id === id);
+    const price = quoted ? Number(quoted.unit_price_snapshot) : pricing.priceOf(id);
+    return price === null ? "—" : formatCurrency(price * quantity / divisor, locale);
+  }
   const [filters, setFilters] = useState(emptyCatalogFilters);
 
   const categoryById = useMemo(
@@ -81,11 +97,12 @@ export function ShopView({
     [catalog.manufacturers],
   );
   const visible = useMemo(
-    () => filterAndSortProducts(catalog.products, filters, manufacturerById, locale),
-    [catalog.products, filters, manufacturerById, locale],
+    () => filterAndSortProducts(catalog.products, filters, manufacturerById, locale, pricing),
+    [catalog.products, filters, manufacturerById, locale, pricing],
   );
 
   function setQty(productId: string, qty: number) {
+    if (pending || attempt) return;
     setCart((prev) => {
       const next = new Map(prev);
       if (qty <= 0) next.delete(productId);
@@ -95,16 +112,11 @@ export function ShopView({
   }
 
   const lineCount = cart.size;
-  const estimate = useMemo(() => {
-    let sum = 0;
-    for (const product of catalog.products) {
-      const qty = cart.get(product.id);
-      if (qty) sum += qty * product.wholesalePrice;
-    }
-    return sum;
-  }, [cart, catalog.products]);
+  const estimate = review.quote ? Number(review.quote.headers.subtotal) : requiresQuote ? null : [...cart].reduce((sum, [id, qty]) => sum + qty * (pricing.priceOf(id) ?? 0), 0);
 
   function onSubmit() {
+    if (unresolved || busy.current || (!attempt && requiresQuote && !review.quote)) return;
+    busy.current = true;
     setError(false);
     setConflict(false);
     setPrepFailed(false);
@@ -112,28 +124,39 @@ export function ShopView({
       productId,
       quantity,
     }));
-    if (items.length === 0) return;
+    if (items.length === 0 && !attempt) { busy.current = false; return; }
     startTransition(async () => {
       // FIX2: one submission key per logical order, PERSISTED in sessionStorage
       // (scoped to this token) so a refresh/remount retry reuses it. Fail closed
       // if storage is unavailable — do NOT submit with a volatile key.
-      const keyResult = await getOrCreateTokenSubmissionKey("shop_token", token);
+      const keyResult = attempt ? { ok: true as const, key: attempt.submissionKey, existing: true } : await getOrCreateTokenSubmissionKey("shop_token", token);
       if (!keyResult.ok) {
         setPrepFailed(true);
+        busy.current = false;
         return;
       }
+      if (requiresQuote && keyResult.existing && !attempt && reviewedKey.current !== keyResult.key) {
+        setUnresolved(true); busy.current = false; return;
+      }
+      reviewedKey.current = keyResult.key;
       try {
-        const result = await submitShopOrderAction({
+        const payload = attempt ?? {
           token,
           items,
           notes: notes.trim() || undefined,
           submissionKey: keyResult.key,
-        });
+          ...(review.quote ? { quote: review.quote.quote } : {}),
+        };
+        setAttempt(payload);
+        const result = await submitShopOrderAction({ ...payload, ...(attempt && requiresQuote ? { quote: { mode: "replay_only" } as const } : {}) });
         if (result.ok && result.publicRef) {
+          setAttempt(null);
           setPublicRef(result.publicRef);
           setCart(new Map());
           setNotes("");
           await clearTokenSubmissionKey("shop_token", token); // next order = new key
+        } else if (result.reason === "pricing") {
+          setAttempt(null); setPriceChanged(true); pricing.retry(); review.refresh();
         } else if (result.reason === "conflict") {
           setConflict(true); // key reused with a changed order; keep the cart + key
         } else {
@@ -143,13 +166,16 @@ export function ShopView({
         // Ambiguous transport/server-action failure: KEEP the persisted key so the
         // retry is the same logical order (the DB returns the original if it committed).
         setError(true);
-      }
+      } finally { busy.current = false; }
     });
   }
 
   // Explicit new attempt after a conflict: rotate the persisted key, keep the cart.
-  function startNewAttempt() {
-    void rotateTokenSubmissionKey("shop_token", token);
+  async function startNewAttempt() {
+    const rotated = await rotateTokenSubmissionKey("shop_token", token);
+    if (!rotated.ok) { setPrepFailed(true); return; }
+    reviewedKey.current = rotated.key;
+    setAttempt(null);
     setConflict(false);
     setError(false);
     setPrepFailed(false);
@@ -279,7 +305,7 @@ export function ShopView({
                       {packageLabel(product, dict)}
                     </p>
                     <p className="private-shop-product-price" dir="ltr">
-                      {formatCurrency(product.wholesalePrice, locale)}
+                      {priceText(product.id)}
                     </p>
                   </div>
                   <div className="private-shop-product-action">
@@ -320,7 +346,7 @@ export function ShopView({
         {/* Notes + disclaimer */}
         {lineCount > 0 ? (
           <div className="private-shop-notes">
-            <Textarea
+            <Textarea disabled={pending || !!attempt}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={dict.cart.notesPlaceholder}
@@ -388,6 +414,10 @@ export function ShopView({
               </Button>
             </div>
           ) : null}
+            {priceChanged ? <p role="status">{dict.pricing.changed}</p> : null}
+            {unresolved ? <p role="alert">{dict.pricing.unresolved}</p> : null}
+              {attempt && !pending ? <p role="status">{dict.pricing.pending}</p> : null}
+            {!attempt && requiresQuote && !review.quote ? <p role="status">{dict.pricing.unavailable} <button type="button" onClick={review.refresh}>{dict.pricing.retry}</button></p> : null}
           <div className="private-shop-order-inner">
             <div className="private-shop-order-summary">
               <p className="private-shop-line-count">
@@ -395,13 +425,13 @@ export function ShopView({
                 {dict.cart.title} · {formatNumber(lineCount, locale)}
               </p>
               <p className="private-shop-estimate" dir="ltr">
-                {formatCurrency(estimate, locale)}
+                {estimate === null ? "—" : formatCurrency(estimate, locale)}
               </p>
             </div>
             <Button
               size="lg"
               onClick={onSubmit}
-              disabled={pending || conflict}
+              disabled={unresolved || pending || conflict || (!attempt && (lineCount === 0 || (requiresQuote && !review.quote)))}
               className="private-shop-submit"
             >
               <ShoppingCart className="size-5" aria-hidden />

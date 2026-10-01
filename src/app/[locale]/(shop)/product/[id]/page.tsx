@@ -1,3 +1,4 @@
+import { EffectivePrice } from "@/components/effective-price";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,7 +17,6 @@ import {
   getProduct,
   listProducts,
 } from "@/lib/data";
-import { formatCurrency } from "@/lib/format";
 
 // This page reads authenticated, tenant-scoped Supabase data through the
 // cookie-bound client, so it MUST render dynamically per request — never
@@ -61,7 +61,7 @@ export default async function ProductPage({
     [dict.product.packageInfo, packageLabel(product, dict)],
     [
       dict.product.pricePerUnit,
-      formatCurrency(product.wholesalePrice / product.unitsPerPackage, locale),
+      <EffectivePrice key="price-per-unit" productId={product.id} locale={locale} divisor={product.unitsPerPackage} />,
     ],
     [
       dict.product.sku,
@@ -128,16 +128,13 @@ export default async function ProductPage({
 
           <div className="storefront-product-purchase">
             <p className="storefront-product-price">
-              <bdi dir="ltr">{formatCurrency(product.wholesalePrice, locale)}</bdi>
+              <bdi dir="ltr"><EffectivePrice productId={product.id} locale={locale} /></bdi>
               <span>
                 / {dict.packaging[product.packageType]}
               </span>
             </p>
             <p className="storefront-product-unit-price">
-              <bdi dir="ltr">{formatCurrency(
-                product.wholesalePrice / product.unitsPerPackage,
-                locale,
-              )}</bdi>{" "}
+              <bdi dir="ltr"><EffectivePrice productId={product.id} locale={locale} divisor={product.unitsPerPackage} /></bdi>{" "}
               / {dict.units[product.baseUnit]}
             </p>
             <div className="storefront-product-controls">

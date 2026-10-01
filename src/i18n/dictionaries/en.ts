@@ -1,6 +1,29 @@
 import type { Dictionary } from "../types";
 
 const en: Dictionary = {
+  pricing: {
+  "unresolved": "A previous submission needs reconciliation. Its original details are no longer available here. Contact the supplier to check the order before starting another request.",
+  "title": "Special prices",
+  "base": "Base price",
+  "special": "Special price",
+  "stale": "Package changed. Reconfirm the agreement.",
+  "reconfirm": "Reconfirm package",
+  "remove": "Remove agreement",
+  "removed": "Agreement removed",
+  "unavailable": "Pricing is unavailable. Refresh before ordering.",
+  "denied": "Pricing access is no longer available for this customer. Select an authorized customer or sign in again.",
+  "retry": "Retry",
+  "changed": "Terms changed. Review the refreshed amounts and confirm again.",
+  "positive": "Enter a package price from ₪0.01 to ₪9,999,999, with up to two decimals.",
+  "paused": "Ordering is temporarily paused.",
+  "refresh": "Refresh required",
+  "save": "Save",
+  "saved": "Saved",
+  "search": "Search products",
+  "disabled": "Prepared agreements remain inactive until pricing is activated.",
+  "review": "Review current prices",
+  "pending": "An earlier request may have completed. Retry the same request to reconcile it."
+},
   push: {"newOrder": "New order", "signupRequest": "New store signup request", "orderStatus": "Order status updated", "lowStock": "Low stock", "remaining": "Remaining", "product": "Product"},
   notificationSettings: {
   "title": "Notifications",

@@ -101,7 +101,7 @@ export function CatalogCartReview({ locale, dict }: { locale: Locale; dict: Dict
           <ShoppingCart className="size-5 shrink-0 text-accent" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-band-muted"><bdi dir="ltr">{totalPackages}</bdi> {dict.common.packages}</p>
-            <p className="text-lg font-bold tabular-nums"><bdi dir="ltr">{formatCurrency(subtotal, locale)}</bdi></p>
+            <p className="text-lg font-bold tabular-nums"><bdi dir="ltr">{subtotal === null ? "—" : formatCurrency(subtotal, locale)}</bdi></p>
           </div>
           <button
             type="button"

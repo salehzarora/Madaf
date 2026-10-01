@@ -1,4 +1,5 @@
 "use client";
+import { EffectivePrice } from "@/components/effective-price";
 
 import { AlertTriangle, Check, Plus } from "lucide-react";
 import Link from "next/link";
@@ -9,7 +10,6 @@ import { interpolate } from "@/i18n/dictionaries";
 import type { Dictionary } from "@/i18n/types";
 import { useCart } from "@/lib/cart-context";
 import { packageLabel, productName } from "@/lib/catalog-helpers";
-import { formatCurrency } from "@/lib/format";
 import type { Category, Manufacturer, Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -56,11 +56,11 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
       <div className="catalog-product-order">
         <div className="catalog-product-prices">
           <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-            <bdi dir="ltr" className="catalog-package-price text-[21px] font-extrabold tabular-nums tracking-tight text-ink">{formatCurrency(product.wholesalePrice, locale)}</bdi>
+            <bdi dir="ltr" className="catalog-package-price text-[21px] font-extrabold tabular-nums tracking-tight text-ink"><EffectivePrice productId={product.id} locale={locale} /></bdi>
             <span className="text-[10px] text-ink-soft">/ {dict.packaging[product.packageType]}</span>
           </p>
           <p className="mt-0.5 text-[11px] text-ink-soft">
-            <bdi dir="ltr">{formatCurrency(product.wholesalePrice / product.unitsPerPackage, locale)}</bdi>
+            <bdi dir="ltr"><EffectivePrice productId={product.id} locale={locale} divisor={product.unitsPerPackage} /></bdi>
             {" / "}{dict.units[product.baseUnit]}
           </p>
         </div>
@@ -88,7 +88,7 @@ export function ProductCard({ product, category, manufacturer, locale, dict }: {
         <p className="catalog-line-total" aria-hidden={quantity === 0 ? true : undefined}>
           {quantity > 0 ? <>
             <span className="inline-flex items-center gap-1"><Check className="size-3 shrink-0" aria-hidden />{dict.catalog.inCart}</span>
-            <bdi dir="ltr" aria-label={dict.catalog.lineTotal}>{formatCurrency(quantity * product.wholesalePrice, locale)}</bdi>
+            <bdi dir="ltr" aria-label={dict.catalog.lineTotal}><EffectivePrice productId={product.id} locale={locale} quantity={quantity} /></bdi>
           </> : null}
         </p>
       </div>

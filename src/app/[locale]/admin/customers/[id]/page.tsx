@@ -5,6 +5,7 @@ import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerLifecycleToggle } from "@/components/admin/customer-lifecycle-toggle";
+import { CustomerSpecialPrices } from "@/components/admin/customer-special-prices";
 import { CustomerLinksManager } from "@/components/admin/customer-links-manager";
 import { CustomerOriginBadge } from "@/components/admin/customer-origin-badge";
 import { CustomerTimeline } from "@/components/admin/customer-timeline";
@@ -75,6 +76,7 @@ export default async function AdminCustomerDetailPage({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      {canEdit ? <CustomerSpecialPrices customerId={id} locale={locale} dict={dict} /> : null}
       <div>
         <Link
           href={`/${locale}/admin/customers`}

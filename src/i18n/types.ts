@@ -6,6 +6,12 @@
  * `interpolate()` from src/i18n/dictionaries/index.ts.
  */
 export interface Dictionary {
+  pricing: {
+    title: string; base: string; special: string; stale: string; reconfirm: string;
+    remove: string; removed: string; unavailable: string; denied: string; retry: string; changed: string;
+    positive: string; paused: string; refresh: string; save: string; saved: string;
+    search: string; disabled: string; review: string; pending: string; unresolved: string;
+  };
   push: { newOrder: string; signupRequest: string; orderStatus: string; lowStock: string; remaining: string; product: string };
   notificationSettings: {
     title: string; description: string; save: string; saving: string; saved: string; error: string; demo: string;

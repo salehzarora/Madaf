@@ -61,5 +61,5 @@ export default async function ShopTokenPage({
     );
   }
 
-  return <ShopView locale={locale} dict={dict} token={token} catalog={catalog} />;
+  return <ShopView key={token} locale={locale} dict={dict} token={token} catalog={catalog} />;
 }

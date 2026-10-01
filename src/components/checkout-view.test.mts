@@ -18,10 +18,17 @@ const pushes: string[] = [], replacements: string[] = [];
 const router = { push: (url: string) => pushes.push(url), replace: (url: string) => replacements.push(url) };
 let action: (input: Payload) => Promise<Result> = async () => ({ ok: false });
 let mode = "supabase";
+let quoteRevision = 1;
 mock.module("next/navigation", { namedExports: { useRouter: () => router } });
 mock.module("@/lib/data/mode", { namedExports: { getDataMode: () => mode } });
 mock.module("@/lib/actions/orders", { namedExports: {
   submitOrderAction: (input: Payload) => { calls.push(input); return action(input); },
+} });
+mock.module("@/lib/actions/pricing", { namedExports: {
+  resolvePricesAction: async (_scope: unknown, ids: string[]) => ({ mode: "active", prices: ids.map(id => ({ product_id: id, status: "base", price: id === "first" ? "36.50" : "10.00", vat: "0.18" })) }),
+  quoteOrderAction: async (_scope: unknown, items: CartItem[]) => ({ mode: "active", quote: {version: 1, digest: (quoteRevision === 1 ? "a" : "b").repeat(64)}, unchangedItems: false,
+    lines: items.map(i => ({ product_id: i.productId, quantity:i.quantity, unit_price_snapshot:i.productId === "first" ? (quoteRevision === 1 ? "36.50" : "40.00") : "10.00", vat_rate_snapshot:"0.18", line_subtotal:"0",line_vat:"0",line_total:"0" })),
+    headers: {subtotal:quoteRevision === 1 ? "103.00" : "110.00",vat:"18.54",total:"121.54"} }),
 } });
 // Load the controller/providers through the same tsx CJS graph so React uses
 // one context instance rather than separate ESM/CJS provider identities.
@@ -33,7 +40,6 @@ const nativeFormData = globalThis.FormData;
 globalThis.FormData = dom.window.FormData;
 after(() => { globalThis.FormData = nativeFormData; });
 
-const key = "11110000-0000-4000-8000-00000000004d";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const product: Product = {
   id: "first", sku: "CHECKOUT-004D", categoryId: "missing", manufacturerId: "",
@@ -46,9 +52,9 @@ const customer: Customer = { id: "shop", name: "Test shop", type: "grocery", pho
 const initialItems = [{ productId: "first", quantity: 2 }, { productId: "second", quantity: 3 }];
 const cleanups: (() => void)[] = [];
 type Cart = ReturnType<typeof useCart>;
-function mount(locale: Locale = "en", options: { items?: CartItem[]; hydrate?: boolean; preserveStorage?: boolean; submissionKey?: string | null } = {}) {
+async function mount(locale: Locale = "en", options: { items?: CartItem[]; hydrate?: boolean; preserveStorage?: boolean; submissionKey?: string | null } = {}) {
   if (!options.preserveStorage) dom.window.localStorage.setItem("madaf.cart.v1", JSON.stringify({
-    items: options.items ?? initialItems, customerId: customer.id, submissionKey: options.submissionKey === undefined ? key : options.submissionKey,
+    items: options.items ?? initialItems, customerId: customer.id, submissionKey: options.submissionKey ?? null,
   }));
   const container = document.createElement("div");
   document.body.append(container);
@@ -74,22 +80,26 @@ function mount(locale: Locale = "en", options: { items?: CartItem[]; hydrate?: b
   }
   const cleanup = () => { act(() => root.unmount()); container.remove(); };
   cleanups.push(cleanup);
+  for (let i = 0; i < 30 && captured.current?.items.length && !captured.current.orderQuote && mode !== "mock"; i++) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
   return { container, dict, errors, cart: () => { assert.ok(captured.current); return captured.current; } };
 }
 function stored() { return JSON.parse(dom.window.localStorage.getItem("madaf.cart.v1")!); }
-function submitButton(h: ReturnType<typeof mount>) { return h.container.querySelector<HTMLButtonElement>("button[type=submit]")!; }
-function button(h: ReturnType<typeof mount>, text: string) {
+function submitButton(h: Awaited<ReturnType<typeof mount>>) { return h.container.querySelector<HTMLButtonElement>("button[type=submit]")!; }
+function button(h: Awaited<ReturnType<typeof mount>>, text: string) {
   const found = Array.from(h.container.querySelectorAll("button")).find(b => b.textContent?.trim() === text);
   assert.ok(found, text); return found;
 }
 function click(element: HTMLButtonElement) { act(() => element.click()); }
-async function submit(h: ReturnType<typeof mount>) {
+async function submit(h: Awaited<ReturnType<typeof mount>>) {
   await act(async () => { h.container.querySelector("form")!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true })); });
 }
-function intact(h: ReturnType<typeof mount>) {
+function intact(h: Awaited<ReturnType<typeof mount>>) {
   assert.deepEqual(h.cart().items, initialItems);
   assert.deepEqual(stored().items, initialItems);
-  assert.equal(stored().submissionKey, key);
+  if (calls.length) assert.equal(stored().submissionKey, calls[0].submissionKey);
+  else assert.equal(stored().submissionKey, null);
   assert.equal(stored().customerId, customer.id);
   assert.deepEqual(pushes, []);
   assert.deepEqual(replacements, []);
@@ -97,12 +107,12 @@ function intact(h: ReturnType<typeof mount>) {
 afterEach(() => {
   cleanups.splice(0).reverse().forEach(fn => fn());
   dom.window.localStorage.clear(); calls.length = 0; pushes.length = 0; replacements.length = 0;
-  action = async () => ({ ok: false }); mode = "supabase";
+  action = async () => ({ ok: false }); mode = "supabase"; quoteRevision = 1;
 });
 
 for (const locale of locales) {
-  test(`${locale}: real hydration restores populated cart/customer and summary without premature redirect`, () => {
-    const h = mount(locale, { hydrate: true });
+  test(`${locale}: real hydration restores populated cart/customer and summary without premature redirect`, async () => {
+    const h = await mount(locale, { hydrate: true });
     assert.deepEqual(h.errors, []);
     assert.equal(h.cart().hydrated, true);
     assert.equal(h.container.querySelector("h1")?.textContent, h.dict.checkout.title);
@@ -120,15 +130,15 @@ for (const locale of locales) {
     assert.equal(submitButton(h).disabled, false);
     intact(h);
   });
-  test(`${locale}: hydrated empty cart redirects to its localized cart and cannot submit`, () => {
-    const h = mount(locale, { items: [], hydrate: true });
+  test(`${locale}: hydrated empty cart redirects to its localized cart and cannot submit`, async () => {
+    const h = await mount(locale, { items: [], hydrate: true });
     assert.deepEqual(replacements, [`/${locale}/cart`]);
     assert.equal(submitButton(h).disabled, true);
     assert.deepEqual(calls, []);
   });
 }
 test("exact payload preserves untrimmed notes and excludes edited display-only customer/delivery fields", async () => {
-  const h = mount("ar");
+  const h = await mount("ar");
   h.container.querySelectorAll<HTMLInputElement>("input[id]").forEach(input => { input.value = "Changed display value"; assert.equal(input.name, ""); });
   click(button(h, h.dict.checkout.scheduled));
   const date = h.container.querySelector<HTMLInputElement>("input[type=date]")!;
@@ -136,17 +146,17 @@ test("exact payload preserves untrimmed notes and excludes edited display-only c
   assert.equal(date.name, "");
   h.container.querySelector<HTMLTextAreaElement>("textarea[name=notes]")!.value = "  Leave beside the door  \n";
   await submit(h);
-  assert.deepEqual(calls, [{ customerId: "shop", items: initialItems, notes: "  Leave beside the door  \n", locale: "ar", submissionKey: key }]);
+  assert.deepEqual(calls, [{ customerId: "shop", items: initialItems, notes: "  Leave beside the door  \n", locale: "ar", submissionKey: calls[0].submissionKey, quote: {version: 1, digest: (quoteRevision === 1 ? "a" : "b").repeat(64)} }]);
   intact(h);
 });
 test("blank notes stay explicitly undefined in the payload", async () => {
-  const h = mount();
+  const h = await mount();
   h.container.querySelector("textarea")!.value = " \n ";
   await submit(h);
-  assert.deepEqual(calls[0], { customerId: "shop", items: initialItems, notes: undefined, locale: "en", submissionKey: key });
+  assert.deepEqual(calls[0], { customerId: "shop", items: initialItems, notes: undefined, locale: "en", submissionKey: calls[0].submissionKey, quote: {version: 1, digest: (quoteRevision === 1 ? "a" : "b").repeat(64)} });
 });
-test("delivery only reveals an uncontrolled date and toggling away resets it", () => {
-  const h = mount();
+test("delivery only reveals an uncontrolled date and toggling away resets it", async () => {
+  const h = await mount();
   assert.equal(h.container.querySelector("input[type=date]"), null);
   click(button(h, h.dict.checkout.scheduled));
   const date = h.container.querySelector<HTMLInputElement>("input[type=date]")!;
@@ -160,12 +170,12 @@ test("delivery only reveals an uncontrolled date and toggling away resets it", (
 test("pending request disables the single submit while fields and cart remain intact", async () => {
   let resolve!: (result: Result) => void;
   action = () => new Promise(done => { resolve = done; });
-  const h = mount();
+  const h = await mount();
   await submit(h);
   assert.equal(h.container.querySelectorAll("button[type=submit]").length, 1);
   assert.equal(submitButton(h).disabled, true);
-  assert.equal(submitButton(h).textContent?.trim(), h.dict.checkout.sendOrder);
-  assert.equal(h.container.querySelectorAll("input:disabled, textarea:disabled").length, 0);
+  assert.equal(submitButton(h).textContent?.trim(), h.dict.pricing.retry);
+  assert.equal(h.container.querySelectorAll("input:disabled, textarea:disabled").length, 1);
   intact(h);
   await act(async () => resolve({ ok: false }));
   assert.equal(submitButton(h).disabled, false);
@@ -176,7 +186,7 @@ for (const failure of ["rejected result", "transport rejection", "success withou
       if (failure === "transport rejection") throw Error("connection lost after commit");
       return { ok: failure === "success without publicRef" };
     };
-    const h = mount();
+    const h = await mount();
     await submit(h);
     assert.equal(h.container.querySelector("[role=alert]")?.textContent, h.dict.checkout.sendError);
     assert.equal(submitButton(h).disabled, false); intact(h);
@@ -185,20 +195,22 @@ for (const failure of ["rejected result", "transport rejection", "success withou
     assert.equal(calls[0].submissionKey, calls[1].submissionKey); intact(h);
   });
 }
-test("first generated key survives a failed request and a remount retry", async () => {
-  let h = mount("en", { submissionKey: null });
+test("refresh preserves key but missing original payload stays unresolved without guessing", async () => {
+  let h = await mount("en", { submissionKey: null });
   await submit(h);
   const generated = calls[0].submissionKey;
   assert.match(generated, uuid);
   cleanups.splice(0).forEach(fn => fn());
-  h = mount("en", { preserveStorage: true });
+  h = await mount("en", { preserveStorage: true });
   await submit(h);
-  assert.equal(calls[1].submissionKey, generated);
+  assert.equal(calls.length, 1);
+  assert.equal(submitButton(h).disabled, true);
+  assert.ok(h.container.textContent?.includes(h.dict.pricing.unresolved));
   assert.equal(stored().submissionKey, generated);
 });
 test("conflict keeps cart/key until an explicit new attempt; only the next submit generates a new key", async () => {
   action = async () => ({ ok: false, reason: "conflict" });
-  const h = mount(); await submit(h);
+  const h = await mount(); await submit(h);
   assert.ok(h.container.querySelector("[role=alert]")?.textContent?.includes(h.dict.checkout.conflictError));
   assert.equal(submitButton(h).disabled, true); intact(h);
   click(button(h, h.dict.checkout.conflictRetry));
@@ -209,12 +221,12 @@ test("conflict keeps cart/key until an explicit new attempt; only the next submi
   assert.equal(submitButton(h).disabled, false);
   await submit(h);
   assert.match(calls[1].submissionKey, uuid);
-  assert.notEqual(calls[1].submissionKey, key);
+  assert.notEqual(calls[1].submissionKey, calls[0].submissionKey);
 });
 test("confirmed success clears cart/key, retains customer and redirects using encoded publicRef without an empty-cart race", async () => {
   const publicRef = "MDF-PUBLIC /?&אב";
   action = async () => ({ ok: true, publicRef });
-  const h = mount("he"); await submit(h);
+  const h = await mount("he"); await submit(h);
   assert.deepEqual(stored(), { items: [], customerId: "shop", submissionKey: null });
   assert.deepEqual(pushes, [`/he/order-success?n=${encodeURIComponent(publicRef)}`]);
   assert.deepEqual(replacements, []);
@@ -222,7 +234,7 @@ test("confirmed success clears cart/key, retains customer and redirects using en
 });
 test("mock submit retains its 600ms delay, never calls the action, then clears and navigates", async () => {
   mode = "mock";
-  const h = mount();
+  const h = await mount();
   let finish: (() => void) | undefined;
   const timer = mock.method(dom.window, "setTimeout", (callback: () => void, delay: number) => { assert.equal(delay, 600); finish = callback; return 1; });
   try {
@@ -235,3 +247,12 @@ test("mock submit retains its 600ms delay, never calls the action, then clears a
     assert.deepEqual(replacements, []);
   } finally { timer.mock.restore(); }
 });
+
+test("changed quote refreshes reviewed amounts without autosubmit or key rotation",async()=>{
+ const h=await mount();action=async()=>{quoteRevision=2;return {ok:false,reason:"pricing"};};await submit(h);
+ const key=calls[0].submissionKey;
+ for(let i=0;i<30&&h.cart().orderQuote?.quote.digest!=="b".repeat(64);i++)await act(async()=>{await new Promise(r=>setTimeout(r,10));});
+ assert.equal(calls.length,1);assert.equal(h.cart().subtotal,110);assert.ok(h.container.textContent?.includes(h.dict.pricing.changed));assert.equal(stored().submissionKey,key);
+ action=async()=>({ok:false});await submit(h);assert.equal(calls.length,2);assert.equal(calls[1].submissionKey,key);assert.deepEqual(calls[1].quote,{version:1,digest:"b".repeat(64)});
+});
+test("double-click while pending makes one creation call",async()=>{let finish!:(r:Result)=>void;action=()=>new Promise(r=>{finish=r;});const h=await mount();await submit(h);await submit(h);assert.equal(calls.length,1);await act(async()=>finish({ok:false}));await submit(h);assert.equal(calls.length,2);assert.deepEqual(calls[1].quote,{mode:"replay_only"});await act(async()=>finish({ok:false}));});

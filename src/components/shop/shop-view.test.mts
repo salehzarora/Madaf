@@ -29,7 +29,14 @@ import type { TokenCatalog } from "@/lib/data/token";
 import { categories, manufacturers, products } from "@/lib/mock";
 
 // ── Capture the action's submission key; control its result per-test ──────────
+let mode = "mock";
+mock.module("@/lib/data/mode", { namedExports: { getDataMode: () => mode } });
+mock.module("@/lib/actions/pricing", { namedExports: {
+  resolvePricesAction: async (_scope: unknown, ids: string[]) => ({mode:"active",prices:ids.map(product_id=>({product_id,status:"customer_agreement",price:"7.25",vat:"0.18"}))}),
+  quoteOrderAction: async (_scope: unknown, items: {productId:string;quantity:number}[]) => ({mode:"active",quote:{version:1,digest:"a".repeat(64)},unchangedItems:false,lines:items.map(i=>({product_id:i.productId,quantity:i.quantity,unit_price_snapshot:"7.25",vat_rate_snapshot:"0.18",line_subtotal:"7.25",line_vat:"1.31",line_total:"8.56"})),headers:{subtotal:"7.25",vat:"1.31",total:"8.56"}}),
+} });
 interface ActionCall {
+  quote?: {version:1;digest:string}|{mode:"replay_only"};
   token: string;
   submissionKey: string;
   items: { productId: string; quantity: number }[];
@@ -103,6 +110,7 @@ function unmountAll(): void {
 afterEach(() => {
   unmountAll();
   calls.length = 0;
+  mode = "mock";
   actionImpl = async () => ({ ok: false });
   dom.window.sessionStorage.clear();
 });
@@ -139,9 +147,10 @@ async function addAndSubmit(container: HTMLElement): Promise<number> {
   const submit = buttonByText(container, dict.access.shop.submit);
   assert.ok(submit, "submit button present");
   const before = calls.length;
+  if (mode === "supabase") await waitFor(() => !submit.disabled, "reviewed quote ready");
   await click(submit);
   await waitFor(
-    () => calls.length > before || (container.textContent ?? "").includes(dict.access.shop.prepError),
+    () => calls.length > before || (container.textContent ?? "").includes(dict.access.shop.prepError) || (container.textContent ?? "").includes(dict.pricing.unresolved),
     "submit resolves (action called or prep error shown)",
   );
   return before;
@@ -439,4 +448,19 @@ test("empty catalog retains its existing dead-end copy without discovery or orde
   const container = mount(TOKEN, { ...catalog(), products: [] });
   assert.equal(container.querySelector("input,select,textarea,.private-shop-order-bar,.private-shop-product"), null);
   assert.ok(container.textContent?.includes(dict.access.shop.empty));
+});
+
+// Active pricing coverage uses the real controller with reviewed server DTOs.
+test("active pricing: lost response replays the frozen payload despite storage loss", async () => {
+  mode = "supabase";
+  const c=mount();await addAndSubmit(c);
+  assert.deepEqual(calls[0].quote,{version:1,digest:"a".repeat(64)});
+  const original=structuredClone(calls[0]);
+  const fail=mock.method(dom.window.Storage.prototype,"setItem",()=>{throw Error("storage blocked");});
+  try {await addAndSubmit(c);assert.equal(calls.length,2);assert.deepEqual(calls[1],{...original,quote:{mode:"replay_only"}});}finally{fail.mock.restore();}
+});
+test("active pricing: refresh with missing original payload stays unresolved without a guessed request", async () => {
+  mode="supabase";let c=mount();await addAndSubmit(c);const original=calls[0].submissionKey;
+  unmountAll();c=mount();await addAndSubmit(c);assert.equal(calls.length,1);assert.ok(c.textContent?.includes(dict.pricing.unresolved));
+  assert.ok([...Array(dom.window.sessionStorage.length)].some((_,i)=>dom.window.sessionStorage.getItem(dom.window.sessionStorage.key(i)!)?.includes(original)));
 });
