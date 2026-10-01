@@ -1,8 +1,9 @@
 name: CI
 
 # M7C — pre-merge gate. Runs the same harness a developer runs locally.
-# SAFE BY DESIGN: no secrets, no hosted Supabase, no deploy. The app builds in
-# MOCK mode with zero env, so nothing here needs credentials. The local
+# SAFE BY DESIGN: no hosted secrets, no hosted Supabase, no deploy. The existing
+# MOCK build remains separate from the disposable local-Supabase E2E build.
+# Browser fixtures/keys belong only to the runner's owned local stack. The local
 # Supabase db lint/advisors are intentionally NOT run in CI (they need Docker +
 # the Supabase CLI) — run them locally before merging (see
 # docs/deployment/STAGING_DEPLOYMENT_M7C.md).
@@ -100,3 +101,30 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=moderate
+
+      # Keep browser failures inside this SAME required verify job/context.
+      - name: Install pinned local Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Install Chromium and browser system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser fixture destination and ownership guards
+        run: npm run test:e2e-safety
+
+      - name: Real Chromium journeys (disposable local Supabase production build)
+        run: npm run test:e2e
+
+      # Only these reviewed summaries: never keys, auth state, PDFs, traces,
+      # raw failure details, private logs or complete working/test directories.
+      - name: Safe browser verification summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-safe-summary
+          path: |
+            .e2e/run-summary.json
+            .e2e/browser-summary.json
+          retention-days: 7
