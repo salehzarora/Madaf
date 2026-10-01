@@ -2,6 +2,9 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import { assertOwnedDestinations } from './safety.mjs';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Privileged prerequisite setup only. User actions use the real UI and session.
 export async function seedFixtures(root, runRoot, marker, status) {
@@ -45,4 +48,13 @@ export async function seedFixtures(root, runRoot, marker, status) {
   } finally {
     await db.end();
   }
+}
+
+// Run unchanged prerequisites in the runner's bounded, cancellable owned child.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const runRoot = resolve(process.argv[2]);
+  const marker = JSON.parse(await readFile(resolve(runRoot, 'ownership.json'), 'utf8'));
+  const status = JSON.parse(await readFile(resolve(runRoot, 'backend.json'), 'utf8'));
+  const fixtures = await seedFixtures(process.cwd(), runRoot, marker, status);
+  await writeFile(resolve(runRoot, 'fixtures.json'), JSON.stringify(fixtures), { mode: 0o600 });
 }

@@ -10,6 +10,7 @@ export const destinations = Object.freeze({
 });
 
 export function assertCleanEnvironment(env, envFiles = []) {
+  assertDockerOverrides(env);
   // Fail before creating services or writing fixtures. Do not silently discard
   // an inherited hosted configuration and pretend it was safe to use.
   const forbidden = /^(VERCEL(?:_|$)|FIREBASE_|SUPABASE_|DATABASE_URL$|PG(?:HOST|PORT|USER|PASSWORD|DATABASE)$|NEXT_PUBLIC_SUPABASE_|NEXT_PUBLIC_(?:APP|SITE)_URL$|MADAF_(?:TRUSTED_DOCUMENT|EMAIL|AUTH|DEV_PHONE|NATIVE_PUSH)|RESEND_|TWILIO_)/;
@@ -21,6 +22,54 @@ export function assertCleanEnvironment(env, envFiles = []) {
   assert.notEqual(env.NODE_ENV, 'production', 'Do not inherit a production process');
   assert(!env.NEXT_PUBLIC_MADAF_DATA_MODE || env.NEXT_PUBLIC_MADAF_DATA_MODE === 'mock', 'Inherited backend mode is forbidden');
   assert.deepEqual(envFiles, [], 'Local dotenv files are forbidden in the E2E checkout');
+}
+
+export function assertDockerOverrides(env) {
+  assert(!(env.DOCKER_HOST && env.DOCKER_CONTEXT), 'Conflicting Docker host/context overrides are forbidden');
+  for (const name of ['DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) {
+    assert(!env[name], `Docker TLS override is unsupported: ${name}`);
+  }
+  if (env.DOCKER_HOST) assertLocalDockerEndpoint(env.DOCKER_HOST);
+}
+
+export function assertLocalDockerEndpoint(endpoint, platform = process.platform) {
+  const local = platform === 'win32'
+    ? /^npipe:\/{4}\.\/pipe\/[A-Za-z0-9_.-]+$/.test(endpoint)
+    : /^unix:\/\/\/[^?#%\s\\]+$/.test(endpoint);
+  assert(local, 'Docker destination must be a supported local Unix socket or named pipe');
+}
+
+export function assertDockerMetadataWarnings(stderr) {
+  assert(!stderr.trim(), 'Docker metadata resolution warned; destination is unresolved');
+}
+
+export function parseDockerContextMetadata(stdout, expectedName) {
+  let context;
+  try { context = JSON.parse(stdout); }
+  catch { throw new Error('Docker context metadata is invalid; destination is unresolved'); }
+  assert(context?.Name === expectedName, 'Docker context metadata selection differs');
+  return context;
+}
+
+// Metadata only: never probe a rejected daemon. Supabase 2.107.0 embeds Docker
+// CLI 28.5.2 with empty ClientOptions; TLS env handling differs from Docker CLI.
+// Pin DOCKER_HOST and remove DOCKER_CONTEXT so both clients use this endpoint.
+export function pinDockerDestination(env, context, platform = process.platform) {
+  // Platform is explicit for offline synthetic Unix/npipe tests.
+  assert(!(env.DOCKER_HOST && env.DOCKER_CONTEXT), 'Conflicting Docker host/context overrides are forbidden');
+  for (const name of ['DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) assert(!env[name], 'Docker TLS overrides are unsupported');
+  assert(context && typeof context.Name === 'string' && context.Name.length > 0, 'Docker context is unresolved');
+  if (env.DOCKER_HOST) assert(context.Name === 'default', 'Docker host selection is ambiguous');
+  else if (env.DOCKER_CONTEXT) assert(context.Name === env.DOCKER_CONTEXT, 'Docker context selection is ambiguous');
+  const docker = context.Endpoints?.docker;
+  assert(docker && typeof docker.Host === 'string', 'Docker context endpoint is unresolved');
+  assert(docker.SkipTLSVerify === false, 'Docker context TLS configuration is unsupported');
+  assert(context.TLSMaterial && Object.keys(context.TLSMaterial).length === 0, 'Docker context TLS material is unsupported');
+  if (env.DOCKER_HOST) assert(docker.Host === env.DOCKER_HOST, 'Docker host resolution differs');
+  assertLocalDockerEndpoint(docker.Host, platform);
+  const pinned = { ...env, DOCKER_HOST: docker.Host };
+  delete pinned.DOCKER_CONTEXT;
+  return { endpoint: docker.Host, env: pinned };
 }
 
 export function assertOwnedDestinations(root, runRoot, marker, status) {

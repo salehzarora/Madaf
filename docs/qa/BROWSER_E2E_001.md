@@ -28,6 +28,17 @@ borrowed server. One Chromium worker runs with zero retries, no skips and
 bounded startup/test timeouts. The command returns failure for missing tools,
 failed setup, failed journeys or failed cleanup.
 
+Timeout and catchable interruption are latched before child termination and
+remain failures even if the child exits zero. On POSIX, the command's detached
+process group receives SIGTERM, then SIGKILL after a two-second grace period.
+Windows assigns its command wrapper to an [unnamed Job Object](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before launching
+the command. `KILL_ON_JOB_CLOSE` retains and terminates owned descendants even
+after an intermediate parent exits. `taskkill /PID <owned-wrapper> /T /F` closes
+that job immediately because Node has no equivalent graceful tree signal.
+Termination waits are bounded; timers and abort listeners are cleared. PASS is
+emitted only after successful scoped cleanup. Fixture setup also runs within
+this bounded command boundary; its prerequisite data and operations are unchanged.
+
 ## Destination guards and fixture lifecycle
 
 - Each run creates `.e2e/<random-id>` with an ownership marker and a unique
@@ -37,6 +48,21 @@ failed setup, failed journeys or failed cleanup.
   dotenv files, hosted domains, foreign ownership and incomplete destinations.
   CI's input mock mode is allowed. The setup action's exact non-secret
   `SUPABASE_INTERNAL_IMAGE_REGISTRY=ghcr.io` setting is also allowed.
+- Before any daemon or Supabase command, read-only `docker context show/inspect`
+  resolves the effective endpoint. Remote TCP/SSH endpoints (including loopback
+  TCP), remote named pipes, conflicting host/context overrides, TLS overrides,
+  metadata warnings and unresolved configuration are rejected without probing
+  a remote daemon. Local Unix sockets and Windows Docker Desktop named pipes
+  are supported. Every daemon/startup/ownership/cleanup child uses the same
+  validated `DOCKER_HOST` with `DOCKER_CONTEXT` removed; the owner's global
+  context is never changed.
+- This accounts for Supabase CLI 2.107.0's embedded Docker CLI 28.5.2: it
+  initializes with empty ClientOptions and can ping during package initialization,
+  even before command execution. Host precedes context, but TLS environment
+  handling differs from ordinary Docker CLI. Do not invoke Supabase (even
+  `--version`) before endpoint validation. Source: [Supabase initialization](https://github.com/supabase/cli/blob/v2.107.0/apps/cli-go/internal/utils/docker.go),
+  [embedded Docker resolution](https://github.com/docker/cli/blob/v28.5.2/cli/command/cli.go),
+  [metadata-only inspection](https://github.com/docker/cli/blob/v29.5.3/cli/command/context/inspect.go).
 - The owned app is `http://127.0.0.1:3108`; API/Auth/Storage are on 58321 and
   PostgreSQL is on 58322. All destinations and the database container's project
   label are checked before fixture writes. API health checks reject redirects.
@@ -63,6 +89,14 @@ failed setup, failed journeys or failed cleanup.
   ignored for local investigation. A hard process/runner kill cannot guarantee
   cleanup; inspect the ownership marker before manually stopping that exact
   project. Never use `supabase stop --all` for this suite.
+
+`npm run test:e2e-safety` includes offline daemon guards and synthetic child
+process regressions. They never start Supabase or exercise production failures.
+POSIX signal-exit-zero/escalation and owned-group/sibling checks run on Linux;
+Windows exercises its forced Job Object path, exited-parent descendant cleanup
+and synthetic catchable signal handling. Each platform's ownership test is
+explicitly inapplicable on the other platform. External SIGKILL, host shutdown
+and CI runner removal cannot guarantee stack cleanup and are not tested.
 
 ## Coverage
 
