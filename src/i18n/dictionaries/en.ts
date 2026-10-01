@@ -533,6 +533,7 @@ const en: Dictionary = {
           createAnyway: "Create a new shop anyway",
         },
         edit: {
+          pricingHint: "Existing lines keep their saved price, package and VAT. New lines use current catalog values.",
           button: "Edit order",
           title: "Edit order",
           addProduct: "Add product to order",

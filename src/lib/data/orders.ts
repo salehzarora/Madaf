@@ -396,7 +396,8 @@ export async function updateOrderStatus(
 }
 
 /** M7I.3 — owner/admin edit an order's lines (+ notes). Supabase-only; the RPC
- * re-snapshots items, recomputes totals and reconciles reserved inventory. */
+ * retains saved line terms, snapshots new lines, sums recorded line amounts
+ * on item changes and reconciles reserved inventory. */
 export async function updateOrderItems(
   orderId: string,
   items: { productId: string; quantity: number }[],

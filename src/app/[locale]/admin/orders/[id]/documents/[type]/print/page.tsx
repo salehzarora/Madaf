@@ -14,11 +14,11 @@ export default async function OrderDocumentPrintPage({ params }: {
   if (!isLocale(locale) || !isDocumentType(type)) notFound();
   const prepared = await prepareOrderDocument(id, type, defaultDocumentLocale);
   if (prepared.status !== 200) notFound();
-  const { record } = prepared;
+  const { record, source } = prepared;
 
   // The RPC is idempotent in live mode. Mock mode returns the same authoritative
   // number/date without persisting a row, so a lookup by its new ID is not needed.
-  return <DocumentPreview locale={locale} autoPrint document={{
+  return <DocumentPreview locale={locale} source={source} autoPrint document={{
     id: record.documentId,
     orderId: id,
     type,

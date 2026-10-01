@@ -10,6 +10,7 @@ import { locales } from "@/i18n/config";
 import { products, customers, supplier, orders, documentById } from "@/lib/mock";
 import { getOrderDocumentSource, recordOrderDocument } from "@/lib/data/documents";
 import type { DocumentType } from "@/lib/types";
+import { formatCurrency } from "@/lib/format";
 
 const read = mock.fn(getOrderDocumentSource);
 const record = mock.fn(recordOrderDocument);
@@ -56,10 +57,39 @@ test("print denies record authorization failures", async () => {
   await assert.rejects(page(), /not-found/);
   assert.equal(orderRead.mock.callCount(), 0);
 });
-test("preview rechecks order access after document preparation", async () => {
+test("print uses its authorized coherent source without a second order read", async () => {
   const entry = await page();
-  orderRead.mock.mockImplementation(async () => undefined);
-  await assert.rejects(DocumentPreview(entry.props), /not-found/);
+  read.mock.mockImplementation(async () => undefined);
+  const html = renderToStaticMarkup(await DocumentPreview(entry.props));
+  assert.ok(html.includes(products[0].translations.he.name));
+  assert.equal(read.mock.callCount(), 1);
+  assert.equal(orderRead.mock.callCount(), 0);
+});
+
+test("Print and Preview retain snapshot-only lines, packages and financial amounts", async () => {
+  const original = (await getOrderDocumentSource("o1047"))!;
+  const saved = {
+    ...original,
+    customer: { name: "Saved buyer", city: { ar: "", he: "", en: "" }, phone: "", contactName: "" },
+    items: [{ ...original.items[0], name: { ar: "Saved absent item", he: "Saved absent item", en: "Saved absent item" }, packageUnit: "pack" as const, packageQuantity: 7, quantity: 2, unitPrice: 3.03, lineTotal: 6.06 }],
+    totals: { subtotal: 6.06, vatTotal: 1.09, total: 7.15, currency: "ILS" },
+  };
+  read.mock.mockImplementation(async () => saved);
+  const entry = await page();
+  read.mock.mockImplementation(async () => ({ ...saved, items: [], totals: { ...saved.totals, total: 999 } }));
+  const document = new JSDOM(renderToStaticMarkup(await DocumentPreview(entry.props))).window.document;
+  const text = document.querySelector(".doc-sheet")!.textContent!;
+  assert.ok(text.includes("Saved absent item"));
+  assert.ok(text.includes("Saved buyer"));
+  assert.ok(text.includes(formatCurrency(3.03, "he")));
+  assert.ok(text.includes(formatCurrency(6.06, "he")));
+  assert.ok(text.includes(formatCurrency(7.15, "he")));
+  assert.equal(document.querySelectorAll("tbody tr").length, 1);
+  assert.equal(document.querySelector("tbody tr td:nth-child(3)")!.textContent,
+    `${getDictionary("he").packaging.pack} · 7`, "saved package is rendered without live catalog fallback");
+  assert.equal(read.mock.callCount(), 1, "Print uses prepared snapshot without a later read");
+  const preview = await DocumentPreview({ document: entry.props.document, locale: "en" });
+  assert.ok(!renderToStaticMarkup(preview).includes("Saved absent item"), "a separate Preview may observe the later coherent version");
 });
 
 for (const type of ["order", "delivery", "invoiceDraft"] as const) {

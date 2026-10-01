@@ -327,6 +327,11 @@ export interface OrderItem {
   quantity: number;
   /** Package price (ILS, excl. VAT) captured at order time. */
   unitPrice: number;
+  /** Existing order-line terms; optional for zero-config mock fixtures. */
+  nameSnapshot?: LocalizedText;
+  packageTypeSnapshot?: PackageType;
+  unitsPerPackageSnapshot?: number;
+  vatRateSnapshot?: number;
 }
 
 /**

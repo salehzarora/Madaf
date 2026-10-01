@@ -931,5 +931,7 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   // ADMIN-DASHBOARD-STYLE-006B adds the separate read-only period aggregate.
   // NATIVE PUSH BACKEND V1 adds device registration and post-commit dispatch claims.
   // NATIVE PUSH V1.2 adds notification preferences and event claims.
-  assert.equal(migrations.length, 66);
+  // The later financial-integrity function correction is explicitly additive;
+  // this timeline milestone still adds no migration of its own.
+  assert.equal(migrations.length, 67);
 });

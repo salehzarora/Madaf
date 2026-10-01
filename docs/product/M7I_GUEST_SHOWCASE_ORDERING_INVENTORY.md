@@ -123,16 +123,24 @@ blocked, order stays `new`.
 
 New RPC **`update_order_items(p_tenant_id, p_order_id, p_items, p_notes)`**
 (owner/admin, `authorize_tenant`): change quantities, add/remove lines, update
-notes. Money is recomputed server-side from live products (never trusts the
-client). **Delivered/cancelled orders are locked** (`MDF31`).
+notes. The local ORDER-FINANCIAL-INTEGRITY-001 correction replaces the original
+live re-snapshot policy: retained lines keep saved price/VAT/name/manufacturer/
+package terms and identity; new lines use authorized current base terms. Headers
+sum recorded rounded line amounts. Identical normalized saves mutate nothing;
+notes-only saves preserve money/items, including legacy inconsistencies. This
+changes editing policy, pending Control Room release approval; it is not a
+historical backfill or customer-specific pricing implementation. See
+[QA and release caveats](../qa/ORDER_FINANCIAL_INTEGRITY_001.md).
+**Delivered/cancelled orders are locked** (`MDF31`).
 
 If the order's stock is already **reserved** (confirmed/preparing), the RPC
 reconciles inventory in the same transaction: for each product it computes
 `delta = new_qty − net_reserved` (full outer join of the new line set vs the
 reserved ledger), deducts/restores the difference, and writes an
 `order_edit_adjustment` movement. Insufficient stock for an increase → `MDF30`
-(clear error), whole edit rolls back. Then the order's lines are re-snapshotted
-and totals recomputed.
+(clear error), whole edit rolls back. Retained quantities are recalculated from
+saved terms; only new lines are snapshotted. Package unit/count mismatches reject
+quantity or actual ledger-reservation changes rather than converting packages.
 
 UI: an **Edit order** section on the admin order detail (supabase mode only) —
 inline quantity steppers, remove buttons, a **searchable** add-product picker,

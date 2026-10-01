@@ -19,6 +19,8 @@ beforeEach(() => {
   for (const fn of [read, save, sign, store, render]) fn.mock.resetCalls();
   read.mock.mockImplementation(async () => source);
   save.mock.mockImplementation(async () => ({ ...record }));
+  store.mock.mockImplementation(async () => null);
+  render.mock.mockImplementation(async () => new Uint8Array(Buffer.from("%PDF-1.4\nactual-bytes")));
 });
 afterEach(() => mock.restoreAll());
 
@@ -127,21 +129,59 @@ test("unexpected recording failure produces a bounded warning without changing D
   assert.doesNotMatch(line, /SECRET|database offline|customer@/);
 });
 
-test("Download still reuses private signed attachment path", async () => {
+test("Download freshly renders an authorized same-origin attachment", async () => {
   const response = await request();
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get("Location"), "https://storage.example/signed");
-  assert.equal(sign.mock.callCount(), 1);
-  assert.equal(render.mock.callCount(), 0);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Location"), null);
+  assert.equal(sign.mock.callCount(), 0);
+  assert.equal(render.mock.callCount(), 1);
   assert.equal(store.mock.callCount(), 0);
 });
 
-test("Regenerate still rerenders and stores; mock/storage fallback remains attachment", async () => {
+for (const query of ["", "?mode=download", "?regenerate=1"]) {
+  test(`${query || "Download"}: existing stored PDF cannot bypass fresh financial source`, async () => {
+    store.mock.mockImplementation(async () => "https://storage.example/mutable");
+    const response = await request(query);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("Location"), null);
+    assert.equal(await response.text(), "%PDF-1.4\nactual-bytes");
+    assert.equal(response.headers.get("Content-Disposition"), 'attachment; filename="DOC-SAFE1234-O.pdf"');
+    assert.equal(sign.mock.callCount(), 0);
+    assert.equal(store.mock.callCount(), 0);
+  });
+}
+
+test("Regenerate remains a fresh attachment without mutable storage", async () => {
   const response = await request("?regenerate=1");
   assert.equal(response.status, 200);
   assert.equal(sign.mock.callCount(), 0);
   assert.equal(render.mock.callCount(), 1);
-  assert.equal(store.mock.callCount(), 1);
+  assert.equal(store.mock.callCount(), 0);
   assert.equal(response.headers.get("Content-Disposition"), 'attachment; filename="DOC-SAFE1234-O.pdf"');
   assert.equal(response.headers.get("Cache-Control"), "private, no-store");
+});
+
+test("same stored path returns the current coherent money after a committed edit", async () => {
+  const versions = [
+    { ...source, items: [{ quantity: 1, unitPrice: 10, lineTotal: 10 }], totals: { subtotal: 10, vatTotal: 1.8, total: 11.8 } },
+    { ...source, items: [{ quantity: 3, unitPrice: 10, lineTotal: 30 }], totals: { subtotal: 30, vatTotal: 5.4, total: 35.4 } },
+  ];
+  render.mock.mockImplementation(async (input) => new Uint8Array(Buffer.from(
+    "%PDF-1.4\n" + JSON.stringify((input as { source: unknown }).source),
+  )));
+  for (const version of versions) {
+    read.mock.mockImplementation(async () => version);
+    const response = await request();
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse((await response.text()).split("\n")[1]), version);
+  }
+  assert.equal(read.mock.callCount(), 2, "one coherent source per request");
+  assert.equal(sign.mock.callCount(), 0);
+  assert.equal(store.mock.callCount(), 0);
+});
+
+test("fresh render failure cannot fall back to a previously stored PDF", async () => {
+  render.mock.mockImplementation(async () => { throw new Error("synthetic render failed"); });
+  await assert.rejects(request(), /synthetic render failed/);
+  assert.equal(sign.mock.callCount() + store.mock.callCount(), 0);
 });

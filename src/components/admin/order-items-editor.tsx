@@ -20,7 +20,7 @@ const MAX_QTY = 999;
 /**
  * Owner/admin order editing (M7I.3). Add/remove lines, change quantities, and
  * update notes. All pricing/validation happens in `update_order_items` (the RPC
- * re-snapshots lines from live products and reconciles reserved inventory) —
+ * preserves retained terms, snapshots only new lines and reconciles inventory) —
  * this UI only builds the desired line set. Delivered/cancelled orders are
  * locked. Supabase mode only (mock has no write path).
  */
@@ -47,6 +47,10 @@ export function OrderItemsEditor({
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
+  );
+  const originalById = useMemo(
+    () => new Map(order.items.map((item) => [item.productId, item])),
+    [order.items],
   );
 
   const locked = order.status === "delivered" || order.status === "cancelled";
@@ -105,10 +109,12 @@ export function OrderItemsEditor({
     let sum = 0;
     for (const [productId, qty] of lines) {
       const p = productById.get(productId);
-      if (p) sum += qty * p.wholesalePrice;
+      const saved = originalById.get(productId);
+      if (saved) sum += qty * saved.unitPrice;
+      else if (p) sum += qty * p.wholesalePrice;
     }
     return sum;
-  }, [lines, productById]);
+  }, [lines, productById, originalById]);
 
   function onSave() {
     const items = [...lines.entries()].map(([productId, quantity]) => ({
@@ -174,6 +180,7 @@ export function OrderItemsEditor({
           </div>
         ) : (
           <div className="flex flex-col gap-4">
+            <p className="text-xs text-ink-soft">{t.pricingHint}</p>
             {reserved ? (
               <p className="rounded-field bg-info-soft px-3 py-2 text-xs text-info">
                 {t.reservedHint}
@@ -184,6 +191,7 @@ export function OrderItemsEditor({
             <ul className="flex flex-col divide-y divide-line-hair">
               {[...lines.entries()].map(([productId, qty]) => {
                 const product = productById.get(productId);
+                const saved = originalById.get(productId);
                 const category = product
                   ? categoryById.get(product.categoryId)
                   : undefined;
@@ -200,12 +208,17 @@ export function OrderItemsEditor({
                     ) : null}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-ink">
-                        {product ? productName(product, locale) : productId}
+                        {saved?.nameSnapshot?.[locale] ?? (product ? productName(product, locale) : productId)}
                       </p>
-                      {product ? (
+                      {saved || product ? (
                         <p className="text-xs text-ink-muted">
-                          {formatCurrency(product.wholesalePrice, locale)} ·{" "}
-                          {packageLabel(product, dict)}
+                          <bdi dir="ltr">{formatCurrency(saved ? saved.unitPrice : product!.wholesalePrice, locale)}</bdi>
+                          {" · "}
+                          {saved
+                            ? saved.packageTypeSnapshot && saved.unitsPerPackageSnapshot !== undefined
+                              ? <>{dict.packaging[saved.packageTypeSnapshot]} · <bdi dir="ltr">{saved.unitsPerPackageSnapshot}</bdi></>
+                              : null
+                            : packageLabel(product!, dict)}
                         </p>
                       ) : null}
                     </div>
