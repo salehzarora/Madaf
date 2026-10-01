@@ -545,6 +545,7 @@ export interface Dictionary {
           remove: string;
           empty: string;
           reservedHint: string;
+          pricingHint: string;
           lockedHint: string;
           save: string;
           saving: string;

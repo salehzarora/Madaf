@@ -1,4 +1,5 @@
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
+import PDFDocument from 'pdfkit';
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import { assertOwnedDestinations } from './safety.mjs';
@@ -40,9 +41,36 @@ export async function seedFixtures(root, runRoot, marker, status) {
         await db.query("insert into public.customers (id,tenant_id,name,customer_type,phone,contact_name,city_ar,city_he,city_en,origin,is_active) values ($1,$2,$3,'grocery','0500000001','Synthetic contact','Test city','Test city','Test city','manual',true)", [id, tenant, name]);
         shops.push({ id, name });
       }
-      await db.query("insert into public.products (id,tenant_id,name_ar,name_he,name_en,sku,package_unit,package_quantity,base_unit,wholesale_price,vat_rate,is_active) values ($1,$2,$3,$3,$3,$4,'carton',6,'bottles',10,0.18,true)", [product, tenant, productName, `E2E-${key.toUpperCase()}`]);
+      const category = randomUUID();
+      await db.query("insert into public.categories(id,tenant_id,name_ar,name_he,name_en) values ($1,$2,'Synthetic category','Synthetic category','Synthetic category')", [category, tenant]);
+      await db.query("insert into public.products (id,tenant_id,name_ar,name_he,name_en,sku,package_unit,package_quantity,base_unit,wholesale_price,vat_rate,is_active,category_id) values ($1,$2,$3,$3,$3,$4,'carton',6,'bottles',10,0.18,true,$5)", [product, tenant, productName, `E2E-${key.toUpperCase()}`, category]);
       await db.query('insert into public.inventory_items (tenant_id,product_id,quantity_available,low_stock_threshold) values ($1,$2,10,1)', [tenant, product]);
       fixtures[key] = { tenant, tenantName, user: created.data.user.id, email, password, customer, customerName, product, productName, shops };
+      if (key === 'a') {
+        // Previous stored PDF prerequisite, only in this owned disposable stack.
+        // The journey performs catalog/order edits through authenticated UI.
+        await db.query("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub: created.data.user.id, role: 'authenticated' })]);
+        const order = (await db.query("select order_id from public.create_order_request($1,$2::jsonb,$3,p_submission_key=>$4)",
+          [tenant, JSON.stringify([{ product_id: product, quantity: 3 }]), customer, randomUUID()])).rows[0].order_id;
+        const document = (await db.query("select * from public.create_order_document($1,$2,'order_request','en')", [tenant, order])).rows[0];
+        const storedPath = `${tenant}/documents/${order}/order_request/${document.id}_en.pdf`;
+        const pdf = new PDFDocument();
+        const chunks = [];
+        const bytes = new Promise((done, fail) => {
+          pdf.on('data', chunk => chunks.push(chunk));
+          pdf.on('end', () => done(Buffer.concat(chunks)));
+          pdf.on('error', fail);
+        });
+        pdf.text('Synthetic previous order: quantity 3, subtotal 30, VAT 5.40, total 35.40');
+        pdf.end();
+        const oldBytes = await bytes;
+        const uploaded = await auth.storage.from('documents').upload(storedPath, oldBytes, { contentType: 'application/pdf' });
+        if (uploaded.error) throw new Error('Owned synthetic previous PDF prerequisite failed');
+        const checksum = createHash('sha256').update(oldBytes).digest('hex');
+        await db.query('select public.set_document_storage($1,$2,$3,$4,$5)', [tenant, document.id, storedPath, oldBytes.length, checksum]);
+        fixtures[key].financial = { order, document: document.id, number: document.document_number, storedPath, checksum };
+        await db.query("select set_config('request.jwt.claims','{}',false)");
+      }
     }
     return fixtures;
   } finally {

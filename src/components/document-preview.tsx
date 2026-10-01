@@ -1,33 +1,28 @@
 import { notFound } from "next/navigation";
 import { DocumentView } from "@/components/document-view";
 import type { Locale } from "@/i18n/config";
-import { getOrder, getSupplier, listCustomers, listProducts } from "@/lib/data";
-import { ShopDataProvider } from "@/lib/shop-data-context";
+import { getOrderDocumentSource } from "@/lib/data";
+import type { OrderDocumentSource } from "@/lib/pdf/document-model";
 import type { OrderDocument } from "@/lib/types";
 
-/** The existing HTML preview and its route-local, tenant-scoped reference data. */
+/** Render one authorized saved order/header/items version for Preview or Print. */
 export async function DocumentPreview({
   document,
   locale,
   autoPrint = false,
+  source: preparedSource,
 }: {
   document: OrderDocument;
   locale: Locale;
   autoPrint?: boolean;
+  source?: OrderDocumentSource;
 }) {
-  const order = await getOrder(document.orderId);
-  if (!order) notFound();
-  const [supplier, products, customers] = await Promise.all([
-    getSupplier(),
-    listProducts(),
-    listCustomers(),
-  ]);
+  const source = preparedSource ?? await getOrderDocumentSource(document.orderId);
+  if (!source) notFound();
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <ShopDataProvider products={products} categories={[]} manufacturers={[]} customers={customers}>
-        <DocumentView document={document} order={order} supplier={supplier} uiLocale={locale} autoPrint={autoPrint} />
-      </ShopDataProvider>
+      <DocumentView document={document} source={source} uiLocale={locale} autoPrint={autoPrint} />
     </div>
   );
 }

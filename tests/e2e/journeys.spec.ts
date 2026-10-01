@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID, createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import pg from 'pg';
 import { assertOwnedDestinations, destinations } from './safety.mjs';
 
-type Tenant = { tenant: string; tenantName: string; user: string; email: string; password: string; customer: string; customerName: string; product: string; productName: string; shops: { id: string; name: string }[] };
+type Tenant = { tenant: string; tenantName: string; user: string; email: string; password: string; customer: string; customerName: string; product: string; productName: string; shops: { id: string; name: string }[]; financial?: { order: string; document: string; number: string; storedPath: string; checksum: string } };
 const runRoot = process.env.MADAF_E2E_RUN_ROOT!;
 const fixtures: { a: Tenant; b: Tenant } = JSON.parse(readFileSync(resolve(runRoot, 'fixtures.json'), 'utf8'));
 const marker = JSON.parse(readFileSync(resolve(runRoot, 'ownership.json'), 'utf8'));
@@ -271,4 +271,77 @@ test('F Locale and responsive: saved preference, mobile picker/navigation and ca
   await expect(cartLine.getByText('1', { exact: true })).toBeVisible();
   await expect(cartLine.getByText(money(10), { exact: true })).toBeVisible();
   await noOverflow(page);
+});
+
+test('G Financial integrity: saved terms, edit and fresh Download/Share/Print after a stored PDF', async ({ page }) => {
+  const fixture = fixtures.a.financial!;
+  const orderPath = `/en/admin/orders/${fixture.order}`;
+  const pdfPath = `${orderPath}/documents/order`;
+  const line = async () => (await db.query('select * from public.order_items where order_id=$1', [fixture.order])).rows[0];
+  const header = async () => (await db.query('select * from public.orders where id=$1', [fixture.order])).rows[0];
+  const edits = async () => Number((await db.query("select count(*) n from public.audit_events where entity_id=$1 and event_type='order.updated'", [fixture.order])).rows[0].n);
+  const original = await line();
+  await login(page, fixtures.a, orderPath);
+  // Change current catalog terms through the existing product editor.
+  await page.goto(`/en/admin/products/${fixtures.a.product}/edit`);
+  await page.getByLabel('Wholesale price (₪, excl. VAT)', { exact: true }).fill('40');
+  await page.getByLabel('VAT rate', { exact: true }).fill('0.10');
+  await page.getByRole('button', { name: 'Save product', exact: true }).click();
+  await expect.poll(async () => Number((await db.query('select wholesale_price from public.products where id=$1', [fixtures.a.product])).rows[0].wholesale_price)).toBe(40);
+  await page.goto(orderPath);
+  await page.getByRole('button', { name: 'Edit order', exact: true }).click();
+  await expect(page.getByText('Existing lines keep their saved price, package and VAT. New lines use current catalog values.', { exact: true })).toBeVisible();
+  // Scope to the existing editor's list, rather than the page's line table.
+  const savedLine = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Remove', exact: true }) });
+  await expect(savedLine.getByText(money(10), { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByText('Order updated.', { exact: true })).toBeVisible();
+  expect(await line()).toEqual(original);
+  expect(await edits()).toBe(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit order', exact: true }).click();
+  await page.locator('textarea').fill('Synthetic financial notes');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect.poll(async () => (await header()).notes).toBe('Synthetic financial notes');
+  expect(await line()).toEqual(original);
+  expect(Number((await header()).total)).toBe(35.4);
+  expect(await edits()).toBe(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit order', exact: true }).click();
+  await savedLine.getByRole('button', { name: '+', exact: true }).click();
+  await expect(savedLine.getByText('4', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect.poll(async () => Number((await header()).total)).toBe(47.2);
+  const edited = await line();
+  expect(edited.id).toBe(original.id);
+  expect(Number(edited.unit_price_snapshot)).toBe(10);
+  expect(Number(edited.vat_rate_snapshot)).toBe(.18);
+  expect(Number(edited.line_subtotal)).toBe(40);
+  expect(Number(edited.line_vat)).toBe(7.2);
+  expect(await edits()).toBe(2);
+  for (const mode of ['download', 'share']) {
+    const response = await page.request.get(`${pdfPath}?mode=${mode}&lang=en`, { maxRedirects: 0 });
+    expect(response.status()).toBe(200);
+    expect(response.headers()['location']).toBeUndefined();
+    expect(response.headers()['content-disposition']).toBe(`${mode === 'download' ? 'attachment' : 'inline'}; filename="${fixture.number}.pdf"`);
+    expect(response.headers()['cache-control']).toContain('no-store');
+    const bytes = await response.body();
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(createHash('sha256').update(bytes).digest('hex')).not.toBe(fixture.checksum);
+    // Private local-only evidence; never emitted by the sanitized reporter.
+    writeFileSync(resolve(runRoot, `financial-${mode}.pdf`), bytes);
+  }
+  await page.goto(`${pdfPath}/print`);
+  await page.getByRole('button', { name: 'English', exact: true }).click();
+  const sheet = page.locator('.doc-sheet');
+  await expect(sheet).toContainText(fixture.number);
+  await expect(sheet).toContainText(fixtures.a.productName);
+  await expect(sheet).toContainText(money(40));
+  await expect(sheet).toContainText(money(7.2));
+  await expect(sheet).toContainText(money(47.2));
+  await expect(sheet).not.toContainText(money(35.4));
+  const recorded = (await db.query('select * from public.documents where id=$1', [fixture.document])).rows[0];
+  expect(recorded.document_number).toBe(fixture.number);
+  expect(recorded.storage_path).toBe(fixture.storedPath);
+  expect(recorded.checksum).toBe(fixture.checksum);
 });

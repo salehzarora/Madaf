@@ -15,12 +15,10 @@ import {
   type Locale,
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
-import { productName } from "@/lib/catalog-helpers";
 import { formatCurrency } from "@/lib/format";
 import { formatTenantDateLong } from "@/lib/time";
-import { useShopData } from "@/lib/shop-data-context";
-import type { Order, OrderDocument, Supplier } from "@/lib/types";
-import { VAT_RATE } from "@/lib/types";
+import type { OrderDocumentSource } from "@/lib/pdf/document-model";
+import type { OrderDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,14 +32,12 @@ import { cn } from "@/lib/utils";
  */
 export function DocumentView({
   document,
-  order,
-  supplier,
+  source,
   uiLocale,
   autoPrint = false,
 }: {
   document: OrderDocument;
-  order: Order;
-  supplier: Supplier;
+  source: OrderDocumentSource;
   uiLocale: Locale;
   autoPrint?: boolean;
 }) {
@@ -65,42 +61,11 @@ export function DocumentView({
   const [docLocale, setDocLocale] = useState<Locale>(defaultDocumentLocale);
   const t = getDictionary(docLocale).docs;
   const uiDict = getDictionary(uiLocale);
-  const { productById, customerById } = useShopData();
-
-  // Buyer: a linked store, else the GUEST snapshot (M7I orders have no
-  // customerId). M8E.5 — the preview now shows the guest snapshot exactly like
-  // the PDF, instead of a blank "—".
-  const linkedCustomer = order.customerId
-    ? customerById.get(order.customerId)
-    : undefined;
-  const snap = order.customerSnapshot;
-  const buyer = linkedCustomer
-    ? {
-        name: linkedCustomer.name,
-        city: linkedCustomer.city[docLocale],
-        phone: linkedCustomer.phone,
-        contactName: linkedCustomer.contactName,
-      }
-    : snap
-      ? {
-          name: snap.name ?? "—",
-          city: snap.city?.[docLocale] ?? "",
-          phone: snap.phone ?? "",
-          contactName: snap.contactName ?? "",
-        }
-      : null;
-
-  // Totals: use the SERVER-STORED order totals when present (supabase) so the
-  // preview matches the PDF exactly (M8E.5); otherwise recompute with the
-  // tenant's DISPLAY VAT rate (a non-legal estimate; falls back to VAT_RATE).
-  const vatRate = supplier.displayVatRate ?? VAT_RATE;
-  const computedSubtotal = order.items.reduce(
-    (sum, item) => sum + item.quantity * item.unitPrice,
-    0,
-  );
-  const subtotal = order.subtotal ?? computedSubtotal;
-  const vat = order.vatTotal ?? computedSubtotal * vatRate;
-  const grandTotal = order.total ?? subtotal + vat;
+  const { supplier } = source;
+  const buyer = source.customer
+    ? { ...source.customer, city: source.customer.city[docLocale] }
+    : null;
+  const { subtotal, vatTotal: vat, total: grandTotal } = source.totals;
 
   const isInvoiceDraft = document.type === "invoiceDraft";
   const isDelivery = document.type === "delivery";
@@ -218,7 +183,7 @@ export function DocumentView({
                 {/* Customer-facing document → public ref, never the internal
                     sequential number (M7G). Supabase always has publicRef;
                     mock has no internal sequence so its number doubles as it. */}
-                {order.publicRef ?? order.number}
+                {source.publicRef}
               </span>
             </p>
             <p className="text-sm text-ink-soft">
@@ -286,30 +251,24 @@ export function DocumentView({
               </tr>
             </thead>
             <tbody>
-              {order.items.map((item) => {
-                const product = productById.get(item.productId);
-                if (!product) return null;
+              {source.items.map((item, index) => {
                 const dictForDoc = getDictionary(docLocale);
                 return (
                   <tr
-                    key={item.productId}
+                    key={index}
                     className="border-b border-line-hair last:border-0"
                   >
                     <td className="px-3 py-2.5 text-ink">
                       <span className="inline-flex flex-wrap items-baseline gap-2">
-                        <span>{productName(product, docLocale)}</span>
-                        <span className="font-mono text-xs text-ink-muted" dir="ltr">
-                          {product.sku}
-                        </span>
+                        <span>{item.name[docLocale]}</span>
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-center font-mono font-semibold text-ink">
                       {item.quantity}
                     </td>
                     <td className="px-3 py-2.5 text-ink-soft">
-                      {dictForDoc.packaging[product.packageType]} ·{" "}
-                      {product.unitsPerPackage}{" "}
-                      {dictForDoc.units[product.baseUnit]}
+                      {dictForDoc.packaging[item.packageUnit]} ·{" "}
+                      {item.packageQuantity}
                     </td>
                     {showPrices ? (
                       <>
@@ -318,7 +277,7 @@ export function DocumentView({
                         </td>
                         <td className="px-3 py-2.5 text-end font-medium tabular-nums text-ink">
                           {formatCurrency(
-                            item.unitPrice * item.quantity,
+                            item.lineTotal,
                             docLocale,
                           )}
                         </td>
@@ -362,9 +321,9 @@ export function DocumentView({
         ) : null}
 
         {/* Notes */}
-        {order.notes ? (
+        {source.notes ? (
           <section className="relative mt-6 rounded-field bg-surface-sunken p-4 text-sm text-ink-soft">
-            {order.notes}
+            {source.notes}
           </section>
         ) : null}
 

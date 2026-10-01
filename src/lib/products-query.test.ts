@@ -592,11 +592,10 @@ test("guard: (shop) layout provides FULL ShopData + Cart to storefront routes", 
   assert.ok(/\blistCustomers\b/.test(shop), "(shop) must hydrate full customers");
 });
 
-test("guard: admin/documents/[id] provides products+customers to DocumentView", () => {
+test("guard: document previews use one saved source rather than live catalog rows", () => {
   const page = readSrc("app/[locale]/admin/documents/[id]/page.tsx");
   assert.ok(page.includes("<DocumentPreview"), "documents page must use the shared preview");
   const doc = readSrc("components/document-preview.tsx");
-  assert.ok(doc.includes("ShopDataProvider"), "documents page must wrap DocumentView in a provider");
-  assert.ok(/\blistProducts\b/.test(doc), "documents page must load products for line-item names");
-  assert.ok(/\blistCustomers\b/.test(doc), "documents page must load customers for the buyer name");
+  assert.ok(doc.includes("getOrderDocumentSource"), "preview must read saved order terms");
+  assert.ok(!/ShopDataProvider|listProducts|listCustomers/.test(doc), "catalog changes must not alter or omit saved lines");
 });

@@ -96,6 +96,7 @@ const errCode = (e: unknown): string | undefined =>
 interface Ctx {
   tenant: string;
   owner: string;
+  category: string;
   p1: string; // lower product_id (locked first under the ascending fix)
   p2: string; // higher product_id
 }
@@ -103,6 +104,7 @@ interface Ctx {
 async function provision(admin: PgClient): Promise<Ctx> {
   const tenant = randomUUID();
   const owner = randomUUID();
+  const category = randomUUID();
   // p1 < p2 so "ascending product_id" is well-defined and both operations lock p1 first.
   const [p1, p2] = [randomUUID(), randomUUID()].sort();
   await admin.query("insert into auth.users (id) values ($1)", [owner]);
@@ -114,6 +116,7 @@ async function provision(admin: PgClient): Promise<Ctx> {
     "insert into public.tenant_users (tenant_id, user_id, role) values ($1,$2,'owner')",
     [tenant, owner],
   );
+  await admin.query("insert into public.categories(id,tenant_id,name_ar,name_he,name_en) values ($1,$2,'c','c','c')", [category, tenant]);
   for (const pid of [p1, p2]) {
     await admin.query(
       `insert into public.products
@@ -128,7 +131,8 @@ async function provision(admin: PgClient): Promise<Ctx> {
       [tenant, pid],
     );
   }
-  return { tenant, owner, p1, p2 };
+  await admin.query("update public.products set category_id=$1 where tenant_id=$2", [category, tenant]);
+  return { tenant, owner, category, p1, p2 };
 }
 
 /** Create an order (service_role) and return its id. Creation reserves NO stock. */
@@ -244,6 +248,7 @@ async function cleanup(admin: PgClient, ctx: Ctx | undefined): Promise<void> {
   await del("delete from public.orders where tenant_id=$1", [ctx.tenant]);
   await del("delete from public.inventory_items where tenant_id=$1", [ctx.tenant]);
   await del("delete from public.products where tenant_id=$1", [ctx.tenant]);
+  await del("delete from public.categories where tenant_id=$1", [ctx.tenant]);
   await del("delete from public.tenant_users where tenant_id=$1", [ctx.tenant]);
   await del("delete from public.tenants where id=$1", [ctx.tenant]);
   await del("delete from auth.users where id=$1", [ctx.owner]);
@@ -422,6 +427,135 @@ test("edit vs edit: two reserved-order edits over the same products never deadlo
   } finally {
     await teardown(admin, [A, B, coord, mon], ctx);
     await admin.end().catch(() => {});
+  }
+});
+
+test("product update before edit: package commit is observed before reservation changes", async (t) => {
+  const url = dbUrl();
+  if (!url) return void t.skip("local Supabase DB not reachable");
+  const admin = (await openSession(url)).c;
+  const writer = await openSession(url);
+  const editor = await openSession(url);
+  let ctx: Ctx | undefined;
+  try {
+    await admin.query("set request.jwt.claims = '{\"role\":\"service_role\"}'");
+    ctx = await provision(admin);
+    const order = await createOrder(admin, ctx, 2, 3);
+    await reserve(admin, ctx, order);
+    const payload = (await admin.query("select to_jsonb(p) payload from public.products p where id=$1", [ctx.p1])).rows[0].payload;
+    await writer.c.query("begin");
+    await writer.c.query("set local role authenticated");
+    await writer.c.query(`set local request.jwt.claims = ${claims(ctx.owner)}`);
+    await writer.c.query("select public.update_product($1,$2,$3::jsonb)", [ctx.tenant, ctx.p1, { ...payload, package_quantity: 12 }]);
+    const { p } = await fire(editor.c, ctx, EDIT_SQL, [ctx.tenant, order, JSON.stringify([
+      { product_id: ctx.p1, quantity: 4 }, { product_id: ctx.p2, quantity: 3 },
+    ])], false);
+    await waitFor(async () => (await admin.query("select $1::int = any(pg_blocking_pids($2)) blocked", [writer.pid, editor.pid])).rows[0].blocked,
+      "edit waits for concurrent product writer");
+    await writer.c.query("commit");
+    const result = await settle(p);
+    await editor.c.query("rollback");
+    assert.equal(result.ok, false, "committed package mismatch rejects the edit");
+    assert.equal(errCode(result.ok ? undefined : result.e), "22023");
+    assert.equal(await avail(admin, ctx, ctx.p1), 998, "rejection leaves reserved stock unchanged");
+    assert.equal((await admin.query("select quantity from public.order_items where order_id=$1 and product_id=$2", [order, ctx.p1])).rows[0].quantity, 2);
+  } finally {
+    await teardown(admin, [writer, editor], ctx);
+    await admin.end();
+  }
+});
+
+test("edit before product update: shared package locks do not invert product/inventory lock order", async (t) => {
+  const url = dbUrl();
+  if (!url) return void t.skip("local Supabase DB not reachable");
+  const admin = (await openSession(url)).c;
+  const editor = await openSession(url);
+  const writer = await openSession(url);
+  const coord = await openSession(url);
+  let ctx: Ctx | undefined;
+  try {
+    await admin.query("set request.jwt.claims = '{\"role\":\"service_role\"}'");
+    await createBarrier(admin);
+    ctx = await provision(admin);
+    const order = await createOrder(admin, ctx, 2, 3);
+    await reserve(admin, ctx, order);
+    const payload = (await admin.query("select to_jsonb(p) payload from public.products p where id=$1", [ctx.p1])).rows[0].payload;
+    await coord.c.query("select pg_advisory_lock($1)", [BARRIER_KEY]);
+    const { p: edit } = await fire(editor.c, ctx, EDIT_SQL, [ctx.tenant, order, JSON.stringify([
+      { product_id: ctx.p1, quantity: 4 }, { product_id: ctx.p2, quantity: 3 },
+    ])], true);
+    await waitFor(() => advisoryWaiters(admin).then(n => n === 1), "edit holds package and inventory locks at barrier");
+    const { p: write } = await fire(writer.c, ctx, "select public.update_product($1,$2,$3::jsonb,$4::jsonb)",
+      [ctx.tenant, ctx.p1, { ...payload, wholesale_price: 40 }, { quantity_available: 1000, low_stock_threshold: 5 }], false);
+    await waitFor(async () => (await admin.query("select $1::int = any(pg_blocking_pids($2)) blocked", [editor.pid, writer.pid])).rows[0].blocked,
+      "product/inventory write waits on edit's package lock");
+    await coord.c.query("select pg_advisory_unlock($1)", [BARRIER_KEY]);
+    const edited = await settle(edit);
+    await editor.c.query(edited.ok ? "commit" : "rollback");
+    const written = await settle(write);
+    await writer.c.query(written.ok ? "commit" : "rollback");
+    assert.equal(edited.ok && written.ok, true, "both operations finish without deadlock");
+    assert.equal((await admin.query("select unit_price_snapshot from public.order_items where order_id=$1 and product_id=$2", [order, ctx.p1])).rows[0].unit_price_snapshot, '10.00');
+    assert.equal((await admin.query("select wholesale_price from public.products where id=$1", [ctx.p1])).rows[0].wholesale_price, '40.00');
+  } finally {
+    await teardown(admin, [editor, writer, coord], ctx);
+    await admin.end();
+  }
+});
+
+test("tracking initialized during edit: incompatible saved packages reject under the inventory lock", async (t) => {
+  const url = dbUrl();
+  if (!url) return void t.skip("local Supabase DB not reachable");
+  const admin = (await openSession(url)).c;
+  const editor = await openSession(url);
+  const tracker = await openSession(url);
+  const coord = await openSession(url);
+  let ctx: Ctx | undefined;
+  try {
+    await admin.query("set request.jwt.claims = '{\"role\":\"service_role\"}'");
+    await createBarrier(admin);
+    ctx = await provision(admin);
+    // Confirmation reserves p1 only; p2 is untracked and retains its saved carton/6.
+    await admin.query("delete from public.inventory_items where tenant_id=$1 and product_id=$2", [ctx.tenant, ctx.p2]);
+    const order = await createOrder(admin, ctx, 2, 3);
+    await reserve(admin, ctx, order);
+    await admin.query("update public.products set package_quantity=12 where id=$1", [ctx.p2]);
+    const before = (await admin.query(`select to_jsonb(o) header,
+      (select jsonb_agg(to_jsonb(i) order by i.id) from public.order_items i where i.order_id=o.id) items,
+      (select jsonb_agg(to_jsonb(m) order by m.id) from public.order_inventory_movements m where m.order_id=o.id) movements,
+      (select jsonb_agg(to_jsonb(a) order by a.id) from public.audit_events a where a.entity_id=o.id) audit
+      from public.orders o where o.id=$1`, [order])).rows[0];
+    await coord.c.query("select pg_advisory_lock($1)", [BARRIER_KEY]);
+    const { p: edit } = await fire(editor.c, ctx, EDIT_SQL, [ctx.tenant, order, JSON.stringify([
+      { product_id: ctx.p1, quantity: 4 }, { product_id: ctx.p2, quantity: 3 },
+    ])], true);
+    await waitFor(() => advisoryWaiters(admin).then(n => n === 1),
+      "edit has passed the early package guard and pauses at p1's movement");
+    // The real stock-adjustment RPC can initialize p2 while the edit holds product
+    // SHARE locks (its foreign-key KEY SHARE lock is compatible). Commit before
+    // reconciliation reads p2; no timing sleeps or direct mutation in this race.
+    const { p: track } = await fire(tracker.c, ctx,
+      "select public.adjust_inventory_stock($1,$2,1000,'manual_supplier_delivery')",
+      [ctx.tenant, ctx.p2], false);
+    const tracked = await settle(track);
+    await tracker.c.query(tracked.ok ? "commit" : "rollback");
+    assert.equal(tracked.ok, true, "stock initialization committed during the edit");
+    await coord.c.query("select pg_advisory_unlock($1)", [BARRIER_KEY]);
+    const edited = await settle(edit);
+    await editor.c.query(edited.ok ? "commit" : "rollback");
+    assert.equal(edited.ok, false, "newly tracked mismatched packages reject reconciliation");
+    assert.equal(errCode(edited.ok ? undefined : edited.e), "22023");
+    assert.equal(await avail(admin, ctx, ctx.p1), 998, "first product's deduction rolled back");
+    assert.equal(await avail(admin, ctx, ctx.p2), 1000, "separately committed stock initialization remains untouched");
+    const after = (await admin.query(`select to_jsonb(o) header,
+      (select jsonb_agg(to_jsonb(i) order by i.id) from public.order_items i where i.order_id=o.id) items,
+      (select jsonb_agg(to_jsonb(m) order by m.id) from public.order_inventory_movements m where m.order_id=o.id) movements,
+      (select jsonb_agg(to_jsonb(a) order by a.id) from public.audit_events a where a.entity_id=o.id) audit
+      from public.orders o where o.id=$1`, [order])).rows[0];
+    assert.deepEqual(after, before, "order, snapshots, order ledger and order audit rolled back exactly");
+  } finally {
+    await teardown(admin, [editor, tracker, coord], ctx);
+    await admin.end();
   }
 });
 

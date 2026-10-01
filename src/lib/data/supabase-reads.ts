@@ -378,7 +378,8 @@ function mapInventory(row: Row<"inventory_items">): InventoryItem {
 type OrderRow = Row<"orders"> & {
   order_items: Pick<
     Row<"order_items">,
-    "product_id" | "quantity" | "unit_price_snapshot" | "created_at" | "id"
+    "product_id" | "quantity" | "unit_price_snapshot" | "created_at" | "id" |
+    "product_name_snapshot" | "package_unit_snapshot" | "package_quantity_snapshot" | "vat_rate_snapshot"
   >[];
 };
 
@@ -401,6 +402,10 @@ function mapOrder(row: OrderRow): Order {
       productId: item.product_id ?? "",
       quantity: item.quantity,
       unitPrice: item.unit_price_snapshot,
+      nameSnapshot: localizedFrom(item.product_name_snapshot),
+      packageTypeSnapshot: item.package_unit_snapshot,
+      unitsPerPackageSnapshot: item.package_quantity_snapshot,
+      vatRateSnapshot: item.vat_rate_snapshot,
     })),
     status: row.status,
     createdAt: row.created_at,
@@ -1652,7 +1657,7 @@ export async function sbGetInventoryForProduct(
 }
 
 const ORDER_SELECT =
-  "*, order_items (id, product_id, quantity, unit_price_snapshot, created_at)";
+  "*, order_items (id, product_id, quantity, unit_price_snapshot, created_at, product_name_snapshot, package_unit_snapshot, package_quantity_snapshot, vat_rate_snapshot)";
 
 export async function sbListOrders(): Promise<Order[]> {
   const { client, tenantId } = await getReadContext();

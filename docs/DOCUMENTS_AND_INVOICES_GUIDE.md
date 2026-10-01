@@ -1,5 +1,21 @@
 # Documents & Invoices Guide
 
+## Current operational freshness policy (ORDER-FINANCIAL-INTEGRITY-001)
+
+Download and Regenerate for order requests, delivery notes and invoice drafts
+render one coherent saved order/header/items source into same-origin attachment
+bytes (`private, no-store`). Share uses the same renderer with inline disposition.
+Print passes its prepared source directly to the existing template; it does not
+re-read live customer/catalog values or omit historical lines missing from the
+catalog. Separate requests around an edit may observe different saved versions.
+
+The older signed-object reuse policy below is historical, superseded by this
+local change pending Control Room release approval. Storage objects, metadata,
+private access policies and shared helpers are retained. A failed fresh render
+does not fall back to an old PDF. IDs, numbers, locale selection, safe filenames,
+invoice-draft notices and price-free delivery notes remain unchanged. See
+[implementation evidence and release caveats](qa/ORDER_FINANCIAL_INTEGRITY_001.md).
+
 ## Native Android document actions (DOCUMENT-ACTIONS-ANDROID-001)
 
 The Android WebView shell can advertise `documents.sharePdf` and
@@ -58,13 +74,13 @@ non-legal, with their existing watermark, notices and numbering unchanged.
 - **Print:** a normal link opens
   `/{locale}/admin/orders/{id}/documents/{type}/print`. This dynamic admin page
   uses the shared `prepareOrderDocument` access/record path, then the existing
-  HTML `DocumentView` through `DocumentPreview` and its route-local data provider.
+  HTML `DocumentView` through `DocumentPreview`, passing the prepared saved source.
   The print trigger waits for fonts/logo and requests `window.print()` once.
   The existing manual Print / Save PDF control remains available if the browser
   suppresses automatic printing. No PDF download or new printable template is
   involved. Mock mode can print all three types without a persisted mock record.
-- **Download/Regenerate:** retain the existing short-lived private-storage signed
-  download path and attachment fallback. Default document language stays Hebrew,
+- **Download/Regenerate:** freshly render same-origin attachment bytes, without
+  stored-object reuse or redirects. Default document language stays Hebrew,
   independently of UI locale; existing preview language controls are unchanged.
 
 No migration, RLS/grant change, public document URL, security-policy relaxation,
