@@ -332,6 +332,12 @@ export interface OrderItem {
   packageTypeSnapshot?: PackageType;
   unitsPerPackageSnapshot?: number;
   vatRateSnapshot?: number;
+  pricingSourceSnapshot?: "base" | "customer_agreement";
+  pricingAgreementIdSnapshot?: string;
+  pricingAgreementRevisionSnapshot?: number;
+  packageContractRevisionSnapshot?: number;
+  baseUnitSnapshot?: string;
+  unitSizeSnapshot?: string;
 }
 
 /**

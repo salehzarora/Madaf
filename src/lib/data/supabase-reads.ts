@@ -379,7 +379,9 @@ type OrderRow = Row<"orders"> & {
   order_items: Pick<
     Row<"order_items">,
     "product_id" | "quantity" | "unit_price_snapshot" | "created_at" | "id" |
-    "product_name_snapshot" | "package_unit_snapshot" | "package_quantity_snapshot" | "vat_rate_snapshot"
+    "product_name_snapshot" | "package_unit_snapshot" | "package_quantity_snapshot" | "vat_rate_snapshot" |
+    "pricing_source_snapshot" | "pricing_agreement_id_snapshot" | "pricing_agreement_revision_snapshot" |
+    "package_contract_revision_snapshot" | "base_unit_snapshot" | "unit_size_snapshot"
   >[];
 };
 
@@ -406,6 +408,12 @@ function mapOrder(row: OrderRow): Order {
       packageTypeSnapshot: item.package_unit_snapshot,
       unitsPerPackageSnapshot: item.package_quantity_snapshot,
       vatRateSnapshot: item.vat_rate_snapshot,
+      pricingSourceSnapshot: item.pricing_source_snapshot === "base" || item.pricing_source_snapshot === "customer_agreement" ? item.pricing_source_snapshot : undefined,
+      pricingAgreementIdSnapshot: item.pricing_agreement_id_snapshot ?? undefined,
+      pricingAgreementRevisionSnapshot: item.pricing_agreement_revision_snapshot ?? undefined,
+      packageContractRevisionSnapshot: item.package_contract_revision_snapshot ?? undefined,
+      baseUnitSnapshot: item.base_unit_snapshot ?? undefined,
+      unitSizeSnapshot: item.unit_size_snapshot ?? undefined,
     })),
     status: row.status,
     createdAt: row.created_at,
@@ -1657,7 +1665,7 @@ export async function sbGetInventoryForProduct(
 }
 
 const ORDER_SELECT =
-  "*, order_items (id, product_id, quantity, unit_price_snapshot, created_at, product_name_snapshot, package_unit_snapshot, package_quantity_snapshot, vat_rate_snapshot)";
+  "*, order_items (id, product_id, quantity, unit_price_snapshot, created_at, product_name_snapshot, package_unit_snapshot, package_quantity_snapshot, vat_rate_snapshot, pricing_source_snapshot, pricing_agreement_id_snapshot, pricing_agreement_revision_snapshot, package_contract_revision_snapshot, base_unit_snapshot, unit_size_snapshot)";
 
 export async function sbListOrders(): Promise<Order[]> {
   const { client, tenantId } = await getReadContext();

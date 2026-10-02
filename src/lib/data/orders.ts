@@ -1,3 +1,4 @@
+import { type QuoteInput } from "@/lib/pricing";
 /**
  * Order + document data access. Mock by default; Supabase branches are
  * server-only local dev (see ./supabase-context for the access model).
@@ -85,6 +86,7 @@ export function resetMockOrderAuditLog(): void {
 }
 
 export interface CreateOrderInput {
+  quote?: QuoteInput;
   customerId: string | null;
   items: { productId: string; quantity: number }[];
   notes?: string;
@@ -402,6 +404,7 @@ export async function updateOrderItems(
   orderId: string,
   items: { productId: string; quantity: number }[],
   notes?: string,
+  quote?: QuoteInput,
 ): Promise<{ orderId: string }> {
   if (getDataMode() !== "supabase") {
     throw new Error("[madaf/data] updateOrderItems is a Supabase-only write.");
@@ -410,6 +413,7 @@ export async function updateOrderItems(
     orderId,
     items,
     notes,
+    quote,
   );
 }
 

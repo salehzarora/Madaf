@@ -1,4 +1,5 @@
 "use server";
+import { PricingError, validQuote, type QuoteInput } from "@/lib/pricing";
 
 /**
  * Order write Server Actions (M3A).
@@ -69,7 +70,7 @@ export interface SubmitOrderResult {
   /** Customer-facing public ref (MDF-XXXXXXXX) — shown on the success page. */
   publicRef?: string;
   /** "conflict" when the submission key was reused with a changed cart (MDF40). */
-  reason?: "conflict";
+  reason?: "pricing" | "conflict";
 }
 
 export async function submitOrderAction(input: {
@@ -79,6 +80,7 @@ export async function submitOrderAction(input: {
   locale: string;
   /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
   submissionKey: string;
+  quote?: QuoteInput;
 }): Promise<SubmitOrderResult> {
   try {
     const items = Array.isArray(input.items) ? input.items : [];
@@ -94,7 +96,9 @@ export async function submitOrderAction(input: {
         return { ok: false };
       }
     }
+    // The RPC checks a committed replay before validating fresh quote terms.
     if (!isSubmissionKey(input.submissionKey)) return { ok: false };
+    if (input.customerId !== null && (typeof input.customerId !== "string" || !isPlausibleId(input.customerId))) return { ok: false };
     const customerId =
       typeof input.customerId === "string" && isPlausibleId(input.customerId)
         ? input.customerId
@@ -115,6 +119,7 @@ export async function submitOrderAction(input: {
       // sources arrive with tokenized links and admin tooling (M4+).
       source: "sales_visit",
       submissionKey: input.submissionKey,
+      quote: input.quote,
     });
 
     if (typeof input.locale === "string" && /^[a-z]{2}$/.test(input.locale)) {
@@ -125,6 +130,7 @@ export async function submitOrderAction(input: {
     // sequential number (M7G).
     return { ok: true, publicRef: result.publicRef };
   } catch (error) {
+    if (error instanceof PricingError) return { ok: false, reason: "pricing" };
     if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitOrderAction failed:", error);
     return { ok: false };
@@ -174,17 +180,19 @@ export async function updateOrderStatusAction(input: {
 
 export interface EditOrderResult {
   ok: boolean;
-  reason?: "insufficient_stock" | "locked";
+  reason?: "pricing" | "insufficient_stock" | "locked";
 }
 
 /** M7I.3 — owner/admin edit an order's lines (+ notes). */
 export async function updateOrderItemsAction(input: {
+  quote?: QuoteInput;
   orderId: string;
   items: { productId: string; quantity: number }[];
   notes?: string;
   locale: string;
 }): Promise<EditOrderResult> {
   try {
+    if (input.quote !== undefined && !validQuote(input.quote)) return { ok: false };
     if (!isPlausibleId(input.orderId)) return { ok: false };
     const items = Array.isArray(input.items) ? input.items : [];
     if (items.length === 0 || items.length > MAX_LINES) return { ok: false };
@@ -206,10 +214,12 @@ export async function updateOrderItemsAction(input: {
       input.orderId,
       items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       notes,
+      input.quote,
     );
     revalidateOrder(input.locale, input.orderId);
     return { ok: true };
   } catch (error) {
+    if (error instanceof PricingError) return { ok: false, reason: "pricing" };
     if (isInsufficientStock(error)) return { ok: false, reason: "insufficient_stock" };
     if (error instanceof Error && error.message.includes("cannot be edited")) {
       return { ok: false, reason: "locked" };

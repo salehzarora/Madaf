@@ -1,4 +1,7 @@
 "use client";
+import { getDataMode } from "@/lib/data/mode";
+import { useOrderQuote } from "@/lib/use-order-quote";
+import { useEffectivePrices } from "@/lib/use-effective-prices";
 
 import {
   ArrowRight,
@@ -8,7 +11,7 @@ import {
   ShoppingCart,
   Store,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { CatalogFilterBar } from "@/components/shop/catalog-filter-bar";
 import { EmptyState } from "@/components/empty-state";
 import { LocaleSwitcher } from "@/components/locale-switcher";
@@ -60,6 +63,7 @@ export function ShowcaseView({
   token: string;
   catalog: ShowcaseCatalog;
 }) {
+  const requiresQuote = getDataMode() !== "mock";
   const t = dict.access.showcase;
   const [filters, setFilters] = useState(emptyCatalogFilters);
   const [cart, setCart] = useState<Map<string, number>>(new Map());
@@ -72,6 +76,18 @@ export function ShowcaseView({
   // FIX2: browser storage unavailable → could not prepare a persistent submission
   // key; fail closed rather than submit with a volatile key.
   const [prepFailed, setPrepFailed] = useState(false);
+  const pricing = useEffectivePrices(catalog.products, { token, showcase: true });
+  const review = useOrderQuote({ token, showcase: true }, [...cart].map(([productId, quantity]) => ({ productId, quantity })), pricing.key, pricing.ready);
+  const [priceChanged, setPriceChanged] = useState(false);
+  const [attempt, setAttempt] = useState<Parameters<typeof submitShowcaseOrderAction>[0] | null>(null);
+  const busy = useRef(false);
+  const reviewedKey = useRef<string | null>(null);
+  const [unresolved, setUnresolved] = useState(false);
+  function priceText(id: string, quantity = 1, divisor = 1) {
+    const quoted = review.quote?.lines.find(i => i.product_id === id);
+    const price = quoted ? Number(quoted.unit_price_snapshot) : pricing.priceOf(id);
+    return price === null ? "—" : formatCurrency(price * quantity / divisor, locale);
+  }
 
   const categoryById = useMemo(
     () => new Map(catalog.categories.map((c) => [c.id, c])),
@@ -87,11 +103,12 @@ export function ShowcaseView({
   );
   const visible = useMemo(
     () =>
-      filterAndSortProducts(catalog.products, filters, manufacturerById, locale),
-    [catalog.products, filters, manufacturerById, locale],
+      filterAndSortProducts(catalog.products, filters, manufacturerById, locale, pricing),
+    [catalog.products, filters, manufacturerById, locale, pricing],
   );
 
   function setQty(productId: string, qty: number) {
+    if (pending || attempt) return;
     setCart((prev) => {
       const next = new Map(prev);
       if (qty <= 0) next.delete(productId);
@@ -101,19 +118,14 @@ export function ShowcaseView({
   }
 
   const lineCount = cart.size;
-  const estimate = useMemo(() => {
-    let sum = 0;
-    for (const [productId, qty] of cart) {
-      const product = productById.get(productId);
-      if (product) sum += qty * product.wholesalePrice;
-    }
-    return sum;
-  }, [cart, productById]);
+  const estimate = review.quote ? Number(review.quote.headers.subtotal) : requiresQuote ? null : [...cart].reduce((sum, [id, qty]) => sum + qty * (pricing.priceOf(id) ?? 0), 0);
 
   const tenantName = catalog.tenantName[locale] || catalog.tenantName.he;
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (unresolved || busy.current || (!attempt && requiresQuote && !review.quote)) return;
+    busy.current = true;
     setError(false);
     setConflict(false);
     setPrepFailed(false);
@@ -121,7 +133,7 @@ export function ShowcaseView({
       productId,
       quantity,
     }));
-    if (items.length === 0) return;
+    if (items.length === 0 && !attempt) { busy.current = false; return; }
     const fd = new FormData(event.currentTarget);
     const city = ((fd.get("city") as string) || "").trim() || undefined;
     const cityKey =
@@ -138,24 +150,35 @@ export function ShowcaseView({
       // FIX2: one submission key per logical order, PERSISTED in sessionStorage
       // (scoped to this showcase token) so a refresh/remount retry reuses it.
       // Fail closed if storage is unavailable.
-      const keyResult = await getOrCreateTokenSubmissionKey("showcase", token);
+      const keyResult = attempt ? { ok: true as const, key: attempt.submissionKey, existing: true } : await getOrCreateTokenSubmissionKey("showcase", token);
       if (!keyResult.ok) {
         setPrepFailed(true);
+        busy.current = false;
         return;
       }
+      if (requiresQuote && keyResult.existing && !attempt && reviewedKey.current !== keyResult.key) {
+        setUnresolved(true); busy.current = false; return;
+      }
+      reviewedKey.current = keyResult.key;
       try {
-        const result = await submitShowcaseOrderAction({
+        const payload = attempt ?? {
           token,
           items,
           store,
           notes: notes.trim() || undefined,
           submissionKey: keyResult.key,
-        });
+          ...(review.quote ? { quote: review.quote.quote } : {}),
+        };
+        setAttempt(payload);
+        const result = await submitShowcaseOrderAction({ ...payload, ...(attempt && requiresQuote ? { quote: { mode: "replay_only" } as const } : {}) });
         if (result.ok && result.publicRef) {
+          setAttempt(null);
           setPublicRef(result.publicRef);
           setCart(new Map());
           setNotes("");
           await clearTokenSubmissionKey("showcase", token); // next order = new key
+        } else if (result.reason === "pricing") {
+          setAttempt(null); setPriceChanged(true); pricing.retry(); review.refresh();
         } else if (result.reason === "conflict") {
           setConflict(true); // key reused with a changed order; keep the cart + form
         } else {
@@ -165,13 +188,16 @@ export function ShowcaseView({
         // Ambiguous transport/server-action failure: KEEP the persisted key so the
         // retry is the same logical order.
         setError(true);
-      }
+      } finally { busy.current = false; }
     });
   }
 
   // Explicit new attempt after a conflict: rotate the persisted key, keep the form.
-  function startNewAttempt() {
-    void rotateTokenSubmissionKey("showcase", token);
+  async function startNewAttempt() {
+    const rotated = await rotateTokenSubmissionKey("showcase", token);
+    if (!rotated.ok) { setPrepFailed(true); return; }
+    reviewedKey.current = rotated.key;
+    setAttempt(null);
     setConflict(false);
     setError(false);
     setPrepFailed(false);
@@ -249,7 +275,7 @@ export function ShowcaseView({
                       ×{formatNumber(qty, locale)}
                     </span>
                     <span className="showcase-summary-price" dir="ltr">
-                      {formatCurrency(qty * product.wholesalePrice, locale)}
+                      {priceText(product.id, qty)}
                     </span>
                   </li>
                 );
@@ -260,7 +286,7 @@ export function ShowcaseView({
                 {t.estimatedTotal}
               </span>
               <span dir="ltr">
-                {formatCurrency(estimate, locale)}
+                {estimate === null ? "—" : formatCurrency(estimate, locale)}
               </span>
             </div>
           </div>
@@ -269,26 +295,26 @@ export function ShowcaseView({
           <form onSubmit={onSubmit} className="showcase-guest-form">
             <div>
               <Label htmlFor="sc-name">{su.storeName}</Label>
-              <Input id="sc-name" name="name" required maxLength={200} />
+              <Input readOnly={pending || !!attempt} id="sc-name" name="name" required maxLength={200} />
             </div>
             <div className="showcase-field-grid">
               <div>
                 <Label htmlFor="sc-contact">
                   {su.contactName} · {dict.common.optional}
                 </Label>
-                <Input id="sc-contact" name="contactName" maxLength={200} />
+                <Input readOnly={pending || !!attempt} id="sc-contact" name="contactName" maxLength={200} />
               </div>
               <div>
                 <Label htmlFor="sc-phone">
                   {su.phone} · {dict.common.optional}
                 </Label>
-                <Input id="sc-phone" name="phone" dir="ltr" maxLength={40} />
+                <Input readOnly={pending || !!attempt} id="sc-phone" name="phone" dir="ltr" maxLength={40} />
               </div>
               <div>
                 <Label htmlFor="sc-email">
                   {su.email} · {dict.common.optional}
                 </Label>
-                <Input
+                <Input readOnly={pending || !!attempt}
                   id="sc-email"
                   name="email"
                   type="email"
@@ -300,20 +326,20 @@ export function ShowcaseView({
                 <Label htmlFor="sc-city">
                   {su.city} · {dict.common.optional}
                 </Label>
-                <Input id="sc-city" name="city" maxLength={120} />
+                <Input readOnly={pending || !!attempt} id="sc-city" name="city" maxLength={120} />
               </div>
             </div>
             <div>
               <Label htmlFor="sc-address">
                 {su.address} · {dict.common.optional}
               </Label>
-              <Input id="sc-address" name="address" maxLength={300} />
+              <Input readOnly={pending || !!attempt} id="sc-address" name="address" maxLength={300} />
             </div>
             <div>
               <Label htmlFor="sc-notes">
                 {dict.cart.orderNotes} · {dict.common.optional}
               </Label>
-              <Textarea
+              <Textarea disabled={pending || !!attempt}
                 id="sc-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -359,10 +385,14 @@ export function ShowcaseView({
             ) : null}
 
             <div className="showcase-form-actions">
+              {priceChanged ? <p role="status">{dict.pricing.changed}</p> : null}
+              {unresolved ? <p role="alert">{dict.pricing.unresolved}</p> : null}
+              {attempt && !pending ? <p role="status">{dict.pricing.pending}</p> : null}
+              {!attempt && requiresQuote && !review.quote ? <p role="status">{dict.pricing.unavailable} <button type="button" onClick={review.refresh}>{dict.pricing.retry}</button></p> : null}
               <Button
                 type="submit"
                 size="lg"
-                disabled={pending || conflict}
+                disabled={unresolved || pending || conflict || (!attempt && requiresQuote && !review.quote)}
                 className="showcase-submit"
               >
                 <ShoppingCart className="size-5" aria-hidden />
@@ -372,7 +402,7 @@ export function ShowcaseView({
                 type="button"
                 variant="ghost"
                 size="lg"
-                disabled={pending}
+                disabled={pending || !!attempt}
                 onClick={() => setStep("browse")}
                 className="showcase-back"
               >
@@ -475,7 +505,7 @@ export function ShowcaseView({
                       {packageLabel(product, dict)}
                     </p>
                     <p className="public-store-product-price" dir="ltr">
-                      {formatCurrency(product.wholesalePrice, locale)}
+                      {priceText(product.id)}
                     </p>
                   </div>
                   <div className="public-store-product-action">
@@ -524,7 +554,7 @@ export function ShowcaseView({
                 {dict.cart.title} · {formatNumber(lineCount, locale)}
               </p>
               <p className="public-store-estimate" dir="ltr">
-                {formatCurrency(estimate, locale)}
+                {estimate === null ? "—" : formatCurrency(estimate, locale)}
               </p>
             </div>
             <Button size="lg" onClick={() => setStep("checkout")} className="public-store-submit showcase-proceed">

@@ -1,3 +1,4 @@
+import { throwPricingError, type QuoteInput } from "@/lib/pricing";
 import "server-only";
 import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
@@ -500,6 +501,7 @@ export async function submitTokenOrder(
   items: { productId: string; quantity: number }[],
   submissionKey: string,
   notes?: string,
+  quote?: QuoteInput,
 ): Promise<string | null> {
   const client = await createServerAuthClient();
   // Raw token over the wire; the DB re-hashes and validates it server-side.
@@ -509,11 +511,13 @@ export async function submitTokenOrder(
       p_items: items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
       ...(notes ? { p_notes: notes } : {}),
       p_submission_key: submissionKey,
+      ...(quote ? { p_quote: quote } : {}),
     })
     .single();
   // FIX1: a reused key with a changed payload conflicts (MDF40) — surface it as a
   // recognizable error so the shop UI can offer a new attempt (a null-return here
   // would be indistinguishable from an ordinary failure).
+  throwPricingError(error);
   if (error?.code === "MDF40") {
     throw new Error("[madaf/data] order submission key reused with a different request");
   }

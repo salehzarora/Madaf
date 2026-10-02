@@ -66,19 +66,19 @@ select ok(not has_function_privilege('anon', 'public.update_order_status(uuid,uu
 
 -- ── 9–12. update_order_items: signature / DEFINER / search_path / loop ─────
 select has_function('public', 'update_order_items',
-  array['uuid', 'uuid', 'jsonb', 'text'], 'update_order_items keeps its signature');
-select is((select prosecdef from pg_proc where oid='public.update_order_items(uuid,uuid,jsonb,text)'::regprocedure),
+  array['uuid', 'uuid', 'jsonb', 'text', 'jsonb'], 'update_order_items has one trailing optional quote contract');
+select is((select prosecdef from pg_proc where oid='public.update_order_items(uuid,uuid,jsonb,text,jsonb)'::regprocedure),
   true, 'update_order_items stays SECURITY DEFINER');
-select is((select array_to_string(proconfig, ',') from pg_proc where oid='public.update_order_items(uuid,uuid,jsonb,text)'::regprocedure),
+select is((select array_to_string(proconfig, ',') from pg_proc where oid='public.update_order_items(uuid,uuid,jsonb,text,jsonb)'::regprocedure),
   'search_path=""', 'update_order_items pins an empty search_path');
-select ok((select pg_get_functiondef('public.update_order_items(uuid,uuid,jsonb,text)'::regprocedure)
+select ok((select pg_get_functiondef('public.update_order_items(uuid,uuid,jsonb,text,jsonb)'::regprocedure)
              like '%order by coalesce(n.pid, r.pid)%'),
   'update_order_items reconcile loop locks in ascending product_id (order by coalesce(n.pid, r.pid))');
 
 -- ── 13–14. update_order_items client grants preserved ─────────────────────
-select ok(has_function_privilege('authenticated', 'public.update_order_items(uuid,uuid,jsonb,text)', 'EXECUTE'),
+select ok(has_function_privilege('authenticated', 'public.update_order_items(uuid,uuid,jsonb,text,jsonb)', 'EXECUTE'),
   'authenticated may execute update_order_items');
-select ok(not has_function_privilege('anon', 'public.update_order_items(uuid,uuid,jsonb,text)', 'EXECUTE'),
+select ok(not has_function_privilege('anon', 'public.update_order_items(uuid,uuid,jsonb,text,jsonb)', 'EXECUTE'),
   'anon may NOT execute update_order_items');
 
 -- ═══ SEMANTICS: multi-product reserve / reconcile / restore unchanged ══════

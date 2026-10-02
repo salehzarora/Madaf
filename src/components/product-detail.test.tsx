@@ -66,7 +66,7 @@ for (const locale of locales) {
   });
   test(`${locale}: related tile is one localized link with long name, package and price, without ordering controls`, () => {
     const dict = getDictionary(locale);
-    const container = mount(<StorefrontProductTile product={product} locale={locale} dict={dict} />);
+    const container = mount(<ShopDataProvider products={[product]} categories={[]} manufacturers={[]} customers={[]}><CartProvider><StorefrontProductTile product={product} locale={locale} dict={dict} /></CartProvider></ShopDataProvider>);
     assert.equal(container.querySelectorAll("a").length, 1);
     assert.equal(container.querySelector("a")?.getAttribute("href"), `/${locale}/product/detail`);
     assert.equal(container.querySelector("h3")?.textContent, product.translations[locale].name);

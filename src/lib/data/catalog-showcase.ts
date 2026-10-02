@@ -1,3 +1,4 @@
+import { throwPricingError, type QuoteInput } from "@/lib/pricing";
 import "server-only";
 import { scheduleNewOrderPush } from "@/lib/push/after-order";
 
@@ -273,6 +274,7 @@ export async function submitShowcaseGuestOrder(
   store: GuestStoreInput,
   submissionKey: string,
   notes?: string,
+  quote?: QuoteInput,
 ): Promise<string | null> {
   const client = await createServerAuthClient();
   const { data, error } = await client
@@ -289,10 +291,12 @@ export async function submitShowcaseGuestOrder(
       ...(store.address ? { p_address: store.address } : {}),
       ...(notes ? { p_notes: notes } : {}),
       p_submission_key: submissionKey,
+      ...(quote ? { p_quote: quote } : {}),
     })
     .single();
   // FIX1: a reused key with a changed payload conflicts (MDF40) — surface it so the
   // showcase UI can offer a new attempt (distinct from an ordinary null failure).
+  throwPricingError(error);
   if (error?.code === "MDF40") {
     throw new Error("[madaf/data] order submission key reused with a different request");
   }

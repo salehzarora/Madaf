@@ -1,4 +1,5 @@
 "use client";
+import { EffectivePrice } from "@/components/effective-price";
 
 import { ArrowRight, ShoppingCart, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -100,9 +101,9 @@ export function CartView({
                 </div>
                 <div className="storefront-cart-line-footer">
                   <div className="storefront-cart-line-price">
-                    <bdi dir="ltr">{formatCurrency(product.wholesalePrice * item.quantity, locale)}</bdi>
+                    <bdi dir="ltr"><EffectivePrice productId={product.id} locale={locale} quantity={item.quantity} /></bdi>
                     <span><bdi dir="ltr">
-                      ({formatCurrency(product.wholesalePrice, locale)} ×{" "}
+                      (<EffectivePrice productId={product.id} locale={locale} /> ×{" "}
                       {item.quantity})
                     </bdi></span>
                   </div>
@@ -164,7 +165,7 @@ export function CartView({
               <div className="storefront-cart-subtotal">
                 <span>{dict.common.subtotal}</span>
                 <bdi dir="ltr">
-                  {formatCurrency(subtotal, locale)}
+                  {subtotal === null ? "—" : formatCurrency(subtotal, locale)}
                 </bdi>
               </div>
               <p className="storefront-cart-vat">

@@ -34,7 +34,7 @@ const UUID_RE =
 
 /** A submission key, or a fail-closed reason (never a silent volatile fallback). */
 export type SubmissionKeyResult =
-  | { ok: true; key: string }
+  | { ok: true; key: string; existing: boolean }
   | { ok: false; reason: "storage" | "channel" };
 
 /** SHA-256 hex of the token — the storage NAMESPACE scope only. Not the DB
@@ -96,12 +96,12 @@ export async function getOrCreateTokenSubmissionKey(
   try {
     const nsKey = await namespaceKey(channel, token);
     const existing = readStoredKey(s.getItem(nsKey));
-    if (existing) return { ok: true, key: existing };
+    if (existing) return { ok: true, key: existing, existing: true };
     const key = crypto.randomUUID();
     s.setItem(nsKey, JSON.stringify({ v: STORAGE_VERSION, k: key }));
     // Verify the key actually persisted before the caller relies on it.
     if (readStoredKey(s.getItem(nsKey)) !== key) return { ok: false, reason: "storage" };
-    return { ok: true, key };
+    return { ok: true, key, existing: false };
   } catch {
     return { ok: false, reason: "storage" };
   }

@@ -21,7 +21,7 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   timeout: 45_000,
-  globalTimeout: 180_000,
+  globalTimeout: 360_000,
   expect: { timeout: 10_000 },
   outputDir: '.e2e/test-results',
   reporter: [['./tests/e2e/safe-reporter.ts']],

@@ -38,6 +38,7 @@ export function filterAndSortProducts(
   f: CatalogFilterState,
   manufacturerById: Map<string, Manufacturer>,
   locale: Locale,
+  pricing?: { ready: boolean; priceOf: (id: string) => number | null },
 ): Product[] {
   const q = f.query.trim().toLowerCase();
   const filtered = products.filter((product) => {
@@ -68,12 +69,12 @@ export function filterAndSortProducts(
     return true;
   });
 
-  if (f.sort === "featured") return filtered;
+  if (f.sort === "featured" || (pricing && !pricing.ready)) return filtered;
   const copy = [...filtered];
   if (f.sort === "priceAsc") {
-    copy.sort((a, b) => a.wholesalePrice - b.wholesalePrice);
+    copy.sort((a, b) => (pricing ? pricing.priceOf(a.id) ?? Infinity : a.wholesalePrice) - (pricing ? pricing.priceOf(b.id) ?? Infinity : b.wholesalePrice));
   } else if (f.sort === "priceDesc") {
-    copy.sort((a, b) => b.wholesalePrice - a.wholesalePrice);
+    copy.sort((a, b) => (pricing ? pricing.priceOf(b.id) ?? -Infinity : b.wholesalePrice) - (pricing ? pricing.priceOf(a.id) ?? -Infinity : a.wholesalePrice));
   } else if (f.sort === "name") {
     copy.sort((a, b) =>
       productName(a, locale).localeCompare(productName(b, locale), locale),

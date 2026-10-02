@@ -1,5 +1,6 @@
 "use client";
 
+import { PricingStatus } from "@/components/effective-price";
 import { PackageSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CatalogHero, type CatalogSupplierIdentity } from "@/components/catalog-hero";
@@ -28,7 +29,7 @@ export function CatalogView({ locale, dict, supplier, initialCustomerId }: {
   supplier: CatalogSupplierIdentity;
   initialCustomerId?: string;
 }) {
-  const { hydrated, setCustomer } = useCart();
+  const { hydrated, setCustomer, priceOf, pricingReady } = useCart();
   const { products, categories, manufacturers, categoryById, manufacturerById } = useShopData();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -59,13 +60,13 @@ export function CatalogView({ locale, dict, supplier, initialCustomerId }: {
   }, [query, categoryId, manufacturerIds, products, manufacturerById]);
 
   const sorted = useMemo(() => {
-    if (sort === "featured") return filtered;
+    if (sort === "featured" || !pricingReady) return filtered;
     const copy = [...filtered];
-    if (sort === "priceAsc") copy.sort((a, b) => a.wholesalePrice - b.wholesalePrice);
-    else if (sort === "priceDesc") copy.sort((a, b) => b.wholesalePrice - a.wholesalePrice);
+    if (sort === "priceAsc") copy.sort((a, b) => (priceOf(a.id) ?? Infinity) - (priceOf(b.id) ?? Infinity));
+    else if (sort === "priceDesc") copy.sort((a, b) => (priceOf(b.id) ?? -Infinity) - (priceOf(a.id) ?? -Infinity));
     else if (sort === "name") copy.sort((a, b) => productName(a, locale).localeCompare(productName(b, locale), locale));
     return copy;
-  }, [filtered, sort, locale]);
+  }, [filtered, sort, locale, priceOf, pricingReady]);
 
   const hasFilters = query !== "" || categoryId !== null || manufacturerIds.size > 0;
   function toggleManufacturer(id: string) {
@@ -86,6 +87,7 @@ export function CatalogView({ locale, dict, supplier, initialCustomerId }: {
     <div className="catalog-workspace">
       <div className="catalog-main">
         <CatalogHero supplier={supplier} products={products} dict={dict} />
+        <PricingStatus dict={dict} />
         <CatalogToolbar
           locale={locale} dict={dict} categories={categories} manufacturers={manufacturers}
           query={query} onQueryChange={setQuery}

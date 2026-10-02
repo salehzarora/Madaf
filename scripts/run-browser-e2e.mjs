@@ -76,6 +76,8 @@ const outcome = await runWithCleanup(async () => {
     if (!response.ok) throw new Error('Owned local Auth/Storage readiness failed');
   }
   await command('fixtures', process.execPath, [resolve(root, 'tests/e2e/seed.mjs'), runRoot], dockerEnv, 60_000);
+  await command('pricing-authenticated-tests', process.execPath, [resolve(root, 'tests/e2e/pricing.live.mjs'), runRoot], dockerEnv, 90_000);
+  await command('pricing-lock-tests', process.execPath, [resolve(root, 'tests/e2e/pricing-concurrency.live.mjs'), runRoot], dockerEnv, 90_000);
   const env = {
     ...dockerEnv,
     NEXT_PUBLIC_MADAF_DATA_MODE: 'supabase', NEXT_PUBLIC_SUPABASE_URL: destinations.api,
@@ -89,7 +91,7 @@ const outcome = await runWithCleanup(async () => {
   // npm run build retains the standard Turbopack + dynamic-route checks.
   await command('supabase-production-build', process.execPath, [process.env.npm_execpath, 'run', 'build'], env, 300_000);
   await writeFile(resolve(runRoot, 'build-proof.json'), JSON.stringify({ projectId, buildId: (await readFile(resolve(root, '.next/BUILD_ID'), 'utf8')).trim() }));
-  await command('browser-tests', process.execPath, [resolve(root, 'node_modules/@playwright/test/cli.js'), 'test'], env, 180_000);
+  await command('browser-tests', process.execPath, [resolve(root, 'node_modules/@playwright/test/cli.js'), 'test'], env, 360_000);
 }, async () => {
   if (stackCreated) {
     const savedMarker = JSON.parse(await readFile(resolve(runRoot, 'ownership.json'), 'utf8'));

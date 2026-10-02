@@ -1,4 +1,6 @@
 /** Real server page, with only its existing data/read boundary isolated. */
+import React from "react";
+import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { beforeEach, mock, test } from "node:test";
@@ -42,9 +44,14 @@ beforeEach(() => {
   reads.length = 0;
 });
 function page(locale = "en") { return ProductPage({ params: Promise.resolve({ locale, id: "detail" }) }); }
+const require = createRequire(import.meta.url);
+const { CartProvider } = require("@/lib/cart-context") as typeof import("@/lib/cart-context");
+const { ShopDataProvider } = require("@/lib/shop-data-context") as typeof import("@/lib/shop-data-context");
 async function render(locale: Locale = "en") {
   const tree = await page(locale);
-  return new JSDOM(renderToStaticMarkup(tree)).window.document;
+  // The provider's children prop is required in its TypeScript signature.
+  // eslint-disable-next-line react/no-children-prop
+  return new JSDOM(renderToStaticMarkup(React.createElement(ShopDataProvider, { products: [current!, ...products], categories: [category], manufacturers: [manufacturer], customers: [], children: React.createElement(CartProvider, null, tree) }))).window.document;
 }
 
 test("Product route stays server-rendered and force-dynamic", () => {

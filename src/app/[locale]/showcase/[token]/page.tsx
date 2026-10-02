@@ -47,6 +47,6 @@ export default async function ShowcaseTokenPage({
   }
 
   return (
-    <ShowcaseView locale={locale} dict={dict} token={token} catalog={catalog} />
+    <ShowcaseView key={token} locale={locale} dict={dict} token={token} catalog={catalog} />
   );
 }

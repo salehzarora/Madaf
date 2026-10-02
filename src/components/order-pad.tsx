@@ -1,4 +1,5 @@
 "use client";
+import { EffectivePrice } from "@/components/effective-price";
 
 import { ArrowRight, ShoppingCart, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -75,7 +76,7 @@ export function OrderPad({ locale, dict, headingId, onClose }: {
                       decreaseLabel={interpolate(dict.catalog.decreaseQuantity, { product: name })}
                       increaseLabel={interpolate(dict.catalog.increaseQuantity, { product: name })}
                     />
-                    <bdi dir="ltr" className="text-sm font-bold tabular-nums text-ink">{formatCurrency(product.wholesalePrice * item.quantity, locale)}</bdi>
+                    <bdi dir="ltr" className="text-sm font-bold tabular-nums text-ink"><EffectivePrice productId={product.id} locale={locale} quantity={item.quantity} /></bdi>
                   </div>
                 </li>
               );
@@ -87,7 +88,7 @@ export function OrderPad({ locale, dict, headingId, onClose }: {
         <p className="mb-2 text-[11px] text-ink-soft"><bdi dir="ltr">{hydrated ? totalPackages : 0}</bdi> {dict.common.packages} · {interpolate(dict.checkout.itemsCount, { count: hydrated ? items.length : 0 })}</p>
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-semibold">{dict.common.subtotal}</span>
-          <bdi dir="ltr" className="text-xl font-extrabold tabular-nums text-brand-900">{formatCurrency(subtotal, locale)}</bdi>
+          <bdi dir="ltr" className="text-xl font-extrabold tabular-nums text-brand-900">{subtotal === null ? "—" : formatCurrency(subtotal, locale)}</bdi>
         </div>
         <p className="mt-1.5 text-[11px] leading-relaxed text-ink-soft">{dict.cart.vatNote}</p>
         {hydrated && items.length > 0 ? (

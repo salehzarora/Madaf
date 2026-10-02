@@ -1,4 +1,5 @@
 "use server";
+import { PricingError, type QuoteInput } from "@/lib/pricing";
 
 /**
  * Tokenized shop-order Server Action (M4A). A shop (no login) submits an
@@ -31,7 +32,7 @@ export interface ShopOrderResult {
    * sequential number (the token RPC returns public_ref). */
   publicRef?: string;
   /** "conflict" when the submission key was reused with a changed cart (MDF40). */
-  reason?: "conflict";
+  reason?: "pricing" | "conflict";
 }
 
 export async function submitShopOrderAction(input: {
@@ -40,6 +41,7 @@ export async function submitShopOrderAction(input: {
   notes?: string;
   /** DB-backed idempotency key (FIX1) — reused across retries of one submission. */
   submissionKey: string;
+  quote?: QuoteInput;
 }): Promise<ShopOrderResult> {
   try {
     if (typeof input.token !== "string" || input.token.length < 16) {
@@ -57,6 +59,7 @@ export async function submitShopOrderAction(input: {
         return { ok: false };
       }
     }
+    // Quote validation belongs after committed replay in the existing RPC.
     if (!isSubmissionKey(input.submissionKey)) return { ok: false };
     const notes =
       typeof input.notes === "string" && input.notes.trim()
@@ -68,10 +71,12 @@ export async function submitShopOrderAction(input: {
       items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       input.submissionKey,
       notes,
+      input.quote,
     );
     if (!publicRef) return { ok: false };
     return { ok: true, publicRef };
   } catch (error) {
+    if (error instanceof PricingError) return { ok: false, reason: "pricing" };
     if (isSubmissionConflict(error)) return { ok: false, reason: "conflict" };
     console.error("[madaf/actions] submitShopOrderAction failed:", error);
     return { ok: false };
