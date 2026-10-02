@@ -67,9 +67,13 @@ test("same-ID package/VAT/base changes synchronously invalidate pricing",async()
   act(()=>root.render(React.createElement(Probe,{p:{...product,wholesalePrice:11,vatRate:.1,unitsPerPackage:8}})));assert.equal(state.priceOf("p"),null);assert.equal(state.ready,false);
 });
 test("focus and reconnect invalidate the current price generation",async()=>{
-  const h=mountCart();await until(()=>requests.length>0);await answer(requests.length-1);assert.equal(h.cart().priceOf("p"),7.25);
+  const h=mountCart();await until(()=>requests.length>0);await answer(requests.length-1);
+  await until(()=>h.cart().priceOf("p")===7.25);assert.equal(h.cart().priceOf("p"),7.25);
+  const requestCount=requests.length;
   act(()=>window.dispatchEvent(new dom.window.Event("focus")));assert.equal(h.cart().priceOf("p"),null);
-  await until(()=>requests.length>1);await answer(requests.length-1);act(()=>window.dispatchEvent(new dom.window.Event("online")));assert.equal(h.cart().priceOf("p"),null);
+  await until(()=>requests.length>requestCount);await answer(requests.length-1);
+  await until(()=>h.cart().priceOf("p")===7.25);assert.equal(h.cart().priceOf("p"),7.25);
+  act(()=>window.dispatchEvent(new dom.window.Event("online")));assert.equal(h.cart().priceOf("p"),null);
 });
 test("completion preserves a basket changed while the original submission was pending",()=>{
   const h=mountCart();act(()=>{h.cart().setCustomer("A");h.cart().addItem("p",1);});let key!:string;act(()=>{key=h.cart().ensureSubmissionKey();});
