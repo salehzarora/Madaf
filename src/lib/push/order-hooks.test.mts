@@ -12,6 +12,7 @@ const client = {
 };
 mock.module("@/lib/auth/session", { namedExports: { NO_TENANT: "none", getDataContext: async () => ({ client, tenantId: "verified-tenant" }) } });
 mock.module("@/lib/supabase/server-auth", { namedExports: { createServerAuthClient: async () => client } });
+mock.module("@/lib/supabase/server", { namedExports: { createSupabaseServerClient: () => client } });
 mock.module("@/lib/push/after-order", { namedExports: { scheduleNewOrderPush: (order: unknown) => {
   assert.equal(calls.at(-1), "commit-result"); scheduled.push(order);
 } } });

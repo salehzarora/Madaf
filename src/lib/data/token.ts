@@ -14,6 +14,7 @@ import { scheduleNewOrderPush } from "@/lib/push/after-order";
  */
 import { createHash } from "node:crypto";
 
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
 import type {
   Availability,
@@ -503,7 +504,7 @@ export async function submitTokenOrder(
   notes?: string,
   quote?: QuoteInput,
 ): Promise<string | null> {
-  const client = await createServerAuthClient();
+  const client = createSupabaseServerClient();
   // Raw token over the wire; the DB re-hashes and validates it server-side.
   const { data, error } = await client
     .rpc("create_order_request_from_token", {
