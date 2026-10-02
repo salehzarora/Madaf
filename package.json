@@ -84,7 +84,7 @@
     "test:notification-settings": "tsx --experimental-test-module-mocks --test src/components/admin/notification-settings.test.mts",
     "test:e2e": "node scripts/run-browser-e2e.mjs",
     "test:e2e-safety": "node --test tests/e2e/safety.test.mjs tests/e2e/command.test.mjs",
-    "test:pricing": "tsx --test src/lib/pricing.test.ts && tsx --experimental-test-module-mocks --test src/lib/pricing-state.test.mts"
+    "test:pricing": "tsx --test src/lib/pricing.test.ts && tsx --experimental-test-module-mocks --test src/lib/pricing-state.test.mts src/lib/data/token-order-auth.test.mts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "0.5.1",

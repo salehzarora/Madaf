@@ -12,6 +12,7 @@ import { scheduleNewOrderPush } from "@/lib/push/after-order";
  * Supabase-mode only.
  */
 import { getDataContext } from "@/lib/auth/session";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServerAuthClient } from "@/lib/supabase/server-auth";
 import type { Availability, Category, Manufacturer, Product } from "@/lib/types";
 
@@ -276,7 +277,7 @@ export async function submitShowcaseGuestOrder(
   notes?: string,
   quote?: QuoteInput,
 ): Promise<string | null> {
-  const client = await createServerAuthClient();
+  const client = createSupabaseServerClient();
   const { data, error } = await client
     .rpc("create_order_from_showcase_token", {
       p_token: rawToken,
