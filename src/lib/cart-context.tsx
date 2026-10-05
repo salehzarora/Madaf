@@ -183,9 +183,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCustomer = useCallback((customerId: string | null) => {
+    // Deep links and callers must use the current hydrated reference data.
+    // Ignore an unknown ID without invalidating a valid cart/pricing attempt.
+    if (customerId !== null && !customerById.has(customerId)) return;
     setGeneration(v => v + 1);
     setState((prev) => ({ ...prev, customerId }));
-  }, []);
+  }, [customerById]);
 
   const ensureSubmissionKey = useCallback((): string => {
     if (keyRef.current) return keyRef.current;
