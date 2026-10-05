@@ -46,14 +46,14 @@ const EMPTY = {
 };
 
 const roots: Root[] = [];
-function mount(): void {
+function mount(data: Partial<typeof EMPTY> = {}): void {
   const container = dom.window.document.createElement("div");
   dom.window.document.body.appendChild(container);
   const root = createRoot(container);
   roots.push(root);
   act(() => {
     root.render(
-      <ShopDataProvider {...EMPTY}>
+      <ShopDataProvider {...EMPTY} {...data}>
         <CartProvider>
           <Probe />
         </CartProvider>
@@ -149,3 +149,68 @@ test("clear() (a successful submit) rotates the key for the next order", () => {
   });
   assert.notEqual(k2, k1, "a new logical cart gets a fresh key after a successful submit");
 });
+
+const product: Product = {
+  id: "current-product", sku: "CURRENT", categoryId: "category", manufacturerId: "",
+  translations: { ar: { name: "منتج" }, he: { name: "מוצר" }, en: { name: "Product" } },
+  packageType: "carton", unitsPerPackage: 6, baseUnit: "bottles",
+  wholesalePrice: 18, availability: "inStock",
+};
+const customer: Customer = {
+  id: "current-customer", name: "Current shop", type: "grocery",
+  city: { ar: "", he: "", en: "" }, phone: "", contactName: "",
+};
+
+test("stale customer hydration clears its key, retains current items and persists the sanitized cart", () => {
+  const staleKey = crypto.randomUUID();
+  dom.window.localStorage.setItem("madaf.cart.v1", JSON.stringify({
+    items: [{ productId: product.id, quantity: 3 }], customerId: "other-context-customer", submissionKey: staleKey,
+  }));
+  mount({ products: [product], customers: [] });
+  assert.equal(cart().customerId, null);
+  assert.equal(cart().submissionKey, null);
+  assert.deepEqual(cart().items, [{ productId: product.id, quantity: 3 }]);
+  const sanitized = JSON.parse(dom.window.localStorage.getItem("madaf.cart.v1")!);
+  assert.equal(sanitized.customerId, null);
+  assert.equal(sanitized.submissionKey, null);
+  unmountAll();
+  mount({ products: [product], customers: [] });
+  let freshKey = "";
+  act(() => { freshKey = cart().ensureSubmissionKey(); });
+  assert.match(freshKey, UUID);
+  assert.notEqual(freshKey, staleKey);
+});
+
+test("rejected product items drop the stored submission key even when the customer remains current", () => {
+  const staleKey = crypto.randomUUID();
+  dom.window.localStorage.setItem("madaf.cart.v1", JSON.stringify({
+    items: [{ productId: product.id, quantity: 2 }, { productId: "removed-product", quantity: 1 }],
+    customerId: customer.id, submissionKey: staleKey,
+  }));
+  mount({ products: [product], customers: [customer] });
+  assert.equal(cart().customerId, customer.id);
+  assert.deepEqual(cart().items, [{ productId: product.id, quantity: 2 }]);
+  assert.equal(cart().submissionKey, null);
+  let freshKey = "";
+  act(() => { freshKey = cart().ensureSubmissionKey(); });
+  assert.notEqual(freshKey, staleKey);
+});
+
+for (const customerId of [null, customer.id]) {
+  test(`same-context refresh preserves exact ambiguous-retry key with customer ${customerId ?? "null"}`, () => {
+    const key = crypto.randomUUID();
+    const items = [{ productId: product.id, quantity: 3 }];
+    dom.window.localStorage.setItem("madaf.cart.v1", JSON.stringify({ items, customerId, submissionKey: key }));
+    mount({ products: [product], customers: [customer] });
+    assert.equal(cart().customerId, customerId);
+    assert.deepEqual(cart().items, items);
+    assert.equal(cart().submissionKey, key);
+    unmountAll();
+    mount({ products: [product], customers: [customer] });
+    let retryKey = "";
+    act(() => { retryKey = cart().ensureSubmissionKey(); });
+    assert.equal(retryKey, key);
+    assert.equal(cart().customerId, customerId);
+    assert.deepEqual(cart().items, items);
+  });
+}

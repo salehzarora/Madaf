@@ -10,7 +10,7 @@ import { locales } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { CartProvider, useCart } from "@/lib/cart-context";
 import { ShopDataProvider } from "@/lib/shop-data-context";
-import type { Product } from "@/lib/types";
+import type { Customer, Product } from "@/lib/types";
 
 const product: Product = {
   id: "detail", sku: "SKU-004B", categoryId: "drinks", manufacturerId: "",
@@ -19,6 +19,10 @@ const product: Product = {
   wholesalePrice: 36, availability: "inStock",
 };
 const key = "11110000-0000-4000-8000-00000000004b";
+const customer: Customer = {
+  id: "shop", name: "Current shop", type: "grocery",
+  city: { ar: "", he: "", en: "" }, phone: "", contactName: "",
+};
 const cleanups: (() => void)[] = [];
 function mount(element: React.ReactNode) {
   const container = document.createElement("div");
@@ -39,7 +43,7 @@ for (const locale of locales) {
     const captured: { current: ReturnType<typeof useCart> | null } = { current: null };
     function Probe() { const cart = useCart(); useEffect(() => { captured.current = cart; }); return null; }
     const dict = getDictionary(locale);
-    const container = mount(<ShopDataProvider products={[product]} categories={[]} manufacturers={[]} customers={[]}>
+    const container = mount(<ShopDataProvider products={[product]} categories={[]} manufacturers={[]} customers={[customer]}>
       <CartProvider><Probe /><ProductDetailActions product={product} locale={locale} dict={dict} /></CartProvider>
     </ShopDataProvider>);
     const add = container.querySelector("button");

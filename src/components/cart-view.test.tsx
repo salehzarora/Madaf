@@ -140,14 +140,16 @@ for (const locale of locales) {
     assert.equal(document.activeElement, trigger);
   });
 }
-test("stale persisted products are pruned; runtime missing products are safely skipped", () => {
+test("stale persisted products invalidate the stored key; runtime missing products are safely skipped", () => {
   const h = setup("en", [...initialItems, { productId: "unknown", quantity: 50 }]);
   assert.deepEqual(h.cart().items, initialItems);
   act(() => h.cart().addItem("unknown", 5));
   assert.equal(h.container.querySelectorAll("a[href*='/product/']").length, 2);
   assert.equal(h.cart().subtotal, 103);
   assert.equal(h.cart().totalPackages, 5);
-  assertIdentity(h.cart());
+  assert.equal(h.cart().customerId, "Alpha");
+  assert.equal(h.cart().submissionKey, null);
+  assert.equal(stored().submissionKey, null);
 });
 test("notes remain uncontrolled and do not enter cart persistence or submission state", () => {
   const h = setup("en");

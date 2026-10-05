@@ -202,11 +202,11 @@ function localStorageSeed(value: { customerId: string | null; items: { productId
   dom.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
 }
 
-test("without a deep link the persisted customer is retained and removed catalog products are dropped", () => {
+test("removed catalog products are dropped and invalidate the stored key while retaining a valid customer", () => {
   localStorageSeed({ customerId: "shop-a", items: [{ productId: "beans", quantity: 3 }, { productId: "deleted-product", quantity: 2 }], submissionKey: SUBMISSION_KEY });
   const h = mount();
   assert.equal(h.cart().customerId, "shop-a");
-  assert.equal(h.cart().submissionKey, SUBMISSION_KEY);
+  assert.equal(h.cart().submissionKey, null);
   assert.deepEqual(h.cart().items, [{ productId: "beans", quantity: 3 }]);
   assertSummary(h, 3, 54);
 });

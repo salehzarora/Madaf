@@ -5,8 +5,10 @@ import { afterEach, mock, test } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { getDictionary } from "@/i18n/dictionaries";
+import type { Locale } from "@/i18n/config";
 import type { PricingScope, PriceResult, PricingFailure } from "@/lib/pricing";
-import type { Product } from "@/lib/types";
+import type { Customer, Product } from "@/lib/types";
 
 mock.module("@/lib/data/mode", {namedExports:{getDataMode:()=>"supabase"}});
 const requests: {scope:PricingScope;ids:string[];resolve:(data:PriceResult|PricingFailure|null)=>void}[]=[];
@@ -18,7 +20,9 @@ const require=createRequire(import.meta.url);
 const {CartProvider,useCart}=require("@/lib/cart-context") as typeof import("@/lib/cart-context");
 const {ShopDataProvider}=require("@/lib/shop-data-context") as typeof import("@/lib/shop-data-context");
 const {useEffectivePrices}=require("@/lib/use-effective-prices") as typeof import("@/lib/use-effective-prices");
+const {PricingStatus}=require("@/components/effective-price") as typeof import("@/components/effective-price");
 const product:Product={id:"p",sku:"P",categoryId:"c",manufacturerId:"",translations:{ar:{name:"منتج"},he:{name:"מוצר"},en:{name:"Product"}},packageType:"carton",unitsPerPackage:6,baseUnit:"bottles",wholesalePrice:10,availability:"inStock"};
+const currentCustomers:Customer[]=["A","B"].map(id=>({id,name:`Shop ${id}`,type:"grocery",city:{ar:"",he:"",en:""},phone:"",contactName:""}));
 const cleanups:(()=>void)[]=[];
 afterEach(async()=>{
   cleanups.splice(0).forEach(fn=>fn());
@@ -39,15 +43,16 @@ async function requestAfter(boundary:number,customerId:string|null){
   await until(()=>(index=requests.findIndex((r,i)=>i>=boundary&&"customerId" in r.scope&&r.scope.customerId===customerId&&r.ids.includes("p")))>=0);
   return index;
 }
-function mountCart(){
+function mountCart(options:{customers?:Customer[];locale?:Locale}={}){
   let cart!:ReturnType<typeof useCart>;
-  function Probe(){cart=useCart();return React.createElement("output",null,String(cart.priceOf("p")));}
+  const dict=getDictionary(options.locale??"en");
+  function Probe(){cart=useCart();return React.createElement(React.Fragment,null,React.createElement("output",null,String(cart.priceOf("p"))),React.createElement(PricingStatus,{dict}));}
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   // The provider's children prop is required in its TypeScript signature.
   // eslint-disable-next-line react/no-children-prop
-  act(()=>root.render(React.createElement(ShopDataProvider,{products:[product],categories:[],manufacturers:[],customers:[],children:React.createElement(CartProvider,null,React.createElement(Probe))})));
+  act(()=>root.render(React.createElement(ShopDataProvider,{products:[product],categories:[],manufacturers:[],customers:options.customers??currentCustomers,children:React.createElement(CartProvider,null,React.createElement(Probe))})));
   cleanups.push(()=>{act(()=>root.unmount());container.remove();});
-  return {cart:()=>cart,container};
+  return {cart:()=>cart,container,dict};
 }
 test("A→B→A invalidates immediately and ignores both older generations without changing basket/key",async()=>{
   const key=crypto.randomUUID();dom.window.localStorage.setItem("madaf.cart.v1",JSON.stringify({items:[{productId:"p",quantity:3}],customerId:"A",submissionKey:key}));
@@ -63,15 +68,43 @@ test("A→B→A invalidates immediately and ignores both older generations witho
   assert.deepEqual(Object.keys(JSON.parse(dom.window.localStorage.getItem("madaf.cart.v1")!)).sort(),["customerId","items","submissionKey"]);
   assert.doesNotMatch(dom.window.localStorage.getItem("madaf.cart.v1")!,/7\.25|digest|agreement/);
 });
-test("denied restored customer stays distinct from unavailable and never falls back to catalog base",async()=>{
-  dom.window.localStorage.setItem("madaf.cart.v1",JSON.stringify({items:[{productId:"p",quantity:1}],customerId:"foreign",submissionKey:null}));
-  const mountBoundary=requests.length;const h=mountCart();const deniedRequest=await requestAfter(mountBoundary,"foreign");
+test("a true denied response for a current customer stays distinct from unavailable and never falls back to catalog base",async()=>{
+  dom.window.localStorage.setItem("madaf.cart.v1",JSON.stringify({items:[{productId:"p",quantity:1}],customerId:"A",submissionKey:null}));
+  const mountBoundary=requests.length;const h=mountCart();const deniedRequest=await requestAfter(mountBoundary,"A");
   await act(async()=>{requests[deniedRequest].resolve({error:"denied"});await setImmediate();});assert.equal(h.cart().priceOf("p"),null);assert.equal(h.cart().subtotal,null);assert.equal(h.cart().pricingReady,false);assert.equal(h.cart().pricingProblem,"denied");
-  const count=requests.length;act(()=>h.cart().refreshPrices());const unavailableRequest=await requestAfter(count,"foreign");
+  assert.ok(h.container.textContent?.includes(h.dict.pricing.denied));assert.ok(!h.container.textContent?.includes(h.dict.pricing.unavailable));
+  const count=requests.length;act(()=>h.cart().refreshPrices());assert.equal(h.container.querySelector('[role="status"]'),null);
+  const unavailableRequest=await requestAfter(count,"A");
   await act(async()=>{requests[unavailableRequest].resolve({error:"unavailable"});await setImmediate();});assert.equal(h.cart().pricingProblem,"unavailable");assert.equal(h.cart().priceOf("p"),null);
+  assert.ok(h.container.textContent?.includes(h.dict.pricing.unavailable));assert.ok(h.container.querySelector("button"));
 });
 test("stale package exposes no effective amount",async()=>{
   const h=mountCart();await until(()=>requests.length>0);await answer(requests.length-1,null,"stale_package");assert.equal(h.cart().priceOf("p"),null);assert.equal(h.cart().pricingProblem,"stale_package");
+  assert.ok(h.container.textContent?.includes(h.dict.pricing.stale));
+});
+
+for(const locale of ["ar","he","en"] as const){
+  test(`${locale}: pending prices claim no failure, then a zero-customer catalog resolves base prices after stale hydration`,async()=>{
+    const staleKey=crypto.randomUUID();
+    dom.window.localStorage.setItem("madaf.cart.v1",JSON.stringify({items:[],customerId:"foreign",submissionKey:staleKey}));
+    const boundary=requests.length;const h=mountCart({customers:[],locale});
+    assert.equal(h.cart().customerId,null);assert.equal(h.cart().submissionKey,null);
+    assert.equal(h.cart().pricingReady,false);assert.equal(h.cart().priceOf("p"),null);
+    assert.equal(h.container.querySelector('[role="status"]'),null);
+    const index=await requestAfter(boundary,null);
+    assert.equal(h.container.querySelector('[role="status"]'),null,"a real pending request is not unavailable or denied");
+    await act(async()=>{requests[index].resolve({mode:"disabled",prices:[{product_id:"p",status:"base",price:"10.00",vat:"0.18"}]});await setImmediate();});
+    assert.equal(h.cart().pricingReady,true);assert.equal(h.cart().pricingMode,"disabled");
+    assert.equal(h.cart().priceOf("p"),10);assert.equal(h.cart().subtotal,0);
+    assert.equal(h.cart().pricingProblem,undefined);assert.equal(h.container.querySelector('[role="status"]'),null);
+  });
+}
+
+test("paused pricing retains its message and exposes no amount",async()=>{
+  const boundary=requests.length;const h=mountCart();const index=await requestAfter(boundary,null);
+  await act(async()=>{requests[index].resolve({mode:"paused",prices:[{product_id:"p",status:"paused",price:null,vat:null}]});await setImmediate();});
+  assert.equal(h.cart().priceOf("p"),null);assert.equal(h.cart().pricingMode,"paused");
+  assert.ok(h.container.textContent?.includes(h.dict.pricing.paused));assert.ok(h.container.querySelector("button"));
 });
 test("same-ID package/VAT/base changes synchronously invalidate pricing",async()=>{
   let state!:ReturnType<typeof useEffectivePrices>;
