@@ -933,5 +933,5 @@ test("M8H.3 adds NO migration — the M8G.3 index + M8H.1 policy already serve i
   // NATIVE PUSH V1.2 adds notification preferences and event claims.
   // The later financial-integrity function correction is explicitly additive;
   // this timeline milestone still adds no migration of its own.
-  assert.equal(migrations.length, 68); // Includes the independent customer package pricing V1 migration.
+  assert.equal(migrations.length, 69); // Includes customer pricing V1 and the independent privilege-closure migration.
 });
