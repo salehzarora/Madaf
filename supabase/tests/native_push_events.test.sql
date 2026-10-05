@@ -1,6 +1,9 @@
 begin;
 select no_plan();
 create function pg_temp.uid(label text) returns uuid language sql immutable as $$select md5('push-v12-'||label)::uuid$$;
+-- This fixture is deliberately called after SET ROLE. Do not depend on the
+-- implicit PUBLIC EXECUTE default that the privilege-closure migration removes.
+grant execute on function pg_temp.uid(text) to authenticated;
 set local request.jwt.claims='{"role":"service_role"}';
 insert into public.tenants(id,name_ar,name_he,name_en) values
  (pg_temp.uid('A'),'أ','א','A'),(pg_temp.uid('B'),'ب','ב','B');
