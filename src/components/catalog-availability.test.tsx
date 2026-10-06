@@ -14,7 +14,7 @@ import { QuantityStepper } from "@/components/quantity-stepper";
 import { getDictionary, interpolate } from "@/i18n/dictionaries";
 import { CartProvider, useCart } from "@/lib/cart-context";
 import { ShopDataProvider } from "@/lib/shop-data-context";
-import type { Availability, Category, Product } from "@/lib/types";
+import type { Availability, Category, Customer, Product } from "@/lib/types";
 
 const dict = getDictionary("en");
 const STORAGE_KEY = "madaf.cart.v1";
@@ -27,6 +27,10 @@ const product: Product = {
   translations: { en: { name: "Test package" }, ar: { name: "عبوة اختبار" }, he: { name: "אריזת בדיקה" } },
   packageType: "carton", unitsPerPackage: 12, baseUnit: "bottles",
   wholesalePrice: 36, availability: "outOfStock",
+};
+const customer: Customer = {
+  id: "selected-shop", name: "Selected shop", city: { en: "Test", ar: "اختبار", he: "בדיקה" },
+  phone: "", contactName: "Test", type: "grocery",
 };
 const surfaces = ["card", "order panel", "review panel", "cart", "product detail"] as const;
 type Surface = typeof surfaces[number];
@@ -61,7 +65,7 @@ function mount(surface: Surface, initialAvailability: Availability = "outOfStock
       <OrderPad locale="en" dict={dict} onClose={surface === "review panel" ? () => {} : undefined} />
     );
     act(() => root.render(
-      <ShopDataProvider products={[currentProduct]} categories={[category]} manufacturers={[]} customers={[]}>
+      <ShopDataProvider products={[currentProduct]} categories={[category]} manufacturers={[]} customers={[customer]}>
         <CartProvider><Probe />{content}</CartProvider>
       </ShopDataProvider>,
     ));

@@ -57,7 +57,7 @@ const SUBMISSION_KEY = "11110000-0000-4000-8000-000000000001";
 type Cart = ReturnType<typeof useCart>;
 const cleanups: (() => void)[] = [];
 
-function mount(options: { locale?: Locale; initialCustomerId?: string; products?: Product[] } = {}) {
+function mount(options: { locale?: Locale; initialCustomerId?: string; products?: Product[]; customers?: Customer[] } = {}) {
   const locale = options.locale ?? "en";
   const dict = getDictionary(locale);
   const container = document.createElement("div");
@@ -71,7 +71,7 @@ function mount(options: { locale?: Locale; initialCustomerId?: string; products?
     return null;
   }
   act(() => root.render(
-    <ShopDataProvider products={options.products ?? products} categories={categories} manufacturers={manufacturers} customers={customers}>
+    <ShopDataProvider products={options.products ?? products} categories={categories} manufacturers={manufacturers} customers={options.customers ?? customers}>
       <CartProvider>
         <Probe />
         <nav aria-label="Test header"><CartLink locale={locale} label={dict.nav.cart} /></nav>
@@ -198,15 +198,42 @@ test("deep-linked customer wins after persisted cart hydration without losing li
   assert.equal(persisted.submissionKey, SUBMISSION_KEY);
 });
 
+test("an invalid UUID deep link preserves the validated customer, basket and ambiguous-retry key across refresh", () => {
+  localStorageSeed({ customerId: "shop-b", items: [{ productId: "juice", quantity: 2 }], submissionKey: SUBMISSION_KEY });
+  const foreignId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const h = mount({ initialCustomerId: foreignId });
+  assert.equal(h.cart().customerId, "shop-b");
+  assert.equal(h.cart().submissionKey, SUBMISSION_KEY);
+  assertSummary(h, 2, 72);
+  assert.ok(orderPad(h).textContent?.includes("Shop B"));
+  assert.equal(dom.window.localStorage.getItem(STORAGE_KEY)?.includes(foreignId), false);
+  cleanups.splice(0).reverse().forEach((cleanup) => cleanup());
+  const restored = mount({ initialCustomerId: foreignId });
+  let retryKey = "";
+  act(() => { retryKey = restored.cart().ensureSubmissionKey(); });
+  assert.equal(retryKey, SUBMISSION_KEY);
+  assert.equal(restored.cart().customerId, "shop-b");
+  assertSummary(restored, 2, 72);
+});
+
+test("an invalid customer deep link leaves a zero-customer catalog unselected", () => {
+  const h = mount({ customers: [], initialCustomerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+  assert.equal(h.cart().hydrated, true);
+  assert.equal(h.cart().customerId, null);
+  assert.equal(h.cart().submissionKey, null);
+  assertSummary(h, 0, 0);
+  assert.equal(JSON.parse(dom.window.localStorage.getItem(STORAGE_KEY)!).customerId, null);
+});
+
 function localStorageSeed(value: { customerId: string | null; items: { productId: string; quantity: number }[]; submissionKey: string | null }) {
   dom.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
 }
 
-test("without a deep link the persisted customer is retained and removed catalog products are dropped", () => {
+test("removed catalog products are dropped and invalidate the stored key while retaining a valid customer", () => {
   localStorageSeed({ customerId: "shop-a", items: [{ productId: "beans", quantity: 3 }, { productId: "deleted-product", quantity: 2 }], submissionKey: SUBMISSION_KEY });
   const h = mount();
   assert.equal(h.cart().customerId, "shop-a");
-  assert.equal(h.cart().submissionKey, SUBMISSION_KEY);
+  assert.equal(h.cart().submissionKey, null);
   assert.deepEqual(h.cart().items, [{ productId: "beans", quantity: 3 }]);
   assertSummary(h, 3, 54);
 });

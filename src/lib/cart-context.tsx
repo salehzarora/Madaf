@@ -67,7 +67,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   // Catalog reference data comes from the server-hydrated shop data
   // context — the cart never fetches and never imports mock data.
-  const { products, productById } = useShopData();
+  const { products, productById, customerById } = useShopData();
   const [generation, setGeneration] = useState(0);
   const [state, setState] = useState<CartState>({
     items: [],
@@ -94,6 +94,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CartState;
+        const restoredItems = parsed.items.filter((i) => productById.has(i.productId));
+        const storedCustomerId = parsed.customerId ?? null;
+        const customerValid = storedCustomerId === null || customerById.has(storedCustomerId);
+        // A key belongs to the saved logical cart. If current reference data
+        // rejects its customer or lines, a new cart must not reuse that key.
+        // An unchanged same-context cart still restores the exact retry key.
+        const storedCartValid = customerValid && restoredItems.length === parsed.items.length;
         // Merge, don't replace: anything set before hydration (e.g. a
         // ?customer= deep link) must survive the storage restore. Also
         // drop items whose product no longer exists in the catalog.
@@ -102,16 +109,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
           items:
             prev.items.length > 0
               ? prev.items
-              : parsed.items.filter((i) => productById.has(i.productId)),
-          customerId: prev.customerId ?? parsed.customerId ?? null,
-          submissionKey: prev.submissionKey ?? parsed.submissionKey ?? null,
+              : restoredItems,
+          customerId: prev.customerId ?? (customerValid ? storedCustomerId : null),
+          submissionKey: prev.submissionKey ?? (storedCartValid ? parsed.submissionKey ?? null : null),
         }));
       }
     } catch {
       // Corrupt storage — start fresh.
     }
     setHydrated(true);
-    // productById is stable for the session (server-hydrated reference
+    // productById/customerById are stable for the session (server-hydrated reference
     // data); this hydration must run exactly once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -176,9 +183,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCustomer = useCallback((customerId: string | null) => {
+    // Deep links and callers must use the current hydrated reference data.
+    // Ignore an unknown ID without invalidating a valid cart/pricing attempt.
+    if (customerId !== null && !customerById.has(customerId)) return;
     setGeneration(v => v + 1);
     setState((prev) => ({ ...prev, customerId }));
-  }, []);
+  }, [customerById]);
 
   const ensureSubmissionKey = useCallback((): string => {
     if (keyRef.current) return keyRef.current;
